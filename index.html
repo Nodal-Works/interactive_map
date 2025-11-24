@@ -1,0 +1,163 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Interactive Map — dtcc-table</title>
+    <!-- Load Leaflet CSS from CDN (no SRI attribute to avoid integrity mismatch blocks) -->
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <link rel="stylesheet" href="style.css" />
+  </head>
+  <body>
+    <!-- Left sidebar -->
+    <div id="left-sidebar">
+      <img src="media/dtcc_logo.png" alt="DTCC" class="sidebar-logo logo-top">
+      <div class="sidebar-title">ACE MR Studio</div>
+      
+      <!-- Left sidebar controls -->
+      <div class="icon-controls">
+        <button id="cfd-simulation-btn" class="icon-btn" title="CFD Wind Simulation">
+          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M9.59 4.59A2 2 0 1 1 11 8H2m10.59 11.41A2 2 0 1 0 14 16H2m15.73-8.27A2.5 2.5 0 1 1 19.5 12H2"/>
+            <path d="M2 12h20M7 8h15M7 16h15"/>
+          </svg>
+        </button>
+        
+        <button id="slideshow-btn" class="icon-btn" title="Slideshow">
+          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <rect x="2" y="3" width="20" height="14" rx="2"/>
+            <path d="M8 21h8M12 17v4"/>
+            <polygon points="10,8 10,14 15,11" fill="currentColor"/>
+          </svg>
+        </button>
+      </div>
+      
+      <img src="media/chalmers_logo.png" alt="Chalmers" class="sidebar-logo logo-bottom">
+    </div>
+
+    <!-- Right sidebar with icon controls -->
+    <div id="right-sidebar">
+      <img src="media/chalmers_logo.png" alt="Chalmers" class="sidebar-logo logo-top">
+      <div class="sidebar-title">ACE MR Studio</div>
+      <div class="icon-controls">
+        <button id="load-geojson-btn" class="icon-btn" title="Load GeoJSON">
+          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M7 10l5 5 5-5M12 15V3"/>
+          </svg>
+        </button>
+        <input id="geojson-input" type="file" accept="application/geo+json,application/json,.geojson" style="display:none" />
+        
+        <button id="toggle-table-markers-btn" class="icon-btn" title="Toggle Table Markers">
+          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M1 1h4v4H1zm18 0h4v4h-4zM1 19h4v4H1zm18 0h4v4h-4zM12 10a2 2 0 1 0 0 4 2 2 0 0 0 0-4z"/>
+            <path d="M5 3h14M3 5v14M5 21h14M21 5v14"/>
+          </svg>
+        </button>
+        
+        <button id="grid-animation-btn" class="icon-btn" title="Play Grid Animation">
+          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <rect x="3" y="3" width="7" height="7"/>
+            <rect x="14" y="3" width="7" height="7"/>
+            <rect x="14" y="14" width="7" height="7"/>
+            <rect x="3" y="14" width="7" height="7"/>
+          </svg>
+        </button>
+        
+        <button id="isovist-btn" class="icon-btn" title="Interactive Isovist">
+          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <circle cx="12" cy="12" r="3"/>
+            <path d="M12 2 L19 9 L19 15 L12 22 L5 15 L5 9 Z"/>
+            <line x1="12" y1="12" x2="12" y2="6"/>
+          </svg>
+        </button>
+        
+        <button id="basemap-toggle" class="icon-btn" title="Switch Basemap">
+          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M3 7v10a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V7"/>
+            <path d="M3 7l9-4 9 4M12 3v18"/>
+            <path d="M7 10l5 3 5-3"/>
+          </svg>
+        </button>
+        
+        <button id="calibrate-toggle" class="icon-btn" title="Calibrate">
+          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <circle cx="12" cy="12" r="10"/>
+            <circle cx="12" cy="12" r="6"/>
+            <circle cx="12" cy="12" r="2"/>
+          </svg>
+        </button>
+        
+        <button id="fullscreen-toggle" class="icon-btn" title="Fullscreen">
+          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M8 3H5a2 2 0 0 0-2 2v3m18 0V5a2 2 0 0 0-2-2h-3m0 18h3a2 2 0 0 0 2-2v-3M3 16v3a2 2 0 0 0 2 2h3"/>
+          </svg>
+        </button>
+      </div>
+      <img src="media/dtcc_logo.png" alt="DTCC" class="sidebar-logo logo-bottom">
+    </div>
+
+    <div id="map"></div>
+
+    <!-- Laser pointer cursor -->
+    <div id="laser-pointer"></div>
+
+    <!-- Grid animation overlay -->
+    <canvas id="grid-animation-canvas"></canvas>
+
+    <!-- CFD simulation canvas -->
+    <canvas id="cfd-simulation-canvas"></canvas>
+
+    <!-- Slideshow canvas -->
+    <canvas id="slideshow-canvas"></canvas>
+
+    <!-- Slideshow metadata overlay -->
+    <div id="slideshow-metadata" class="slideshow-metadata bottom-right"></div>
+
+    <!-- Calibration overlay and panel -->
+    <div id="table-overlay" aria-hidden="true"></div>
+
+    <div id="calibrate-panel" class="hidden">
+      <h3>Projection / Calibration</h3>
+      <div class="field">
+        <label>Screen width (cm)</label>
+        <input id="screen-w" type="number" step="0.1" value="111.93" />
+      </div>
+      <div class="field">
+        <label>Screen height (cm)</label>
+        <input id="screen-h" type="number" step="0.1" value="62.96" />
+      </div>
+      <div class="field">
+        <label>Table width (cm)</label>
+        <input id="table-w" type="number" step="0.1" value="100" />
+      </div>
+      <div class="field">
+        <label>Table height (cm)</label>
+        <input id="table-h" type="number" step="0.1" value="60" />
+      </div>
+      <div class="actions">
+        <button id="show-overlay" class="file-label">Show table overlay</button>
+        <button id="hide-overlay" class="file-label">Hide overlay</button>
+        <button id="calibrate-fit" class="file-label">Copy Current Calibration</button>
+        <div class="control-group">
+          <button id="zoom-in" class="file-label">Zoom +</button>
+          <button id="zoom-out" class="file-label">Zoom −</button>
+          <button id="rotate-left" class="file-label">⟲</button>
+          <button id="rotate-right" class="file-label">⟳</button>
+          <button id="reset-rotation" class="file-label">Reset</button>
+          <button id="lock-center" class="file-label">Lock Center</button>
+        </div>
+      </div>
+      <p class="note">Procedure: pan/zoom the map until the geographic area you want to place on the table is visible, then press "Calibrate to current map bounds". The map will zoom so that the current bounds fit exactly inside the physical table rectangle when projected.</p>
+    </div>
+
+    <!-- Load MapLibre GL JS (replaces Leaflet for native rotation/bearing support) -->
+    <link href="https://unpkg.com/maplibre-gl@2.4.0/dist/maplibre-gl.css" rel="stylesheet" />
+    <script src="https://unpkg.com/maplibre-gl@2.4.0/dist/maplibre-gl.js"></script>
+    <script src="main.js"></script>
+    <script src="animations/grid-animation.js"></script>
+    <script src="animations/street-glow-animation.js"></script>
+    <script src="animations/isovist.js"></script>
+    <script src="animations/cfd-simulation.js"></script>
+    <script src="animations/slideshow.js"></script>
+  </body>
+</html>
