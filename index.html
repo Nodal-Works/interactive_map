@@ -22,6 +22,16 @@
           </svg>
         </button>
         
+        <button id="stormwater-btn" class="icon-btn" title="Stormwater Flow">
+          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M12 2.69l5.66 5.66a8 8 0 1 1-11.31 0z"/>
+            <path d="M12 2v10"/>
+            <circle cx="12" cy="16" r="1" fill="currentColor"/>
+            <circle cx="9" cy="19" r="1" fill="currentColor"/>
+            <circle cx="15" cy="19" r="1" fill="currentColor"/>
+          </svg>
+        </button>
+        
         <button id="slideshow-btn" class="icon-btn" title="Slideshow">
           <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
             <rect x="2" y="3" width="20" height="14" rx="2"/>
@@ -119,6 +129,9 @@
     <!-- CFD simulation canvas -->
     <canvas id="cfd-simulation-canvas"></canvas>
 
+    <!-- Stormwater flow canvas -->
+    <canvas id="stormwater-canvas"></canvas>
+
     <!-- Slideshow canvas -->
     <canvas id="slideshow-canvas"></canvas>
 
@@ -170,6 +183,7 @@
     <script src="animations/street-glow-animation.js"></script>
     <script src="animations/isovist.js"></script>
     <script src="animations/cfd-simulation.js"></script>
+    <script src="animations/stormwater-flow.js"></script>
     <script src="animations/slideshow.js"></script>
   </body>
 </html>
