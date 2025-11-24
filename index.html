@@ -12,10 +12,9 @@
     <!-- Left sidebar -->
     <div id="left-sidebar">
       <img src="media/dtcc_logo.png" alt="DTCC" class="sidebar-logo logo-top">
-      <div class="sidebar-title">ACE MR Studio</div>
       
-      <!-- Left sidebar controls -->
-      <div class="icon-controls">
+      <!-- Left sidebar controls (top group) -->
+      <div class="icon-controls icon-controls-top">
         <button id="cfd-simulation-btn" class="icon-btn" title="CFD Wind Simulation">
           <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
             <path d="M9.59 4.59A2 2 0 1 1 11 8H2m10.59 11.41A2 2 0 1 0 14 16H2m15.73-8.27A2.5 2.5 0 1 1 19.5 12H2"/>
@@ -32,28 +31,10 @@
         </button>
       </div>
       
-      <img src="media/chalmers_logo.png" alt="Chalmers" class="sidebar-logo logo-bottom">
-    </div>
-
-    <!-- Right sidebar with icon controls -->
-    <div id="right-sidebar">
-      <img src="media/chalmers_logo.png" alt="Chalmers" class="sidebar-logo logo-top">
       <div class="sidebar-title">ACE MR Studio</div>
-      <div class="icon-controls">
-        <button id="load-geojson-btn" class="icon-btn" title="Load GeoJSON">
-          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M7 10l5 5 5-5M12 15V3"/>
-          </svg>
-        </button>
-        <input id="geojson-input" type="file" accept="application/geo+json,application/json,.geojson" style="display:none" />
-        
-        <button id="toggle-table-markers-btn" class="icon-btn" title="Toggle Table Markers">
-          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <path d="M1 1h4v4H1zm18 0h4v4h-4zM1 19h4v4H1zm18 0h4v4h-4zM12 10a2 2 0 1 0 0 4 2 2 0 0 0 0-4z"/>
-            <path d="M5 3h14M3 5v14M5 21h14M21 5v14"/>
-          </svg>
-        </button>
-        
+      
+      <!-- Left sidebar controls (bottom group) -->
+      <div class="icon-controls icon-controls-bottom">
         <button id="grid-animation-btn" class="icon-btn" title="Play Grid Animation">
           <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
             <rect x="3" y="3" width="7" height="7"/>
@@ -70,6 +51,31 @@
             <line x1="12" y1="12" x2="12" y2="6"/>
           </svg>
         </button>
+      </div>
+      
+      <img src="media/chalmers_logo.png" alt="Chalmers" class="sidebar-logo logo-bottom">
+    </div>
+
+    <!-- Right sidebar with icon controls -->
+    <div id="right-sidebar">
+      <img src="media/chalmers_logo.png" alt="Chalmers" class="sidebar-logo logo-top">
+      
+      <!-- Right sidebar controls (top group) -->
+      <div class="icon-controls icon-controls-top">
+        <!-- Hidden GeoJSON import button -->
+        <button id="load-geojson-btn" class="icon-btn" title="Load GeoJSON" style="display:none">
+          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M7 10l5 5 5-5M12 15V3"/>
+          </svg>
+        </button>
+        <input id="geojson-input" type="file" accept="application/geo+json,application/json,.geojson" style="display:none" />
+        
+        <button id="toggle-table-markers-btn" class="icon-btn" title="Toggle Table Markers">
+          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M1 1h4v4H1zm18 0h4v4h-4zM1 19h4v4H1zm18 0h4v4h-4zM12 10a2 2 0 1 0 0 4 2 2 0 0 0 0-4z"/>
+            <path d="M5 3h14M3 5v14M5 21h14M21 5v14"/>
+          </svg>
+        </button>
         
         <button id="basemap-toggle" class="icon-btn" title="Switch Basemap">
           <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -78,7 +84,12 @@
             <path d="M7 10l5 3 5-3"/>
           </svg>
         </button>
-        
+      </div>
+      
+      <div class="sidebar-title">ACE MR Studio</div>
+      
+      <!-- Right sidebar controls (bottom group) -->
+      <div class="icon-controls icon-controls-bottom">
         <button id="calibrate-toggle" class="icon-btn" title="Calibrate">
           <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
             <circle cx="12" cy="12" r="10"/>
@@ -93,6 +104,7 @@
           </svg>
         </button>
       </div>
+      
       <img src="media/dtcc_logo.png" alt="DTCC" class="sidebar-logo logo-bottom">
     </div>
 
