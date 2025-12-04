@@ -7,6 +7,15 @@
     <!-- Load Leaflet CSS from CDN (no SRI attribute to avoid integrity mismatch blocks) -->
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
     <link rel="stylesheet" href="style.css" />
+    <!-- Import map for Three.js ES modules -->
+    <script type="importmap">
+    {
+      "imports": {
+        "three": "https://unpkg.com/three@0.160.0/build/three.module.js",
+        "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/"
+      }
+    }
+    </script>
   </head>
   <body>
     <!-- Left sidebar -->
@@ -72,6 +81,21 @@
       
       <!-- Right sidebar controls (top group) -->
       <div class="icon-controls icon-controls-top">
+        <!-- Sun Study button -->
+        <button id="sun-study-btn" class="icon-btn" title="Sun Study">
+          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <circle cx="12" cy="12" r="5"/>
+            <line x1="12" y1="1" x2="12" y2="3"/>
+            <line x1="12" y1="21" x2="12" y2="23"/>
+            <line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/>
+            <line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/>
+            <line x1="1" y1="12" x2="3" y2="12"/>
+            <line x1="21" y1="12" x2="23" y2="12"/>
+            <line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/>
+            <line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/>
+          </svg>
+        </button>
+        
         <!-- Hidden GeoJSON import button -->
         <button id="load-geojson-btn" class="icon-btn" title="Load GeoJSON" style="display:none">
           <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -185,5 +209,6 @@
     <script src="animations/cfd-simulation.js"></script>
     <script src="animations/stormwater-flow.js"></script>
     <script src="animations/slideshow.js"></script>
+    <script type="module" src="animations/sun-study.js"></script>
   </body>
 </html>

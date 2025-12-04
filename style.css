@@ -143,6 +143,16 @@ html, body {
   opacity: 0.6;
 }
 
+/* Sun study button active state */
+#sun-study-btn.active {
+  background: #f59e0b;
+  color: white;
+}
+
+#sun-study-btn.active:hover {
+  background: #d97706;
+}
+
 #map { 
   position: fixed;
   left: 60px;
