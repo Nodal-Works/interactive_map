@@ -33,6 +33,11 @@ class SunStudy {
     this.isActive = false;
     this.animationId = null;
     
+    // Materials
+    this.standardMaterial = null;
+    this.falseColorMaterial = null;
+    this.isFalseColorMode = false;
+    
     // Sweden location (Gothenburg - matches map center)
     this.latitude = 57.68839377903814;
     this.longitude = 11.977770568930168;
@@ -41,7 +46,11 @@ class SunStudy {
     this.mapBearing = -92.58546386659737;
     
     // Time settings
+    // Default to June 21st (Summer Solstice)
     this.date = new Date();
+    this.date.setMonth(5); // June (0-indexed)
+    this.date.setDate(21);
+    
     this.timeOfDay = 12;
     this.isAnimating = false;
     this.animationSpeed = 1;
@@ -151,6 +160,10 @@ class SunStudy {
       <div class="sun-control">
         <label>Scale: <span id="scale-mult-display">1.00</span>x</label>
         <input type="range" id="scale-mult" min="0.8" max="1.2" step="0.01" value="1">
+      </div>
+      <hr style="border: none; border-top: 1px solid #ddd; margin: 12px 0;">
+      <div class="sun-actions">
+        <button id="false-color-btn" class="sun-btn">🌈 False Color</button>
       </div>
       <div class="sun-info">
         <small>📍 Gothenburg, Sweden</small>
@@ -275,6 +288,112 @@ class SunStudy {
         this.applyManualAdjustments();
       });
     }
+    
+    // False color toggle
+    const falseColorBtn = document.getElementById('false-color-btn');
+    if (falseColorBtn) {
+      falseColorBtn.addEventListener('click', () => {
+        this.toggleFalseColorMode();
+        falseColorBtn.textContent = this.isFalseColorMode ? '🎨 Normal View' : '🌈 False Color';
+        falseColorBtn.classList.toggle('active', this.isFalseColorMode);
+      });
+    }
+  }
+  
+  createFalseColorMaterial() {
+    // Custom shader for false color sun exposure visualization
+    // Shows surface orientation relative to sun direction
+    const vertexShader = `
+      varying vec3 vNormal;
+      
+      void main() {
+        vNormal = normalize(normalMatrix * normal);
+        gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+      }
+    `;
+    
+    const fragmentShader = `
+      uniform vec3 sunDirection;
+      
+      varying vec3 vNormal;
+      
+      void main() {
+        vec3 normal = normalize(vNormal);
+        vec3 lightDir = normalize(sunDirection);
+        
+        // Calculate sun-facing factor (dot product)
+        float NdotL = dot(normal, lightDir);
+        float sunFacing = max(0.0, NdotL);
+        
+        // Color gradient: blue (shadow) -> cyan -> green -> yellow -> orange -> red (direct sun)
+        vec3 color;
+        
+        if (sunFacing < 0.05) {
+          // Deep shadow - dark blue/purple
+          color = vec3(0.15, 0.1, 0.35);
+        } else if (sunFacing < 0.2) {
+          // Shadow - blue
+          float t = (sunFacing - 0.05) / 0.15;
+          color = mix(vec3(0.15, 0.1, 0.35), vec3(0.1, 0.25, 0.6), t);
+        } else if (sunFacing < 0.4) {
+          // Partial shadow - blue to cyan
+          float t = (sunFacing - 0.2) / 0.2;
+          color = mix(vec3(0.1, 0.25, 0.6), vec3(0.1, 0.6, 0.8), t);
+        } else if (sunFacing < 0.55) {
+          // Neutral - cyan to green
+          float t = (sunFacing - 0.4) / 0.15;
+          color = mix(vec3(0.1, 0.6, 0.8), vec3(0.3, 0.75, 0.3), t);
+        } else if (sunFacing < 0.7) {
+          // Partial sun - green to yellow
+          float t = (sunFacing - 0.55) / 0.15;
+          color = mix(vec3(0.3, 0.75, 0.3), vec3(1.0, 0.9, 0.2), t);
+        } else if (sunFacing < 0.85) {
+          // Good sun - yellow to orange
+          float t = (sunFacing - 0.7) / 0.15;
+          color = mix(vec3(1.0, 0.9, 0.2), vec3(1.0, 0.5, 0.1), t);
+        } else {
+          // Direct sun - orange to red
+          float t = (sunFacing - 0.85) / 0.15;
+          color = mix(vec3(1.0, 0.5, 0.1), vec3(0.95, 0.2, 0.1), t);
+        }
+        
+        gl_FragColor = vec4(color, 1.0);
+      }
+    `;
+    
+    this.falseColorMaterial = new THREE.ShaderMaterial({
+      uniforms: {
+        sunDirection: { value: new THREE.Vector3(0, 1, 0) }
+      },
+      vertexShader: vertexShader,
+      fragmentShader: fragmentShader,
+      side: THREE.DoubleSide
+    });
+  }
+  
+  toggleFalseColorMode() {
+    if (!this.mesh) return;
+    
+    this.isFalseColorMode = !this.isFalseColorMode;
+    
+    if (this.isFalseColorMode) {
+      if (!this.falseColorMaterial) {
+        this.createFalseColorMaterial();
+      }
+      // Update shader uniforms
+      this.updateFalseColorUniforms();
+      this.mesh.material = this.falseColorMaterial;
+    } else {
+      this.mesh.material = this.standardMaterial;
+    }
+  }
+  
+  updateFalseColorUniforms() {
+    if (!this.falseColorMaterial || !this.sunLight) return;
+    
+    // Update sun direction
+    const sunDir = this.sunLight.position.clone().normalize();
+    this.falseColorMaterial.uniforms.sunDirection.value.copy(sunDir);
   }
   
   applyManualAdjustments() {
@@ -366,18 +485,18 @@ class SunStudy {
     // Hemisphere light for sky dome effect (sky color from above, ground color from below)
     const hemiLight = new THREE.HemisphereLight(
       0x87CEEB,  // Sky color (light blue)
-      0x8B7355,  // Ground color (brownish)
-      0.4        // Intensity
+      0x5e4b35,  // Ground color (darker warm earth)
+      0.6        // Intensity
     );
     hemiLight.position.set(0, 500, 0);
     this.scene.add(hemiLight);
     
-    // Minimal ambient for fill
-    const ambient = new THREE.AmbientLight(0xffffff, 0.1);
+    // Minimal ambient for fill - slightly warm for cinematic feel
+    const ambient = new THREE.AmbientLight(0xfff5e6, 0.4);
     this.scene.add(ambient);
     
-    // Directional sun light for shadows
-    this.sunLight = new THREE.DirectionalLight(0xffffff, 1.0);
+    // Directional sun light for shadows - starts warm
+    this.sunLight = new THREE.DirectionalLight(0xfffaed, 1.0);
     this.sunLight.castShadow = true;
     
     // Higher resolution shadow map
@@ -468,6 +587,28 @@ class SunStudy {
     
     this.sunLight.intensity = altitude > 0 ? 1.0 : 0;
     
+    // Cinematic lighting: Adjust color based on altitude
+    // Golden/Reddish at low altitude, White/Yellow at high altitude
+    if (altitude > 0) {
+      const color = new THREE.Color();
+      if (altitude < 10) {
+        // Sunrise/Sunset - Reddish Orange
+        color.setHSL(0.05, 1.0, 0.6);
+      } else if (altitude < 25) {
+        // Golden Hour - Orange/Gold
+        const t = (altitude - 10) / 15;
+        color.setHSL(0.1, 1.0, 0.6 + t * 0.2);
+      } else {
+        // Day - Warm White
+        const t = Math.min(1, (altitude - 25) / 40);
+        color.setHSL(0.12, 0.5 - t * 0.3, 0.8 + t * 0.2);
+      }
+      this.sunLight.color.copy(color);
+      
+      // Adjust intensity for cinematic feel
+      this.sunLight.intensity = Math.min(1.5, 0.5 + Math.sin(altitude * Math.PI / 180) * 1.2);
+    }
+    
     // Position the sun light
     const sunX = distance * Math.cos(altRad) * Math.sin(azRad);
     const sunY = distance * Math.sin(altRad);
@@ -513,7 +654,7 @@ class SunStudy {
         geometry.computeBoundingBox();
         
         // Material - semi-transparent model with shadows
-        const material = new THREE.MeshStandardMaterial({
+        this.standardMaterial = new THREE.MeshStandardMaterial({
           color: 0xffffff,
           roughness: 0.7,
           metalness: 0.1,
@@ -523,7 +664,7 @@ class SunStudy {
           depthWrite: true
         });
         
-        this.mesh = new THREE.Mesh(geometry, material);
+        this.mesh = new THREE.Mesh(geometry, this.standardMaterial);
         this.mesh.castShadow = true;
         this.mesh.receiveShadow = true;
         this.mesh.renderOrder = 1; // Render after other objects
@@ -660,6 +801,11 @@ class SunStudy {
       if (this.timeOfDay >= 24) this.timeOfDay = 0;
       this.updateTimeDisplay();
       this.updateSunPosition();
+    }
+    
+    // Update false color uniforms if in that mode
+    if (this.isFalseColorMode) {
+      this.updateFalseColorUniforms();
     }
     
     // Use composer for post-processing (SSAO)
