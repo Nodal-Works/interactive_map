@@ -19,11 +19,13 @@
   let isSimulating = false;
   
   // Simulation parameters
-  let GRID_RESOLUTION = 300; // Number of cells along longer dimension (visible area) - now mutable
-  const UPSTREAM_FACTOR = 3; // Extend domain 3x to the left for flow development
-  let NX, NY; // Grid dimensions (including upstream extension)
+  let GRID_RESOLUTION = 200; // Number of cells along longer dimension
+  const UPSTREAM_FACTOR = 1.0; // Extend domain 1x to the left (reduced for performance)
+  const DOWNSTREAM_FACTOR = 0.5; // Extend domain 0.5x to the right (reduced for performance)
+  const VERTICAL_PADDING_FACTOR = 0.2; // Extend domain 20% on top and bottom (reduced for performance)
+  let NX, NY; // Grid dimensions (including all extensions)
   let NX_VISIBLE, NY_VISIBLE; // Visible grid dimensions
-  let X_OFFSET; // Offset to start of visible region
+  let X_OFFSET, Y_OFFSET; // Offsets to start of visible region
   let cellSize; // Size of each cell in pixels
   
   // Map rotation - wind flows left-to-right in SCREEN space
@@ -38,10 +40,10 @@
   
   // Lattice Boltzmann parameters (tuned for stability)
   const Q = 9; // D2Q9 lattice (9 velocities in 2D)
-  let OMEGA = 1.0; // Relaxation parameter (lower = more stable, 0.5-2.0 range)
-  let WIND_SPEED = 0.03; // Inlet wind speed in lattice units (reduced for stability)
-  const VISCOSITY = 0.1; // Kinematic viscosity (higher = more stable)
-  const MAX_VELOCITY = 0.2; // Velocity clamp for stability
+  let OMEGA = 1.2; // Base relaxation parameter (higher = lower viscosity)
+  let WIND_SPEED = 0.05; // Inlet wind speed in lattice units (increased for better Reynolds number)
+  const VISCOSITY = 0.05; // Kinematic viscosity (lower = more turbulent)
+  const MAX_VELOCITY = 0.3; // Velocity clamp for stability
   let WIND_ANGLE = 0; // Wind direction in degrees (0 = left to right)
   
   // D2Q9 lattice velocities (directions)
@@ -59,6 +61,10 @@
   let ux = null; // Velocity x-component [x][y]
   let uy = null; // Velocity y-component [x][y]
   let obstacle = null; // Boolean obstacle map [x][y]
+  
+  // Dynamic velocity scale tracking
+  let currentMaxVelocity = 0;
+  let maxVelocitySmoothed = 0; // Smoothed version to avoid jitter in legend
   
   // Building obstacles from map
   let buildingPolygons = [];
@@ -80,14 +86,18 @@
       NX_VISIBLE = Math.floor(GRID_RESOLUTION * aspectRatio);
     }
     
-    // Extend computational domain to the left (upstream)
-    X_OFFSET = Math.floor(NX_VISIBLE * UPSTREAM_FACTOR);
-    NX = NX_VISIBLE + X_OFFSET;
-    NY = NY_VISIBLE;
+    // Extend computational domain on all sides to reduce edge effects
+    X_OFFSET = Math.floor(NX_VISIBLE * UPSTREAM_FACTOR); // Left (upstream)
+    const X_DOWNSTREAM = Math.floor(NX_VISIBLE * DOWNSTREAM_FACTOR); // Right (downstream)
+    Y_OFFSET = Math.floor(NY_VISIBLE * VERTICAL_PADDING_FACTOR); // Top
+    const Y_BOTTOM = Math.floor(NY_VISIBLE * VERTICAL_PADDING_FACTOR); // Bottom
+    
+    NX = X_OFFSET + NX_VISIBLE + X_DOWNSTREAM;
+    NY = Y_OFFSET + NY_VISIBLE + Y_BOTTOM;
     
     cellSize = s.w / NX_VISIBLE;
     
-    console.log(`CFD Grid: ${NX}x${NY} (visible: ${NX_VISIBLE}x${NY_VISIBLE}, upstream offset: ${X_OFFSET})`);
+    console.log(`CFD Grid: ${NX}x${NY} (visible: ${NX_VISIBLE}x${NY_VISIBLE}, offsets: X=${X_OFFSET}, Y=${Y_OFFSET})`);
     
     initializeSimulation();
   }
@@ -243,19 +253,19 @@
         maxY = Math.max(maxY, p.y);
       });
       
-      // Convert to grid coordinates (account for upstream offset)
+      // Convert to grid coordinates (account for offsets on all sides)
       const gridMinX = Math.max(X_OFFSET, Math.floor(minX / cellSize) + X_OFFSET);
       const gridMaxX = Math.min(NX - 1, Math.ceil(maxX / cellSize) + X_OFFSET);
-      const gridMinY = Math.max(0, Math.floor(minY / cellSize));
-      const gridMaxY = Math.min(NY - 1, Math.ceil(maxY / cellSize));
+      const gridMinY = Math.max(Y_OFFSET, Math.floor(minY / cellSize) + Y_OFFSET);
+      const gridMaxY = Math.min(NY - 1, Math.ceil(maxY / cellSize) + Y_OFFSET);
       
       // Fill building area with obstacles
       for (let i = gridMinX; i <= gridMaxX; i++) {
         for (let j = gridMinY; j <= gridMaxY; j++) {
           // Check if grid cell center is inside the polygon
-          // Subtract offset to get canvas coordinates
+          // Subtract offsets to get canvas coordinates
           const cellCenterX = (i - X_OFFSET + 0.5) * cellSize;
-          const cellCenterY = (j + 0.5) * cellSize;
+          const cellCenterY = (j - Y_OFFSET + 0.5) * cellSize;
           
           if (pointInScreenPolygon({x: cellCenterX, y: cellCenterY}, screenPoints)) {
             obstacle[i][j] = true;
@@ -292,16 +302,27 @@
           const nextI = i + ex[k];
           const nextJ = j + ey[k];
           
-          // Periodic boundaries in y direction, constant inflow/outflow in x
-          let destI = nextI;
-          let destJ = nextJ;
-          
-          if (nextJ < 0) destJ = NY - 1;
-          else if (nextJ >= NY) destJ = 0;
-          
-          if (nextI >= 0 && nextI < NX && destJ >= 0 && destJ < NY) {
-            fTemp[destI][destJ][k] = f[i][j][k];
+          // Stream to neighbors if within bounds
+          if (nextI >= 0 && nextI < NX && nextJ >= 0 && nextJ < NY) {
+            fTemp[nextI][nextJ][k] = f[i][j][k];
           }
+        }
+      }
+    }
+    
+    // Apply free-slip boundaries at top and bottom (allow parallel flow, zero normal velocity)
+    for (let i = 0; i < NX; i++) {
+      // Top boundary (j = 0) - mirror velocities to enforce zero vertical velocity
+      if (i > 0 && i < NX - 1) {
+        for (let k = 0; k < Q; k++) {
+          fTemp[i][0][k] = fTemp[i][1][k]; // Copy from interior
+        }
+      }
+      
+      // Bottom boundary (j = NY-1) - mirror velocities to enforce zero vertical velocity
+      if (i > 0 && i < NX - 1) {
+        for (let k = 0; k < Q; k++) {
+          fTemp[i][NY-1][k] = fTemp[i][NY-2][k]; // Copy from interior
         }
       }
     }
@@ -344,19 +365,40 @@
         }
         
         // Inlet boundary condition (left side of screen)
-        // Wind flows left-to-right in screen space (i=0 to i=NX)
+        // Force equilibrium state to prevent backflow/instability
         if (i === 0) {
-          u = WIND_SPEED; // Horizontal flow in screen space
-          v = 0.0; // No vertical component
-          density = 1.0; // Keep density constant at inlet
+          const u_inlet = WIND_SPEED;
+          const v_inlet = 0.0;
+          const rho_inlet = 1.0;
+          
+          for (let k = 0; k < Q; k++) {
+            fTemp[i][j][k] = equilibrium(k, rho_inlet, u_inlet, v_inlet);
+          }
+          
+          rho[i][j] = rho_inlet;
+          ux[i][j] = u_inlet;
+          uy[i][j] = v_inlet;
+          continue;
         }
         
         // Outflow boundary condition (right side of screen)
-        // Copy values from previous column for smooth outflow
+        // Zero-gradient extrapolation (Neumann) for distribution functions
         if (i === NX - 1) {
-          u = ux[i-1][j];
-          v = uy[i-1][j];
-          density = rho[i-1][j];
+          for (let k = 0; k < Q; k++) {
+            fTemp[i][j][k] = f[i-1][j][k];
+          }
+          
+          rho[i][j] = rho[i-1][j];
+          ux[i][j] = ux[i-1][j];
+          uy[i][j] = uy[i-1][j];
+          continue;
+        }
+        
+        // Free-slip boundary conditions on top and bottom
+        // Allow horizontal flow but zero vertical velocity
+        if (j === 0 || j === NY - 1) {
+          v = 0.0; // No vertical flow at top/bottom boundaries
+          // Keep horizontal velocity u unchanged
         }
         
         // Clamp density for stability
@@ -367,10 +409,31 @@
         ux[i][j] = u;
         uy[i][j] = v;
         
-        // Collision step (BGK approximation)
+        // Collision step (Smagorinsky LES model for turbulence)
+        // Calculate local strain rate tensor magnitude
+        let S = 0;
+        if (i > 0 && i < NX - 1 && j > 0 && j < NY - 1) {
+          const du_dx = (ux[i+1][j] - ux[i-1][j]) / 2;
+          const du_dy = (ux[i][j+1] - ux[i][j-1]) / 2;
+          const dv_dx = (uy[i+1][j] - uy[i-1][j]) / 2;
+          const dv_dy = (uy[i][j+1] - uy[i][j-1]) / 2;
+          
+          // Strain rate tensor magnitude S = sqrt(2 * S_ij * S_ij)
+          const Sxx = du_dx;
+          const Syy = dv_dy;
+          const Sxy = 0.5 * (du_dy + dv_dx);
+          S = Math.sqrt(2 * (Sxx*Sxx + Syy*Syy + 2*Sxy*Sxy));
+        }
+        
+        // Smagorinsky constant (typically 0.1 - 0.2)
+        const C_Smag = 0.15;
+        // Dynamic relaxation time based on local strain
+        const tau_eff = (1.0/OMEGA) + 0.5 * (Math.sqrt((1.0/OMEGA)*(1.0/OMEGA) + 18.0 * C_Smag * C_Smag * S) - (1.0/OMEGA));
+        const omega_eff = 1.0 / tau_eff;
+        
         for (let k = 0; k < Q; k++) {
           const feq = equilibrium(k, density, u, v);
-          fTemp[i][j][k] = f[i][j][k] - OMEGA * (f[i][j][k] - feq);
+          fTemp[i][j][k] = f[i][j][k] - omega_eff * (f[i][j][k] - feq);
           // Clamp distribution functions for stability
           fTemp[i][j][k] = Math.max(0, fTemp[i][j][k]);
         }
@@ -386,27 +449,47 @@
   function visualize(time) {
     ctx.clearRect(0, 0, cfdCanvas.width, cfdCanvas.height);
     
+    // Track maximum velocity in current frame (only in visible region)
+    currentMaxVelocity = 0;
+    for (let i = X_OFFSET; i < X_OFFSET + NX_VISIBLE; i++) {
+      for (let j = Y_OFFSET; j < Y_OFFSET + NY_VISIBLE; j++) {
+        if (obstacle[i][j]) continue;
+        const speed = Math.sqrt(ux[i][j] * ux[i][j] + uy[i][j] * uy[i][j]);
+        if (speed > currentMaxVelocity) {
+          currentMaxVelocity = speed;
+        }
+      }
+    }
+    
+    // Smooth the max velocity to avoid jitter (exponential moving average)
+    maxVelocitySmoothed = maxVelocitySmoothed * 0.9 + currentMaxVelocity * 0.1;
+    
     // Visualize velocity magnitude with color and streamlines
-    // Only render the visible region (skip upstream development zone)
-    for (let i = X_OFFSET; i < NX; i++) {
-      for (let j = 0; j < NY; j++) {
+    // Only render the visible region (skip padding zones)
+    const visibleStartX = X_OFFSET;
+    const visibleEndX = X_OFFSET + NX_VISIBLE;
+    const visibleStartY = Y_OFFSET;
+    const visibleEndY = Y_OFFSET + NY_VISIBLE;
+    
+    for (let i = visibleStartX; i < visibleEndX; i++) {
+      for (let j = visibleStartY; j < visibleEndY; j++) {
         // Skip obstacles - we want to see the buildings underneath
         if (obstacle[i][j]) continue;
         
         const speed = Math.sqrt(ux[i][j] * ux[i][j] + uy[i][j] * uy[i][j]);
         
         // Color based on velocity magnitude with transparency
-        // Normalize against FIXED maximum (MAX_VELOCITY * 2) so red appears at 10 m/s
-        const normalized = Math.min(speed / (MAX_VELOCITY * 2), 1.0);
+        // Normalize against DYNAMIC maximum for adaptive color scaling
+        const normalized = Math.min(speed / Math.max(maxVelocitySmoothed, 0.01), 1.0);
         const hue = 240 - normalized * 240; // Blue (240) to Red (0)
         const saturation = 70 + normalized * 20;
         const lightness = 40 + normalized * 30;
         // Lower alpha for better transparency
         ctx.fillStyle = `hsla(${hue}, ${saturation}%, ${lightness}%, 0.5)`;
         
-        // Map to canvas coordinates
+        // Map to canvas coordinates (subtract offsets)
         const x = (i - X_OFFSET) * cellSize;
-        const y = j * cellSize;
+        const y = (j - Y_OFFSET) * cellSize;
         ctx.fillRect(x, y, cellSize + 1, cellSize + 1);
       }
     }
@@ -418,18 +501,18 @@
     ctx.strokeStyle = 'rgba(255, 255, 255, 0.6)';
     ctx.lineWidth = 2;
     
-    for (let i = X_OFFSET + vectorSpacing; i < NX; i += vectorSpacing) {
-      for (let j = vectorSpacing; j < NY; j += vectorSpacing) {
+    for (let i = visibleStartX + vectorSpacing; i < visibleEndX; i += vectorSpacing) {
+      for (let j = visibleStartY + vectorSpacing; j < visibleEndY; j += vectorSpacing) {
         if (obstacle[i][j]) continue;
         
         const speed = Math.sqrt(ux[i][j] * ux[i][j] + uy[i][j] * uy[i][j]);
         if (speed < 0.001) continue;
         
-        // Map to canvas coordinates
+        // Map to canvas coordinates (subtract offsets)
         const x = (i - X_OFFSET) * cellSize + cellSize / 2;
-        const y = j * cellSize + cellSize / 2;
-        // Scale vectors by actual speed relative to FIXED maximum, not current WIND_SPEED
-        const speedRatio = Math.min(speed / (MAX_VELOCITY * 0.5), 1.5);
+        const y = (j - Y_OFFSET) * cellSize + cellSize / 2;
+        // Scale vectors by actual speed relative to DYNAMIC maximum
+        const speedRatio = Math.min(speed / Math.max(maxVelocitySmoothed * 0.5, 0.01), 1.5);
         const vx = (ux[i][j] / speed) * vectorScale * speedRatio;
         const vy = (uy[i][j] / speed) * vectorScale * speedRatio;
         
@@ -467,7 +550,7 @@
   // Particle system for flow visualization
   let particles = [];
   let NUM_PARTICLES = 1500; // Increased from 200 for more visible flow
-  let PARTICLE_SPEED_MULTIPLIER = 10; // Control particle movement speed
+  let PARTICLE_SPEED_MULTIPLIER = 20; // Control particle movement speed (increased for faster flow)
   
   function initParticles() {
     particles = [];
@@ -475,7 +558,7 @@
       particles.push({
         // Start particles in the visible region only
         x: X_OFFSET + Math.random() * NX_VISIBLE,
-        y: Math.random() * NY,
+        y: Y_OFFSET + Math.random() * NY_VISIBLE,
         age: Math.random() * 150 // Longer max age for more particles on screen
       });
     }
@@ -522,7 +605,8 @@
         }
         
         // Only draw particles in the visible region
-        if (i >= X_OFFSET && i < NX) {
+        if (i >= X_OFFSET && i < X_OFFSET + NX_VISIBLE && 
+            j >= Y_OFFSET && j < Y_OFFSET + NY_VISIBLE) {
           // Draw particle with glow
           const alpha = Math.max(0, 1 - p.age / 150);
           const size = 2.5 + Math.sin(time * 0.01 + p.age * 0.1) * 0.5;
@@ -541,9 +625,9 @@
           
           ctx.globalAlpha = alpha;
           ctx.beginPath();
-          // Map to canvas coordinates
+          // Map to canvas coordinates (subtract offsets)
           const canvasX = (p.x - X_OFFSET) * cellSize;
-          const canvasY = p.y * cellSize;
+          const canvasY = (p.y - Y_OFFSET) * cellSize;
           ctx.arc(canvasX, canvasY, size, 0, Math.PI * 2);
           ctx.fill();
           ctx.globalAlpha = 1.0;
@@ -552,11 +636,52 @@
       }
       
       // Reset particle if it goes out of bounds or ages out
-      if (p.x < X_OFFSET || p.x >= NX || p.y < 0 || p.y >= NY || p.age > 150) {
-        // Start at visible left edge with some vertical spread
-        p.x = X_OFFSET + Math.random() * 5;
-        p.y = Math.random() * NY;
+      // Allow particles to exist slightly upstream (buffer) so they can flow into the visible area
+      const upstreamBuffer = 20;
+      if (p.x < X_OFFSET - upstreamBuffer || p.x >= X_OFFSET + NX_VISIBLE || 
+          p.y < Y_OFFSET || p.y >= Y_OFFSET + NY_VISIBLE || p.age > 150) {
+        
+        // Determine respawn strategy
+        let respawnType = 'random';
+        
+        // If it flowed out the right side, respawn at inlet to maintain flow
+        if (p.x >= X_OFFSET + NX_VISIBLE) {
+          respawnType = 'inlet';
+        }
+        // If it died of age or hit other boundaries, respawn randomly
+        
+        if (respawnType === 'random') {
+           p.x = X_OFFSET + Math.random() * NX_VISIBLE;
+           p.y = Y_OFFSET + Math.random() * NY_VISIBLE;
+        } else {
+           // Inlet respawn: spawn slightly upstream so they flow in smoothly
+           // This prevents "popping" and accumulation at the exact edge
+           p.x = X_OFFSET - Math.random() * 15; 
+           p.y = Y_OFFSET + Math.random() * NY_VISIBLE;
+        }
+        
         p.age = 0;
+        
+        // Ensure we don't spawn inside an obstacle
+        let attempts = 0;
+        while (attempts < 10) {
+          const i = Math.floor(p.x);
+          const j = Math.floor(p.y);
+          // Check bounds and obstacles
+          if (i >= 0 && i < NX && j >= 0 && j < NY && !obstacle[i][j]) {
+            break;
+          }
+          
+          // Try again with same strategy
+          if (respawnType === 'random') {
+             p.x = X_OFFSET + Math.random() * NX_VISIBLE;
+             p.y = Y_OFFSET + Math.random() * NY_VISIBLE;
+          } else {
+             p.x = X_OFFSET - Math.random() * 15;
+             p.y = Y_OFFSET + Math.random() * NY_VISIBLE;
+          }
+          attempts++;
+        }
       }
     });
   }
@@ -570,7 +695,7 @@
   function drawLegend() {
     const padding = 10;
     const legendWidth = 220;
-    const legendHeight = 370; // Increased for resolution control
+    const legendHeight = 400; // Increased for resolution control and new controls
     const x = cfdCanvas.width - legendWidth - padding;
     const y = padding;
     
@@ -671,7 +796,7 @@
     ctx.fillText(`${PARTICLE_SPEED_MULTIPLIER}x`, x + legendWidth - 60, currentY);
     currentY += 10;
     
-    const speedRatio = (PARTICLE_SPEED_MULTIPLIER - 2) / (10 - 2);
+    const speedRatio = (PARTICLE_SPEED_MULTIPLIER - 2) / (20 - 2);
     drawSlider(x + 10, currentY, legendWidth - 20, speedRatio * 100, 0, 100);
     currentY += 10;
     
@@ -711,7 +836,7 @@
     // Velocity color scale
     ctx.fillStyle = '#aaa';
     ctx.font = '10px sans-serif';
-    ctx.fillText('Velocity Scale', x + 10, currentY);
+    ctx.fillText('Velocity Scale (Dynamic)', x + 10, currentY);
     currentY += 10;
     
     const gradHeight = 15;
@@ -726,11 +851,15 @@
     }
     currentY += gradHeight + 10;
     
-    // Velocity scale labels (fixed max speed regardless of current wind speed)
+    // Velocity scale labels (dynamic max speed based on current flow)
     ctx.fillStyle = '#fff';
     ctx.font = '9px sans-serif';
     ctx.fillText('0', x + 10, currentY);
-    ctx.fillText('10 m/s', x + legendWidth - 55, currentY); // Fixed maximum
+    
+    // Convert lattice units to m/s for display
+    const maxSpeedMPS = (maxVelocitySmoothed / WIND_SPEED) * REAL_WIND_SPEED_MPS;
+    const maxSpeedText = maxSpeedMPS.toFixed(1) + ' m/s';
+    ctx.fillText(maxSpeedText, x + legendWidth - ctx.measureText(maxSpeedText).width - 10, currentY);
     currentY += 15;
     
     // Domain info
@@ -768,15 +897,21 @@
   }
   
   let simulationSteps = 0;
+  const WARMUP_STEPS = 100; // Run faster during initial warmup
   
   function animate() {
     if (!isSimulating) return;
     
     const time = performance.now();
     
-    // Run only 1 simulation step per frame for smooth, slow animation
-    simulationStep();
-    simulationSteps++;
+    // During warmup, run 3 steps per frame for faster flow development
+    // After warmup, run 1 step per frame for smooth visualization
+    const stepsPerFrame = simulationSteps < WARMUP_STEPS ? 3 : 1;
+    
+    for (let s = 0; s < stepsPerFrame; s++) {
+      simulationStep();
+      simulationSteps++;
+    }
     
     visualize(time);
     animationFrame = requestAnimationFrame(animate);
@@ -883,7 +1018,7 @@
         
       case 'r':
       case 'R':
-        PARTICLE_SPEED_MULTIPLIER = PARTICLE_SPEED_MULTIPLIER === 5 ? 10 : PARTICLE_SPEED_MULTIPLIER === 10 ? 2 : 5;
+        PARTICLE_SPEED_MULTIPLIER = PARTICLE_SPEED_MULTIPLIER === 2 ? 5 : PARTICLE_SPEED_MULTIPLIER === 5 ? 10 : PARTICLE_SPEED_MULTIPLIER === 10 ? 20 : 2;
         if (typeof showToast === 'function') {
           showToast(`Particle speed: ${PARTICLE_SPEED_MULTIPLIER}x`, 1000);
         }
