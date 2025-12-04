@@ -409,8 +409,10 @@
         ux[i][j] = u;
         uy[i][j] = v;
         
-        // Collision step (Smagorinsky LES model for turbulence)
-        // Calculate local strain rate tensor magnitude
+        // Collision step: TRT-LES (Two-Relaxation Time with Smagorinsky)
+        // This is much more stable than standard BGK, as recommended by the paper
+        
+        // 1. Calculate Smagorinsky turbulence (same as before)
         let S = 0;
         if (i > 0 && i < NX - 1 && j > 0 && j < NY - 1) {
           const du_dx = (ux[i+1][j] - ux[i-1][j]) / 2;
@@ -418,23 +420,35 @@
           const dv_dx = (uy[i+1][j] - uy[i-1][j]) / 2;
           const dv_dy = (uy[i][j+1] - uy[i][j-1]) / 2;
           
-          // Strain rate tensor magnitude S = sqrt(2 * S_ij * S_ij)
           const Sxx = du_dx;
           const Syy = dv_dy;
           const Sxy = 0.5 * (du_dy + dv_dx);
           S = Math.sqrt(2 * (Sxx*Sxx + Syy*Syy + 2*Sxy*Sxy));
         }
         
-        // Smagorinsky constant (typically 0.1 - 0.2)
         const C_Smag = 0.15;
-        // Dynamic relaxation time based on local strain
-        const tau_eff = (1.0/OMEGA) + 0.5 * (Math.sqrt((1.0/OMEGA)*(1.0/OMEGA) + 18.0 * C_Smag * C_Smag * S) - (1.0/OMEGA));
-        const omega_eff = 1.0 / tau_eff;
+        const tau_0 = 1.0 / OMEGA;
+        const tau_eff = tau_0 + 0.5 * (Math.sqrt(tau_0*tau_0 + 18.0 * C_Smag * C_Smag * S) - tau_0);
+        const omega_plus = 1.0 / tau_eff; // Viscous relaxation rate
         
+        // TRT "Magic Parameter" Lambda = 1/4 for best boundary location accuracy
+        // (1/omega_plus - 0.5) * (1/omega_minus - 0.5) = 1/4
+        const omega_minus = 1.0 / (0.5 + 1.0 / (4.0 * (1.0/omega_plus - 0.5)));
+        
+        // 2. TRT Collision
         for (let k = 0; k < Q; k++) {
-          const feq = equilibrium(k, density, u, v);
-          fTemp[i][j][k] = f[i][j][k] - omega_eff * (f[i][j][k] - feq);
-          // Clamp distribution functions for stability
+          const k_opp = opp[k];
+          const feq_k = equilibrium(k, density, u, v);
+          const feq_k_opp = equilibrium(k_opp, density, u, v);
+          
+          // Symmetric and Anti-symmetric non-equilibrium parts
+          const f_neq_plus = 0.5 * ((f[i][j][k] - feq_k) + (f[i][j][k_opp] - feq_k_opp));
+          const f_neq_minus = 0.5 * ((f[i][j][k] - feq_k) - (f[i][j][k_opp] - feq_k_opp));
+          
+          // Relax with different rates
+          fTemp[i][j][k] = f[i][j][k] - omega_plus * f_neq_plus - omega_minus * f_neq_minus;
+          
+          // Clamp for stability
           fTemp[i][j][k] = Math.max(0, fTemp[i][j][k]);
         }
       }
