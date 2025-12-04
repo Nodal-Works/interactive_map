@@ -19,7 +19,7 @@
   let isSimulating = false;
   
   // Simulation parameters
-  let GRID_RESOLUTION = 150; // Number of cells along longer dimension (visible area) - now mutable
+  let GRID_RESOLUTION = 300; // Number of cells along longer dimension (visible area) - now mutable
   const UPSTREAM_FACTOR = 3; // Extend domain 3x to the left for flow development
   let NX, NY; // Grid dimensions (including upstream extension)
   let NX_VISIBLE, NY_VISIBLE; // Visible grid dimensions
@@ -396,8 +396,8 @@
         const speed = Math.sqrt(ux[i][j] * ux[i][j] + uy[i][j] * uy[i][j]);
         
         // Color based on velocity magnitude with transparency
-        // Normalize against FIXED maximum (MAX_VELOCITY) so colors change with wind speed
-        const normalized = Math.min(speed / MAX_VELOCITY, 1.0);
+        // Normalize against FIXED maximum (MAX_VELOCITY * 2) so red appears at 10 m/s
+        const normalized = Math.min(speed / (MAX_VELOCITY * 2), 1.0);
         const hue = 240 - normalized * 240; // Blue (240) to Red (0)
         const saturation = 70 + normalized * 20;
         const lightness = 40 + normalized * 30;
@@ -466,8 +466,8 @@
   
   // Particle system for flow visualization
   let particles = [];
-  let NUM_PARTICLES = 800; // Increased from 200 for more visible flow
-  let PARTICLE_SPEED_MULTIPLIER = 5; // Control particle movement speed
+  let NUM_PARTICLES = 1500; // Increased from 200 for more visible flow
+  let PARTICLE_SPEED_MULTIPLIER = 10; // Control particle movement speed
   
   function initParticles() {
     particles = [];
@@ -730,7 +730,7 @@
     ctx.fillStyle = '#fff';
     ctx.font = '9px sans-serif';
     ctx.fillText('0', x + 10, currentY);
-    ctx.fillText('20 m/s', x + legendWidth - 55, currentY); // Fixed maximum
+    ctx.fillText('10 m/s', x + legendWidth - 55, currentY); // Fixed maximum
     currentY += 15;
     
     // Domain info
