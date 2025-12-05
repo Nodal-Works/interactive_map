@@ -669,44 +669,12 @@ class SunStudy {
         this.mesh.receiveShadow = true;
         this.mesh.renderOrder = 1; // Render after other objects
         
-        // Table aspect ratio is 100cm x 60cm = 1 : 0.6
-        // Canvas dimensions
-        const canvasWidth = window.innerWidth - 120;
-        const canvasHeight = window.innerHeight;
-        const canvasAspect = canvasWidth / canvasHeight;
+        // Store model size for fitting
+        this.modelSize = size;
+
         
-        // Table aspect ratio
-        const tableAspect = 100 / 60; // 1.667
-        
-        // Calculate the view area that matches table proportions within the canvas
-        let viewWidth, viewHeight;
-        if (canvasAspect > tableAspect) {
-          // Canvas is wider than table - height is limiting
-          viewHeight = canvasHeight;
-          viewWidth = canvasHeight * tableAspect;
-        } else {
-          // Canvas is taller than table - width is limiting
-          viewWidth = canvasWidth;
-          viewHeight = canvasWidth / tableAspect;
-        }
-        
-        // Model dimensions after Y/Z swap: X = original width, Z = original depth
-        // After 270 degree rotation around Y, the axes swap
-        const modelWidth = size.z;  // After rotation, Z becomes horizontal
-        const modelDepth = size.x;  // After rotation, X becomes vertical
-        
-        // Scale model to fit the table view area
-        const scaleX = viewWidth / modelWidth;
-        const scaleZ = viewHeight / modelDepth;
-        const scale = Math.min(scaleX, scaleZ) 
-        
-        // Store base values for manual adjustments
-        this.baseScale = scale;
-        this.baseRotation = Math.PI * 1.5; // 270 degrees
-        
-        this.mesh.scale.set(scale, scale, -scale); // Flip Z axis
-        
-        // Rotate 270 degrees (180 + 90 anticlockwise) around Y axis
+        // Initial setup
+        this.baseRotation = -Math.PI/2; 
         this.mesh.rotation.y = this.baseRotation;
         
         // Apply initial position offset
@@ -714,16 +682,10 @@ class SunStudy {
         this.mesh.position.y = 50; // Raise model above ground plane to avoid clipping
         this.mesh.position.z = this.offsetZ;
         
-        // Store for camera fitting
-        this.modelScale = scale;
-        this.modelSize = size;
-        this.viewWidth = viewWidth;
-        this.viewHeight = viewHeight;
-        
         this.scene.add(this.mesh);
         this.fitCameraToModel();
         
-        console.log('STL added - viewWidth:', viewWidth, 'viewHeight:', viewHeight, 'scale:', scale);
+        console.log('STL added - size:', size);
       },
       (progress) => {
         console.log('Loading STL...', progress.loaded, 'bytes');
@@ -735,42 +697,37 @@ class SunStudy {
   }
   
   fitCameraToModel() {
-    if (!this.mesh) return;
-    
-    const box = new THREE.Box3().setFromObject(this.mesh);
-    const modelSize = box.getSize(new THREE.Vector3());
+    if (!this.mesh || !this.modelSize) return;
     
     const canvasWidth = window.innerWidth - 120;
     const canvasHeight = window.innerHeight;
-    const canvasAspect = canvasWidth / canvasHeight;
     
-    // Table aspect ratio 100:60 = 1.667
-    const tableAspect = 100 / 60;
+    // Fit model to canvas with padding
+    const padding = 0.8;
     
-    // Calculate view area matching table proportions
-    let viewWidth, viewHeight;
-    if (canvasAspect > tableAspect) {
-      viewHeight = canvasHeight;
-      viewWidth = canvasHeight * tableAspect;
-    } else {
-      viewWidth = canvasWidth;
-      viewHeight = canvasWidth / tableAspect;
-    }
+    // Use the largest dimension to ensure it fits
+    const maxDim = Math.max(this.modelSize.x, this.modelSize.z);
+    const minCanvasDim = Math.min(canvasWidth, canvasHeight);
     
-    // The orthographic camera view should match the model bounds
-    // Model size in world units after scaling
-    const worldWidth = modelSize.x;
-    const worldHeight = modelSize.z;
+    const scale = ((minCanvasDim * padding) / maxDim) * 2.0;
     
-    // Set camera to frame the model with table aspect ratio
-    this.camera.left = -worldWidth / 2 * 1.02;
-    this.camera.right = worldWidth / 2 * 1.02;
-    this.camera.top = worldHeight / 2 * 1.02;
-    this.camera.bottom = -worldHeight / 2 * 1.02;
+    // Apply scale (preserving the Z flip)
+    this.mesh.scale.set(scale, scale, -scale);
+    
+
+    this.baseScale = scale;
+    
+    // Set camera to match the canvas dimensions 1:1 to avoid distortion
+    this.camera.left = -canvasWidth / 2;
+    this.camera.right = canvasWidth / 2;
+    this.camera.top = canvasHeight / 2;
+    this.camera.bottom = -canvasHeight / 2;
     this.camera.updateProjectionMatrix();
     
     // Update shadow camera to cover the model
-    const shadowSize = Math.max(worldWidth, worldHeight) * 1.5;
+    const worldSize = maxDim * scale;
+    const shadowSize = worldSize * 1.5;
+    
     this.sunLight.shadow.camera.left = -shadowSize;
     this.sunLight.shadow.camera.right = shadowSize;
     this.sunLight.shadow.camera.top = shadowSize;
