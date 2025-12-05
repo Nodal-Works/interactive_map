@@ -2,20 +2,24 @@
 // Renders shadows from STL model as transparent overlay on the web map
 // Uses Sweden location (Gothenburg area) for accurate sun positioning
 
-let THREE, STLLoader, EffectComposer, RenderPass, SSAOPass;
+let THREE, STLLoader, EffectComposer, RenderPass, SSAOPass, SMAAPass, OutputPass;
 
 async function loadDependencies() {
   THREE = await import('three');
   const stlModule = await import('three/addons/loaders/STLLoader.js');
   STLLoader = stlModule.STLLoader;
   
-  // Post-processing for ambient occlusion
+  // Post-processing for ambient occlusion and antialiasing
   const composerModule = await import('three/addons/postprocessing/EffectComposer.js');
   EffectComposer = composerModule.EffectComposer;
   const renderPassModule = await import('three/addons/postprocessing/RenderPass.js');
   RenderPass = renderPassModule.RenderPass;
   const ssaoPassModule = await import('three/addons/postprocessing/SSAOPass.js');
   SSAOPass = ssaoPassModule.SSAOPass;
+  const smaaPassModule = await import('three/addons/postprocessing/SMAAPass.js');
+  SMAAPass = smaaPassModule.SMAAPass;
+  const outputPassModule = await import('three/addons/postprocessing/OutputPass.js');
+  OutputPass = outputPassModule.OutputPass;
   
   return true;
 }
@@ -251,73 +255,101 @@ class SunStudy {
   
   createFalseColorMaterial() {
     // Custom shader for false color sun exposure visualization
-    // Shows surface orientation relative to sun direction
-    const vertexShader = `
-      varying vec3 vNormal;
-      
-      void main() {
-        vNormal = normalize(normalMatrix * normal);
-        gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
-      }
-    `;
+    // Shows surface orientation relative to sun direction AND shadows
+    // Uses onBeforeCompile to leverage existing shadow map logic from MeshStandardMaterial
     
-    const fragmentShader = `
-      uniform vec3 sunDirection;
-      
-      varying vec3 vNormal;
-      
-      void main() {
-        vec3 normal = normalize(vNormal);
-        vec3 lightDir = normalize(sunDirection);
-        
-        // Calculate sun-facing factor (dot product)
-        float NdotL = dot(normal, lightDir);
-        float sunFacing = max(0.0, NdotL);
-        
-        // Color gradient: blue (shadow) -> cyan -> green -> yellow -> orange -> red (direct sun)
-        vec3 color;
-        
-        if (sunFacing < 0.05) {
-          // Deep shadow - dark blue/purple
-          color = vec3(0.15, 0.1, 0.35);
-        } else if (sunFacing < 0.2) {
-          // Shadow - blue
-          float t = (sunFacing - 0.05) / 0.15;
-          color = mix(vec3(0.15, 0.1, 0.35), vec3(0.1, 0.25, 0.6), t);
-        } else if (sunFacing < 0.4) {
-          // Partial shadow - blue to cyan
-          float t = (sunFacing - 0.2) / 0.2;
-          color = mix(vec3(0.1, 0.25, 0.6), vec3(0.1, 0.6, 0.8), t);
-        } else if (sunFacing < 0.55) {
-          // Neutral - cyan to green
-          float t = (sunFacing - 0.4) / 0.15;
-          color = mix(vec3(0.1, 0.6, 0.8), vec3(0.3, 0.75, 0.3), t);
-        } else if (sunFacing < 0.7) {
-          // Partial sun - green to yellow
-          float t = (sunFacing - 0.55) / 0.15;
-          color = mix(vec3(0.3, 0.75, 0.3), vec3(1.0, 0.9, 0.2), t);
-        } else if (sunFacing < 0.85) {
-          // Good sun - yellow to orange
-          float t = (sunFacing - 0.7) / 0.15;
-          color = mix(vec3(1.0, 0.9, 0.2), vec3(1.0, 0.5, 0.1), t);
-        } else {
-          // Direct sun - orange to red
-          float t = (sunFacing - 0.85) / 0.15;
-          color = mix(vec3(1.0, 0.5, 0.1), vec3(0.95, 0.2, 0.1), t);
-        }
-        
-        gl_FragColor = vec4(color, 1.0);
-      }
-    `;
-    
-    this.falseColorMaterial = new THREE.ShaderMaterial({
-      uniforms: {
-        sunDirection: { value: new THREE.Vector3(0, 1, 0) }
-      },
-      vertexShader: vertexShader,
-      fragmentShader: fragmentShader,
-      side: THREE.DoubleSide
+    this.falseColorMaterial = new THREE.MeshStandardMaterial({
+      color: 0xffffff,
+      roughness: 1.0,
+      metalness: 0.0,
+      side: THREE.DoubleSide,
+      transparent: true,
+      opacity: 1,
+      depthWrite: true
     });
+    
+    this.falseColorMaterial.onBeforeCompile = (shader) => {
+      shader.uniforms.sunDirection = { value: new THREE.Vector3(0, 1, 0) };
+      
+      // Store shader reference to update uniforms later
+      this.falseColorMaterial.userData.shader = shader;
+      
+      // Inject uniform definition safely by replacing common chunk
+      shader.fragmentShader = shader.fragmentShader.replace(
+        '#include <common>',
+        `
+        #include <common>
+        uniform vec3 sunDirection;
+        `
+      );
+      
+      // Inject shadowmask_pars_fragment after shadowmap_pars_fragment to ensure dependencies are met
+      shader.fragmentShader = shader.fragmentShader.replace(
+        '#include <shadowmap_pars_fragment>',
+        `
+        #include <shadowmap_pars_fragment>
+        #include <shadowmask_pars_fragment>
+        `
+      );
+      
+      // Inject false color logic at the end of the fragment shader
+      // We replace the dithering chunk which is at the very end
+      shader.fragmentShader = shader.fragmentShader.replace(
+        '#include <dithering_fragment>',
+        `
+        #include <dithering_fragment>
+        
+        // Custom False Color Logic
+        // vNormal is the varying from vertex shader (view space)
+        vec3 myNormal = normalize( vNormal );
+        if (!gl_FrontFacing) myNormal = -myNormal;
+        
+        vec3 myLightDir = normalize(sunDirection);
+        
+        // Calculate sun-facing factor
+        float myNdotL = dot(myNormal, myLightDir);
+        float mySunFacing = max(0.0, myNdotL);
+        
+        // Get shadow factor (1.0 = lit, 0.0 = shadow)
+        float myShadow = 1.0;
+        #ifdef USE_SHADOWMAP
+          myShadow = getShadowMask();
+        #endif
+        
+        // Combine: Exposure is high only if facing sun AND not in shadow
+        float exposure = mySunFacing * myShadow;
+        
+        // Smooth color gradient using continuous interpolation to avoid banding
+        // Define color stops
+        vec3 color0 = vec3(0.15, 0.1, 0.35);   // Deep shadow - dark purple
+        vec3 color1 = vec3(0.1, 0.25, 0.6);    // Shadow - blue
+        vec3 color2 = vec3(0.1, 0.6, 0.8);     // Partial shadow - cyan
+        vec3 color3 = vec3(0.3, 0.75, 0.3);    // Neutral - green
+        vec3 color4 = vec3(1.0, 0.9, 0.2);     // Partial sun - yellow
+        vec3 color5 = vec3(1.0, 0.5, 0.1);     // Good sun - orange
+        vec3 color6 = vec3(0.95, 0.2, 0.1);    // Direct sun - red
+        
+        // Use smoothstep for continuous gradient without hard edges
+        vec3 myColor;
+        float e = exposure;
+        
+        // Continuous blend across all color stops
+        myColor = color0;
+        myColor = mix(myColor, color1, smoothstep(0.0, 0.15, e));
+        myColor = mix(myColor, color2, smoothstep(0.15, 0.30, e));
+        myColor = mix(myColor, color3, smoothstep(0.30, 0.45, e));
+        myColor = mix(myColor, color4, smoothstep(0.45, 0.60, e));
+        myColor = mix(myColor, color5, smoothstep(0.60, 0.80, e));
+        myColor = mix(myColor, color6, smoothstep(0.80, 1.0, e));
+        
+        // Add subtle dithering to break up any remaining banding
+        float dither = (fract(sin(dot(gl_FragCoord.xy, vec2(12.9898, 78.233))) * 43758.5453) - 0.5) * 0.02;
+        myColor += dither;
+        
+        gl_FragColor = vec4(myColor, 1.0);
+        `
+      );
+    };
   }
   
   toggleFalseColorMode() {
@@ -342,7 +374,18 @@ class SunStudy {
     
     // Update sun direction
     const sunDir = this.sunLight.position.clone().normalize();
-    this.falseColorMaterial.uniforms.sunDirection.value.copy(sunDir);
+    
+    // Ensure we have a valid direction
+    if (sunDir.lengthSq() === 0) {
+      sunDir.set(0, 1, 0);
+    }
+    
+    // Update uniform in the compiled shader if it exists
+    if (this.falseColorMaterial.userData.shader && 
+        this.falseColorMaterial.userData.shader.uniforms && 
+        this.falseColorMaterial.userData.shader.uniforms.sunDirection) {
+      this.falseColorMaterial.userData.shader.uniforms.sunDirection.value.copy(sunDir);
+    }
   }
   
   applyManualAdjustments() {
@@ -382,7 +425,8 @@ class SunStudy {
     this.renderer.setSize(width, height);
     this.renderer.setClearColor(0x000000, 0);
     this.renderer.shadowMap.enabled = true;
-    this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+    // Use VSM for smoother shadows without banding artifacts
+    this.renderer.shadowMap.type = THREE.VSMShadowMap;
   }
   
   setupScene() {
@@ -390,7 +434,8 @@ class SunStudy {
     this.scene.background = null; // Transparent
     
     // Ground plane to receive shadows (invisible except for shadows)
-    const groundGeometry = new THREE.PlaneGeometry(2000, 2000);
+    // Make it very large to catch all shadows regardless of sun angle
+    const groundGeometry = new THREE.PlaneGeometry(5000, 5000);
     this.shadowMaterial = new THREE.ShadowMaterial({
       opacity: this.shadowOpacity,
       color: 0x000000
@@ -436,38 +481,42 @@ class SunStudy {
     const hemiLight = new THREE.HemisphereLight(
       0xfff4e5,  // Warmer sky (less blue/white)
       0x444444,  // Dark ground
-      0.2        // Low intensity for high contrast
+      0.15       // Lower intensity for high contrast
     );
     hemiLight.position.set(0, 500, 0);
     this.scene.add(hemiLight);
     
     // Minimal ambient for fill - very low for high contrast
-    const ambient = new THREE.AmbientLight(0xffffff, 0.1);
+    const ambient = new THREE.AmbientLight(0xffffff, 0.05);
     this.scene.add(ambient);
     
     // Directional sun light for shadows
     this.sunLight = new THREE.DirectionalLight(0xffffff, 1.5);
     this.sunLight.castShadow = true;
     
-    // Higher resolution shadow map
+    // Higher resolution shadow map - use maximum supported
     this.sunLight.shadow.mapSize.width = 8192;
     this.sunLight.shadow.mapSize.height = 8192;
-    this.sunLight.shadow.radius = 2; // Soften shadows to reduce aliasing
+    // VSM uses blurSamples instead of radius for softness
+    this.sunLight.shadow.blurSamples = 25;
+    this.sunLight.shadow.radius = 4;
     
     // Shadow camera settings - will be updated dynamically with sun position
     this.sunLight.shadow.camera.near = 0.5;
-    this.sunLight.shadow.camera.far = 2000;
+    this.sunLight.shadow.camera.far = 3000;
     
-    // Larger shadow frustum to cover the whole model
-    const shadowSize = 300;
+    // Shadow frustum - balance between coverage and resolution
+    // Smaller = better resolution but may clip, larger = more coverage but more aliasing
+    // This will be dynamically updated in fitCameraToModel based on view size
+    const shadowSize = 800;
     this.sunLight.shadow.camera.left = -shadowSize;
     this.sunLight.shadow.camera.right = shadowSize;
     this.sunLight.shadow.camera.top = shadowSize;
     this.sunLight.shadow.camera.bottom = -shadowSize;
     
-    // Bias settings to reduce shadow artifacts (shadow acne)
-    this.sunLight.shadow.bias = -0.0005;
-    this.sunLight.shadow.normalBias = 0.05;
+    // Bias settings for VSM - typically needs less bias
+    this.sunLight.shadow.bias = -0.0001;
+    this.sunLight.shadow.normalBias = 0.02;
     
     this.scene.add(this.sunLight);
     this.scene.add(this.sunLight.target);
@@ -492,6 +541,14 @@ class SunStudy {
     this.ssaoPass.minDistance = 0.005;
     this.ssaoPass.maxDistance = 0.15; // Increased distance
     this.composer.addPass(this.ssaoPass);
+    
+    // SMAA antialiasing pass - better quality than FXAA
+    this.smaaPass = new SMAAPass(width * this.renderer.getPixelRatio(), height * this.renderer.getPixelRatio());
+    this.composer.addPass(this.smaaPass);
+    
+    // Output pass for correct color space
+    const outputPass = new OutputPass();
+    this.composer.addPass(outputPass);
   }
   
   calculateSunPosition(date, timeOfDay, latitude) {
@@ -568,9 +625,11 @@ class SunStudy {
     
     this.sunLight.position.set(sunX, sunY, sunZ);
     this.sunLight.target.position.set(0, 50, 0); // Target the center of the model (raised)
+    this.sunLight.target.updateMatrixWorld();
     
-    // Update shadow camera to follow the light
+    // Update shadow camera to follow the light and cover the scene properly
     this.sunLight.shadow.camera.updateProjectionMatrix();
+    this.sunLight.updateMatrixWorld();
   }
   
   loadSTLModel() {
@@ -679,13 +738,24 @@ class SunStudy {
     
     // Update shadow camera to cover the model
     const worldSize = maxDim * scale;
-    const shadowSize = worldSize * 1.2; // Tighter fit for better shadow resolution
+    // Calculate shadow frustum - balance coverage vs resolution
+    // Too large = aliasing/banding, too small = clipping
+    // Use the scaled model size as the primary reference
+    const shadowSize = Math.max(worldSize * 1.5, 800); 
     
     this.sunLight.shadow.camera.left = -shadowSize;
     this.sunLight.shadow.camera.right = shadowSize;
     this.sunLight.shadow.camera.top = shadowSize;
     this.sunLight.shadow.camera.bottom = -shadowSize;
+    this.sunLight.shadow.camera.near = 0.5;
+    this.sunLight.shadow.camera.far = 3000;
     this.sunLight.shadow.camera.updateProjectionMatrix();
+    
+    // Force shadow map update
+    if (this.sunLight.shadow.map) {
+      this.sunLight.shadow.map.dispose();
+      this.sunLight.shadow.map = null;
+    }
   }
   
   onResize() {
@@ -693,12 +763,21 @@ class SunStudy {
     
     const width = window.innerWidth - 120;
     const height = window.innerHeight;
+    const pixelRatio = this.renderer.getPixelRatio();
     
     this.renderer.setSize(width, height);
     if (this.composer) {
       this.composer.setSize(width, height);
     }
-    if (this.mesh) this.fitCameraToModel();
+    if (this.ssaoPass) {
+      this.ssaoPass.setSize(width, height);
+    }
+    if (this.smaaPass) {
+      this.smaaPass.setSize(width * pixelRatio, height * pixelRatio);
+    }
+    if (this.mesh) {
+      this.fitCameraToModel();
+    }
   }
   
   animate() {

@@ -2,8 +2,18 @@
  * Stormwater Flow Animation
  * 
  * Visualizes stormwater drainage using particle-based flow animation.
- * Particles follow terrain flow directions calculated from DEM analysis.
+ * Dynamically computes flow direction and accumulation from DEM GeoTIFF
+ * using the D8 algorithm - no Python preprocessing required!
+ * 
+ * Water pools are rendered using Three.js with reflective water shaders.
  */
+
+let THREE;
+
+async function loadThreeJS() {
+  if (THREE) return;
+  THREE = await import('three');
+}
 
 class StormwaterFlowAnimation {
   constructor(map, canvas) {
@@ -15,24 +25,57 @@ class StormwaterFlowAnimation {
     
     // Particle system
     this.particles = [];
-    this.maxParticles = 3000;
-    this.particleSpawnRate = 10; // particles per frame
+    this.maxParticles = 800;  // Reduced for performance
+    this.particleSpawnRate = 4; // particles per frame
     
-    // Flow data
+    // Offscreen canvas for particle glow (pre-rendered sprite)
+    this.glowSprite = null;
+    this.glowSpriteSize = 32;
+    
+    // Three.js water pools
+    this.poolRenderer = null;
+    this.poolScene = null;
+    this.poolCamera = null;
+    this.poolCanvas = null;
+    this.waterMeshes = [];
+    this.poolTime = 0;
+    
+    // DEM and flow data (computed dynamically)
+    this.dem = null;
+    this.demWidth = 0;
+    this.demHeight = 0;
+    this.flowDir = null;
+    this.flowAcc = null;
     this.flowData = null;
     this.buildingFootprints = null;
-    this.demImageData = null; // Cached DEM visualization
+    
+    // Spatial index for faster flow lookups
+    this.flowGrid = null;
+    this.flowGridCellSize = 20; // pixels per grid cell
     
     // Animation parameters
-    this.particleSpeed = 2.0;
-    this.particleLifetime = 200; // frames
-    this.particleSize = 2;
-    this.flowIntensity = 1.0; // Multiplier for flow visualization
-    this.showDEM = false; // Show DEM elevation background (hidden by default)
-    this.debugFlowLines = false; // Show flow direction arrows for debugging
+    this.particleSpeed = 1.5;
+    this.particleLifetime = 300; // frames
+    this.particleSize = 3;
+    this.flowIntensity = 1.0;
+    this.showDEM = false;  // Hide DEM elevation background
+    this.showPools = true; // Show pool accumulation areas
+    this.debugFlowLines = false;
+    
+    // Glow parameters
+    this.glowIntensity = 1.2;  // Glow brightness multiplier (reduced for performance)
+    
+    // Smoothing parameters for fluid motion
+    this.velocitySmoothing = 0.85; // How much previous velocity affects current (0-1)
+    this.noiseScale = 0.3; // Random motion scale
+    
+    // DEM visualization
+    this.demImageData = null;
+    this.elevationMin = 0;
+    this.elevationMax = 100;
     
     // Colors
-    this.particleColor = 'rgba(0, 150, 255, 0.7)'; // Water blue
+    this.particleColor = 'rgba(0, 150, 255, 0.7)';
     this.particleTrailColor = 'rgba(0, 150, 255, 0.3)';
     
     // Bind methods
@@ -40,55 +83,556 @@ class StormwaterFlowAnimation {
     this.handleResize = this.handleResize.bind(this);
   }
   
+  /**
+   * Load DEM from GeoTIFF and compute flow direction/accumulation
+   */
   async loadData() {
     try {
-      console.log('Loading stormwater flow data...');
+      console.log('Loading DEM GeoTIFF and computing flow...');
       
-      // Load flow data
-      const flowResponse = await fetch('media/flow_data.json');
-      if (!flowResponse.ok) {
-        throw new Error('Flow data not found. Please run process_dem_flow.py first.');
-      }
-      this.flowData = await flowResponse.json();
-      
-      // Load DEM visualization image
-      const demImage = new Image();
-      demImage.src = 'media/dem_visualization.png';
-      await new Promise((resolve, reject) => {
-        demImage.onload = resolve;
-        demImage.onerror = reject;
-      });
-      this.demImage = demImage;
-      console.log('DEM visualization image loaded');
-      
-      // Load building footprints
-      const buildingsResponse = await fetch('media/building-footprints.geojson');
-      if (buildingsResponse.ok) {
-        this.buildingFootprints = await buildingsResponse.json();
+      // Check if GeoTIFF library is available
+      if (typeof GeoTIFF === 'undefined') {
+        throw new Error('GeoTIFF library not loaded');
       }
       
-      console.log('Stormwater flow data loaded:', {
+      // Load the DEM GeoTIFF file
+      const response = await fetch('media/clipped_dem.geotiff.tif');
+      if (!response.ok) {
+        throw new Error('DEM file not found at media/clipped_dem.geotiff.tif');
+      }
+      
+      const arrayBuffer = await response.arrayBuffer();
+      const tiff = await GeoTIFF.fromArrayBuffer(arrayBuffer);
+      const image = await tiff.getImage();
+      
+      // Get raster data
+      const rasters = await image.readRasters();
+      const elevationData = rasters[0]; // First band = elevation
+      
+      this.demWidth = image.getWidth();
+      this.demHeight = image.getHeight();
+      
+      // Convert typed array to 2D array for easier processing
+      this.dem = [];
+      for (let row = 0; row < this.demHeight; row++) {
+        this.dem[row] = [];
+        for (let col = 0; col < this.demWidth; col++) {
+          const idx = row * this.demWidth + col;
+          this.dem[row][col] = elevationData[idx];
+        }
+      }
+      
+      console.log(`DEM loaded: ${this.demWidth}x${this.demHeight} pixels`);
+      const elevStats = this.getMinMax(elevationData);
+      this.elevationMin = elevStats.min;
+      this.elevationMax = elevStats.max;
+      console.log(`Elevation range: ${elevStats.min.toFixed(1)}m - ${elevStats.max.toFixed(1)}m`);
+      
+      // Create DEM visualization image
+      console.log('Creating DEM visualization...');
+      this.createDEMVisualization();
+      
+      // Compute flow direction using D8 algorithm
+      console.log('Computing D8 flow direction...');
+      this.flowDir = this.computeD8FlowDirection();
+      
+      // Compute flow accumulation
+      console.log('Computing flow accumulation...');
+      this.flowAcc = this.computeFlowAccumulation();
+      
+      // Generate flow lines and start points for particle animation
+      console.log('Generating flow data for animation...');
+      this.flowData = this.generateFlowData();
+      
+      // Load building footprints (optional)
+      try {
+        const buildingsResponse = await fetch('media/building-footprints.geojson');
+        if (buildingsResponse.ok) {
+          this.buildingFootprints = await buildingsResponse.json();
+        }
+      } catch (e) {
+        console.log('Building footprints not loaded (optional)');
+      }
+      
+      console.log('Stormwater flow data computed:', {
         flowLines: this.flowData.flow_lines.length,
-        startPoints: this.flowData.start_points.length,
-        bounds: this.flowData.bounds
+        startPoints: this.flowData.start_points.length
       });
       
       return true;
     } catch (error) {
-      console.error('Error loading stormwater flow data:', error);
-      alert('Please run process_dem_flow.py first to generate flow data.');
+      console.error('Error loading/computing stormwater flow:', error);
+      alert('Error loading DEM: ' + error.message);
       return false;
     }
+  }
+  
+  /**
+   * Get min/max from typed array
+   */
+  getMinMax(arr) {
+    let min = Infinity, max = -Infinity;
+    for (let i = 0; i < arr.length; i++) {
+      if (!isNaN(arr[i])) {
+        min = Math.min(min, arr[i]);
+        max = Math.max(max, arr[i]);
+      }
+    }
+    return { min, max };
+  }
+  
+  /**
+   * Create DEM visualization as an offscreen canvas
+   * Uses terrain colors: low = green/tan, high = brown/white
+   * Rotates 90° clockwise to match screen orientation (DEM is tall, canvas is wide)
+   */
+  createDEMVisualization() {
+    // The DEM is stored as rows×cols (height×width)
+    // We need to rotate 90° clockwise for landscape canvas
+    // After rotation: width = demHeight, height = demWidth
+    
+    // Create offscreen canvas with ROTATED dimensions
+    this.demCanvas = document.createElement('canvas');
+    this.demCanvas.width = this.demHeight;  // Rotated: height becomes width
+    this.demCanvas.height = this.demWidth;  // Rotated: width becomes height
+    const ctx = this.demCanvas.getContext('2d');
+    
+    // Create image data with rotated dimensions
+    const imageData = ctx.createImageData(this.demHeight, this.demWidth);
+    const data = imageData.data;
+    
+    const elevRange = this.elevationMax - this.elevationMin;
+    
+    // Rotate 90° clockwise: new(x, y) = old(row, col) where
+    // new_x = demHeight - 1 - row (flip vertical then transpose)
+    // new_y = col
+    // Actually for 90° CW: new_x = old_row, new_y = demWidth - 1 - old_col
+    // Wait, let's think again:
+    // Original: dem[row][col] where row=0 is north, col=0 is west
+    // 90° clockwise rotation:
+    //   - Top of new image = left of old (col=0)
+    //   - Left of new image = top of old (row=0)
+    // So: new_x = old_row, new_y = old_col for the data
+    // But we need to FLIP to match what Python did (rotate -90 = 90 CW)
+    
+    for (let row = 0; row < this.demHeight; row++) {
+      for (let col = 0; col < this.demWidth; col++) {
+        const elev = this.dem[row][col];
+        
+        // 90° clockwise rotation transformation
+        // new_x = demHeight - 1 - row (so row 0 goes to right edge)
+        // new_y = col (column stays as Y)
+        // Wait, that's 90° CCW. For CW:
+        // new_x = row
+        // new_y = demWidth - 1 - col
+        const newX = row;
+        const newY = this.demWidth - 1 - col;
+        const idx = (newY * this.demHeight + newX) * 4;
+        
+        if (isNaN(elev)) {
+          data[idx] = 0;
+          data[idx + 1] = 0;
+          data[idx + 2] = 0;
+          data[idx + 3] = 0;
+        } else {
+          const t = (elev - this.elevationMin) / elevRange;
+          let r, g, b;
+          
+          if (t < 0.3) {
+            const s = t / 0.3;
+            r = Math.floor(100 + s * 80);
+            g = Math.floor(140 + s * 20);
+            b = Math.floor(80 - s * 20);
+          } else if (t < 0.7) {
+            const s = (t - 0.3) / 0.4;
+            r = Math.floor(180 - s * 30);
+            g = Math.floor(160 - s * 50);
+            b = Math.floor(60 + s * 30);
+          } else {
+            const s = (t - 0.7) / 0.3;
+            r = Math.floor(150 + s * 70);
+            g = Math.floor(110 + s * 90);
+            b = Math.floor(90 + s * 100);
+          }
+          
+          data[idx] = r;
+          data[idx + 1] = g;
+          data[idx + 2] = b;
+          data[idx + 3] = 180;
+        }
+      }
+    }
+    
+    ctx.putImageData(imageData, 0, 0);
+    
+    // Add corner markers for orientation debugging (on rotated canvas)
+    ctx.fillStyle = 'red';
+    ctx.fillRect(0, 0, 20, 20);
+    ctx.fillStyle = 'green';
+    ctx.fillRect(this.demHeight - 20, 0, 20, 20);
+    ctx.fillStyle = 'blue';
+    ctx.fillRect(0, this.demWidth - 20, 20, 20);
+    ctx.fillStyle = 'yellow';
+    ctx.fillRect(this.demHeight - 20, this.demWidth - 20, 20, 20);
+    
+    console.log('Corner elevations (original DEM orientation):');
+    console.log(`  DEM[0][0] (row=0, col=0):     ${this.dem[0][0]?.toFixed(1)}m`);
+    console.log(`  DEM[0][last] (row=0, col=max): ${this.dem[0][this.demWidth-1]?.toFixed(1)}m`);
+    console.log(`  DEM[last][0] (row=max, col=0): ${this.dem[this.demHeight-1][0]?.toFixed(1)}m`);
+    console.log(`  DEM[last][last]:               ${this.dem[this.demHeight-1][this.demWidth-1]?.toFixed(1)}m`);
+    console.log(`DEM visualization created: ${this.demHeight}x${this.demWidth}px (rotated 90° CW)`);
+  }
+
+  /**
+   * D8 Flow Direction Algorithm
+   * Returns flow direction codes:
+   *   32  64  128
+   *   16   0    1
+   *    8   4    2
+   */
+  computeD8FlowDirection() {
+    const rows = this.demHeight;
+    const cols = this.demWidth;
+    const flowDir = [];
+    
+    // D8 neighbor offsets: [rowOffset, colOffset, directionCode]
+    const neighbors = [
+      [-1,  1, 128], // NE
+      [ 0,  1,   1], // E
+      [ 1,  1,   2], // SE
+      [ 1,  0,   4], // S
+      [ 1, -1,   8], // SW
+      [ 0, -1,  16], // W
+      [-1, -1,  32], // NW
+      [-1,  0,  64]  // N
+    ];
+    
+    for (let i = 0; i < rows; i++) {
+      flowDir[i] = [];
+      for (let j = 0; j < cols; j++) {
+        const centerElev = this.dem[i][j];
+        
+        // Skip nodata/NaN values
+        if (isNaN(centerElev)) {
+          flowDir[i][j] = 0;
+          continue;
+        }
+        
+        let maxSlope = -Infinity;
+        let direction = 0;
+        
+        for (const [dr, dc, dirCode] of neighbors) {
+          const ni = i + dr;
+          const nj = j + dc;
+          
+          // Check bounds
+          if (ni >= 0 && ni < rows && nj >= 0 && nj < cols) {
+            const neighborElev = this.dem[ni][nj];
+            
+            if (!isNaN(neighborElev)) {
+              // Calculate slope (elevation difference / distance)
+              const distance = Math.sqrt(dr * dr + dc * dc);
+              const slope = (centerElev - neighborElev) / distance;
+              
+              if (slope > maxSlope) {
+                maxSlope = slope;
+                direction = dirCode;
+              }
+            }
+          }
+        }
+        
+        // Only assign direction if water flows downhill
+        flowDir[i][j] = maxSlope > 0 ? direction : 0;
+      }
+    }
+    
+    return flowDir;
+  }
+  
+  /**
+   * Flow Accumulation Algorithm
+   * Counts how many upstream cells flow into each cell
+   */
+  computeFlowAccumulation() {
+    const rows = this.demHeight;
+    const cols = this.demWidth;
+    
+    // Initialize accumulation to 1 (each cell contributes itself)
+    const flowAcc = [];
+    for (let i = 0; i < rows; i++) {
+      flowAcc[i] = new Float32Array(cols).fill(1);
+    }
+    
+    // Direction code to offset mapping
+    const dirToOffset = {
+      128: [-1,  1], // NE
+        1: [ 0,  1], // E
+        2: [ 1,  1], // SE
+        4: [ 1,  0], // S
+        8: [ 1, -1], // SW
+       16: [ 0, -1], // W
+       32: [-1, -1], // NW
+       64: [-1,  0]  // N
+    };
+    
+    // Iteratively propagate flow downstream
+    const maxIterations = 30;
+    for (let iter = 0; iter < maxIterations; iter++) {
+      let changed = false;
+      
+      for (let i = 0; i < rows; i++) {
+        for (let j = 0; j < cols; j++) {
+          const dir = this.flowDir[i][j];
+          if (dir === 0) continue;
+          
+          const offset = dirToOffset[dir];
+          if (!offset) continue;
+          
+          const ni = i + offset[0];
+          const nj = j + offset[1];
+          
+          if (ni >= 0 && ni < rows && nj >= 0 && nj < cols) {
+            // Avoid runaway accumulation
+            if (flowAcc[ni][nj] > 1e6) continue;
+            
+            const oldAcc = flowAcc[ni][nj];
+            flowAcc[ni][nj] += flowAcc[i][j];
+            
+            if (Math.abs(flowAcc[ni][nj] - oldAcc) > 0.1) {
+              changed = true;
+            }
+          }
+        }
+      }
+      
+      if (!changed) {
+        console.log(`  Flow accumulation converged after ${iter + 1} iterations`);
+        break;
+      }
+    }
+    
+    // Cap extreme values
+    for (let i = 0; i < rows; i++) {
+      for (let j = 0; j < cols; j++) {
+        flowAcc[i][j] = Math.min(flowAcc[i][j], 1e6);
+      }
+    }
+    
+    return flowAcc;
+  }
+  
+  /**
+   * Generate flow lines and start points for particle animation
+   * Uses normalized coordinates (0-1) for screen-independent rendering
+   * Applies 90° clockwise rotation to match DEM visualization
+   */
+  generateFlowData() {
+    const rows = this.demHeight;
+    const cols = this.demWidth;
+    const flowThreshold = 10; // Minimum accumulation to show flow
+    const startPointSpacing = 5;
+    
+    const dirToOffset = {
+      128: [-1,  1],
+        1: [ 0,  1],
+        2: [ 1,  1],
+        4: [ 1,  0],
+        8: [ 1, -1],
+       16: [ 0, -1],
+       32: [-1, -1],
+       64: [-1,  0]
+    };
+    
+    const flowLines = [];
+    const startPoints = [];
+    
+    // Helper function to apply 90° clockwise rotation
+    // Original DEM: dem[row][col] where row is Y (0=north), col is X (0=west)
+    // After 90° CW rotation: new_x = row/rows, new_y = 1 - col/cols
+    const rotatePoint = (row, col) => {
+      return {
+        x: row / rows,           // row becomes X (left to right)
+        y: 1 - (col / cols)      // col becomes Y (flipped: col=0 -> bottom)
+      };
+    };
+    
+    // Extract flow lines
+    for (let i = 0; i < rows; i++) {
+      for (let j = 0; j < cols; j++) {
+        const dir = this.flowDir[i][j];
+        const acc = this.flowAcc[i][j];
+        
+        if (dir === 0 || acc < flowThreshold) continue;
+        
+        const offset = dirToOffset[dir];
+        if (!offset) continue;
+        
+        const ni = i + offset[0];
+        const nj = j + offset[1];
+        
+        if (ni >= 0 && ni < rows && nj >= 0 && nj < cols) {
+          // Apply 90° clockwise rotation to coordinates
+          const from = rotatePoint(i, j);
+          const to = rotatePoint(ni, nj);
+          
+          flowLines.push({
+            from_x_norm: from.x,
+            from_y_norm: from.y,
+            to_x_norm: to.x,
+            to_y_norm: to.y,
+            accumulation: acc,
+            direction: dir
+          });
+        }
+      }
+    }
+    
+    // Detect pools (sinks) - cells with no outflow or very high accumulation
+    const pools = [];
+    const poolThreshold = 2000; // Higher threshold = only significant pools
+    
+    for (let i = 0; i < rows; i++) {
+      for (let j = 0; j < cols; j++) {
+        const dir = this.flowDir[i][j];
+        const acc = this.flowAcc[i][j];
+        
+        // Pool conditions: true sinks OR very high accumulation
+        if ((dir === 0 && acc > 100) || acc > poolThreshold) {
+          const pt = rotatePoint(i, j);
+          pools.push({
+            x_norm: pt.x,
+            y_norm: pt.y,
+            accumulation: acc,
+            isSink: dir === 0
+          });
+        }
+      }
+    }
+    
+    // Create start points on a grid (with same rotation)
+    for (let i = 0; i < rows; i += startPointSpacing) {
+      for (let j = 0; j < cols; j += startPointSpacing) {
+        const acc = this.flowAcc[i][j];
+        if (acc >= 1.0 && !isNaN(acc)) {
+          const pt = rotatePoint(i, j);
+          startPoints.push({
+            position_norm: [pt.x, pt.y],
+            weight: acc
+          });
+        }
+      }
+    }
+    
+    // Limit to reasonable number for performance
+    const maxFlowLines = 50000;
+    const maxStartPoints = 5000;
+    
+    console.log(`Detected ${pools.length} pool/sink areas`);
+    
+    return {
+      flow_lines: this.sampleEvenly(flowLines, maxFlowLines),
+      start_points: this.sampleEvenly(startPoints, maxStartPoints),
+      pools: pools
+    };
+  }
+  
+  /**
+   * Build spatial index for fast flow direction lookups
+   */
+  buildFlowGrid() {
+    if (!this.flowData?.flow_lines_screen) return;
+    
+    const cellSize = this.flowGridCellSize;
+    const cols = Math.ceil(this.canvas.width / cellSize);
+    const rows = Math.ceil(this.canvas.height / cellSize);
+    
+    // Initialize grid
+    this.flowGrid = [];
+    for (let r = 0; r < rows; r++) {
+      this.flowGrid[r] = [];
+      for (let c = 0; c < cols; c++) {
+        this.flowGrid[r][c] = [];
+      }
+    }
+    
+    // Populate grid with flow lines
+    for (const line of this.flowData.flow_lines_screen) {
+      const c = Math.floor(line.from_x / cellSize);
+      const r = Math.floor(line.from_y / cellSize);
+      if (r >= 0 && r < rows && c >= 0 && c < cols) {
+        this.flowGrid[r][c].push(line);
+      }
+    }
+    
+    console.log(`Built flow grid: ${cols}x${rows} cells`);
+  }
+  
+  /**
+   * Create pool visualization overlay
+   */
+  createPoolVisualization() {
+    if (!this.flowData?.pools) return;
+    
+    this.poolCanvas = document.createElement('canvas');
+    this.poolCanvas.width = this.canvas.width;
+    this.poolCanvas.height = this.canvas.height;
+    const ctx = this.poolCanvas.getContext('2d');
+    
+    // Find max accumulation for normalization
+    const maxAcc = Math.max(...this.flowData.pools.map(p => p.accumulation));
+    const logMaxAcc = Math.log10(maxAcc + 1);
+    
+    // Draw pools as subtle soft circles
+    for (const pool of this.flowData.pools) {
+      const x = pool.x_norm * this.canvas.width;
+      const y = pool.y_norm * this.canvas.height;
+      const accNorm = Math.log10(pool.accumulation + 1) / logMaxAcc;
+      
+      // Smaller size and lower opacity
+      const radius = 2 + accNorm * 8;  // 2-10px radius (was 3-18)
+      const alpha = 0.05 + accNorm * 0.15;  // Much more subtle (was 0.1-0.4)
+      
+      // Create radial gradient for soft pool effect
+      const gradient = ctx.createRadialGradient(x, y, 0, x, y, radius);
+      gradient.addColorStop(0, `rgba(40, 120, 220, ${alpha})`);
+      gradient.addColorStop(0.6, `rgba(60, 150, 240, ${alpha * 0.4})`);
+      gradient.addColorStop(1, `rgba(80, 170, 255, 0)`);
+      
+      ctx.fillStyle = gradient;
+      ctx.beginPath();
+      ctx.arc(x, y, radius, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    
+    console.log(`Created pool visualization with ${this.flowData.pools.length} pools`);
+  }
+  
+  /**
+   * Sample items evenly from array
+   */
+  sampleEvenly(items, maxCount) {
+    if (items.length <= maxCount) return items;
+    
+    const step = items.length / maxCount;
+    const result = [];
+    for (let i = 0; i < maxCount; i++) {
+      result.push(items[Math.floor(i * step)]);
+    }
+    return result;
   }
   
   async start() {
     if (this.isActive) return;
     
-    // Load data if not already loaded
+    // Load and compute data if not already done
     if (!this.flowData) {
       const loaded = await this.loadData();
       if (!loaded) return;
     }
+    
+    // Create pre-rendered glow sprite for performance
+    this.createGlowSprite();
     
     this.isActive = true;
     this.canvas.classList.add('active');
@@ -103,7 +647,7 @@ class StormwaterFlowAnimation {
     // Add resize listener
     window.addEventListener('resize', () => {
       this.handleResize();
-      this.scaleFlowToScreen();  // Rescale when canvas size changes
+      this.scaleFlowToScreen();
     });
     
     // Start animation loop
@@ -112,11 +656,11 @@ class StormwaterFlowAnimation {
     console.log('Stormwater flow animation started');
   }
   
-  // Scale normalized flow data (0-1 range) to current canvas dimensions
+  /**
+   * Scale normalized flow data (0-1 range) to current canvas dimensions
+   */
   scaleFlowToScreen() {
     if (!this.flowData) return;
-    
-    console.log('Scaling normalized flow data to screen space...');
     
     const width = this.canvas.width;
     const height = this.canvas.height;
@@ -127,27 +671,67 @@ class StormwaterFlowAnimation {
     this.logMaxAcc = Math.log10(this.maxAccumulation + 1);
     
     // Scale flow lines from normalized (0-1) to pixel coordinates
-    this.flowData.flow_lines_screen = this.flowData.flow_lines.map(line => {
-      return {
-        from_x: line.from_x_norm * width,
-        from_y: line.from_y_norm * height,
-        to_x: line.to_x_norm * width,
-        to_y: line.to_y_norm * height,
-        accumulation: line.accumulation,
-        direction: line.direction
-      };
-    });
+    this.flowData.flow_lines_screen = this.flowData.flow_lines.map(line => ({
+      from_x: line.from_x_norm * width,
+      from_y: line.from_y_norm * height,
+      to_x: line.to_x_norm * width,
+      to_y: line.to_y_norm * height,
+      accumulation: line.accumulation,
+      direction: line.direction
+    }));
     
     // Scale start points from normalized (0-1) to pixel coordinates
-    this.flowData.start_points_screen = this.flowData.start_points.map(point => {
-      return {
-        x: point.position_norm[0] * width,
-        y: point.position_norm[1] * height,
-        weight: point.weight
-      };
-    });
+    this.flowData.start_points_screen = this.flowData.start_points.map(point => ({
+      x: point.position_norm[0] * width,
+      y: point.position_norm[1] * height,
+      weight: point.weight
+    }));
     
-    console.log(`Scaled ${this.flowData.flow_lines_screen.length} flow lines and ${this.flowData.start_points_screen.length} start points to ${width}x${height}px`);
+    // Build spatial index for fast lookups
+    this.buildFlowGrid();
+    
+    // Create pool visualization
+    this.createPoolVisualization();
+    
+    console.log(`Scaled ${this.flowData.flow_lines_screen.length} flow lines to ${width}x${height}px`);
+  }
+  
+  /**
+   * Create pre-rendered glow sprite for efficient particle rendering
+   * This avoids creating expensive radial gradients every frame
+   */
+  createGlowSprite() {
+    const size = this.glowSpriteSize;
+    const canvas = document.createElement('canvas');
+    canvas.width = size;
+    canvas.height = size;
+    const ctx = canvas.getContext('2d');
+    
+    const center = size / 2;
+    
+    // Outer glow
+    const gradient1 = ctx.createRadialGradient(center, center, 0, center, center, center);
+    gradient1.addColorStop(0, 'rgba(100, 200, 255, 0.8)');
+    gradient1.addColorStop(0.3, 'rgba(80, 180, 255, 0.4)');
+    gradient1.addColorStop(0.6, 'rgba(60, 160, 255, 0.15)');
+    gradient1.addColorStop(1, 'rgba(60, 160, 255, 0)');
+    
+    ctx.fillStyle = gradient1;
+    ctx.fillRect(0, 0, size, size);
+    
+    // Bright core
+    const coreSize = size * 0.15;
+    const gradient2 = ctx.createRadialGradient(center, center, 0, center, center, coreSize);
+    gradient2.addColorStop(0, 'rgba(230, 250, 255, 0.95)');
+    gradient2.addColorStop(0.5, 'rgba(150, 220, 255, 0.7)');
+    gradient2.addColorStop(1, 'rgba(100, 200, 255, 0)');
+    
+    ctx.fillStyle = gradient2;
+    ctx.beginPath();
+    ctx.arc(center, center, coreSize, 0, Math.PI * 2);
+    ctx.fill();
+    
+    this.glowSprite = canvas;
   }
   
   stop() {
@@ -161,10 +745,8 @@ class StormwaterFlowAnimation {
       this.animationFrame = null;
     }
     
-    // Remove resize listener
     window.removeEventListener('resize', this.handleResize);
     
-    // Clear canvas
     this.ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
     this.particles = [];
     
@@ -180,10 +762,9 @@ class StormwaterFlowAnimation {
   }
   
   handleResize() {
-    // Use the same sizing as CFD simulation
     const s = typeof computeOverlayPixelSize === 'function' 
       ? computeOverlayPixelSize() 
-      : { w: window.innerWidth - 120, h: window.innerHeight }; // fallback
+      : { w: window.innerWidth - 120, h: window.innerHeight };
     
     this.canvas.width = s.w;
     this.canvas.height = s.h;
@@ -191,33 +772,12 @@ class StormwaterFlowAnimation {
     this.canvas.style.height = s.h + 'px';
   }
   
-  // Convert geographic coordinates (EPSG:3006) to screen coordinates
-  geoToScreen(x, y) {
-    // Input is expected to be WGS84 lon/lat (EPSG:4326)
-    // Use MapLibre's project() to get pixel coordinates, then convert to canvas space
-    const lon = x;
-    const lat = y;
-
-    const projected = this.map.project([lon, lat]);
-    const mapContainer = this.map.getContainer();
-    const mapRect = mapContainer.getBoundingClientRect();
-    const canvasRect = this.canvas.getBoundingClientRect();
-
-    const screenX = projected.x + mapRect.left;
-    const screenY = projected.y + mapRect.top;
-
-    const canvasX = screenX - canvasRect.left;
-    const canvasY = screenY - canvasRect.top;
-
-    return { x: canvasX, y: canvasY };
-  }
-  
-  // Create a new particle at a spawn point
+  /**
+   * Create a new particle at a spawn point
+   */
   createParticle() {
-    // Use screen space start points
     const startPointsScreen = this.flowData?.start_points_screen;
     if (!startPointsScreen || startPointsScreen.length === 0) {
-      console.warn('No screen space start points available');
       return null;
     }
     
@@ -242,35 +802,53 @@ class StormwaterFlowAnimation {
       x: selectedPoint.x + offsetX,
       y: selectedPoint.y + offsetY,
       age: 0,
-      trail: [], // Previous positions for trail effect
+      trail: [],
       velocity: { x: 0, y: 0 },
-      accumulation: selectedPoint.weight, // Track accumulation for coloring
-      stationaryTime: 0 // Track how long particle has been stationary/slow
+      prevVelocity: { x: 0, y: 0 },  // For smoothing
+      accumulation: selectedPoint.weight,
+      stationaryTime: 0,
+      size: this.particleSize + Math.random() * 1  // Slight size variation
     };
   }
   
-  // Find flow direction at a given screen position
+  /**
+   * Find flow direction at a given screen position using spatial grid
+   */
   getFlowDirection(screenX, screenY) {
-    if (!this.flowData || !this.flowData.flow_lines_screen) return { x: 0, y: 0 };
+    if (!this.flowGrid) return { x: 0, y: 0 };
     
-    // Find nearest flow line in screen space
+    const cellSize = this.flowGridCellSize;
+    const col = Math.floor(screenX / cellSize);
+    const row = Math.floor(screenY / cellSize);
+    
+    // Search current cell and neighbors
     let nearestLine = null;
     let minDist = Infinity;
     
-    for (const line of this.flowData.flow_lines_screen) {
-      const dx = line.from_x - screenX;
-      const dy = line.from_y - screenY;
-      const dist = Math.sqrt(dx * dx + dy * dy);
-      
-      if (dist < minDist) {
-        minDist = dist;
-        nearestLine = line;
+    for (let dr = -1; dr <= 1; dr++) {
+      for (let dc = -1; dc <= 1; dc++) {
+        const r = row + dr;
+        const c = col + dc;
+        
+        if (r >= 0 && r < this.flowGrid.length && 
+            c >= 0 && c < this.flowGrid[0].length) {
+          for (const line of this.flowGrid[r][c]) {
+            const dx = line.from_x - screenX;
+            const dy = line.from_y - screenY;
+            const dist = dx * dx + dy * dy;  // Skip sqrt for speed
+            
+            if (dist < minDist) {
+              minDist = dist;
+              nearestLine = line;
+            }
+          }
+        }
       }
     }
     
-    // Use 50 pixel search radius
-    if (!nearestLine || minDist > 50) {
-      return { x: 0, y: 0 };
+    // Use 40 pixel search radius (squared)
+    if (!nearestLine || minDist > 1600) {
+      return { x: 0, y: 0, isPool: false };
     }
     
     // Calculate direction vector in screen space
@@ -280,17 +858,22 @@ class StormwaterFlowAnimation {
     
     if (mag === 0) return { x: 0, y: 0 };
     
-    // Normalize and scale by accumulation (more flow = faster)
-    const speed = Math.min(nearestLine.accumulation / 100, 3) * this.particleSpeed;
+    // Normalize and scale by accumulation
+    // Slower in high accumulation areas (pooling)
+    const accFactor = Math.min(nearestLine.accumulation / 100, 3);
+    const speed = (0.5 + accFactor * 0.5) * this.particleSpeed;
     
     return {
       x: (dx / mag) * speed,
       y: (dy / mag) * speed,
-      accumulation: nearestLine.accumulation // Return accumulation for particle coloring
+      accumulation: nearestLine.accumulation,
+      isPool: nearestLine.accumulation > 50
     };
   }
   
-  // Update particle positions
+  /**
+   * Update particle positions with smooth physics
+   */
   updateParticles() {
     // Spawn new particles
     for (let i = 0; i < this.particleSpawnRate && this.particles.length < this.maxParticles; i++) {
@@ -299,6 +882,8 @@ class StormwaterFlowAnimation {
         this.particles.push(particle);
       }
     }
+    
+    const smoothing = this.velocitySmoothing;
     
     // Update existing particles
     for (let i = this.particles.length - 1; i >= 0; i--) {
@@ -311,43 +896,55 @@ class StormwaterFlowAnimation {
         continue;
       }
       
-      // Get flow direction at current position (in screen space)
+      // Get flow direction at current position
       const flow = this.getFlowDirection(p.x, p.y);
       
-      // Update velocity with flow direction
-      p.velocity.x = flow.x;
-      p.velocity.y = flow.y;
+      // Smooth velocity transition (lerp between previous and new)
+      const targetVx = flow.x;
+      const targetVy = flow.y;
       
-      // Update accumulation - particles collect more water as they flow
+      // Apply smoothing - blend previous velocity with target
+      p.velocity.x = p.prevVelocity.x * smoothing + targetVx * (1 - smoothing);
+      p.velocity.y = p.prevVelocity.y * smoothing + targetVy * (1 - smoothing);
+      
+      // Store for next frame
+      p.prevVelocity.x = p.velocity.x;
+      p.prevVelocity.y = p.velocity.y;
+      
+      // Update accumulation
       if (flow.accumulation) {
         p.accumulation = Math.max(p.accumulation, flow.accumulation);
       }
       
-      // Store previous position for trail
-      p.trail.push({ x: p.x, y: p.y });
-      if (p.trail.length > 10) {
-        p.trail.shift();
+      // Store previous position for trail (every 3rd frame for performance)
+      if (p.age % 3 === 0) {
+        p.trail.push({ x: p.x, y: p.y });
+        if (p.trail.length > 8) {  // Shorter trails for performance
+          p.trail.shift();
+        }
       }
       
-      // Update position directly in screen space
+      // Update position with smoothed velocity
       p.x += p.velocity.x;
       p.y += p.velocity.y;
       
-      // Add some randomness for more natural flow
-      p.x += (Math.random() - 0.5) * 0.5;
-      p.y += (Math.random() - 0.5) * 0.5;
+      // Add subtle Perlin-like noise for natural flow (use sin waves for cheap noise)
+      const noiseX = Math.sin(p.age * 0.1 + p.x * 0.01) * this.noiseScale;
+      const noiseY = Math.cos(p.age * 0.1 + p.y * 0.01) * this.noiseScale;
+      p.x += noiseX;
+      p.y += noiseY;
       
-      // Track stationary time for particle growth
+      // Track stationary time for particle growth (pooling effect)
       const speed = Math.sqrt(p.velocity.x * p.velocity.x + p.velocity.y * p.velocity.y);
-      if (speed < 0.5) {
-        // Particle is moving slowly or stationary (pooling)
+      if (speed < 0.3) {
         p.stationaryTime++;
+        // Particles in pools grow and become more opaque
+        p.size = Math.min(p.size + 0.02, 6);
       } else {
-        // Particle is flowing - reset stationary time
-        p.stationaryTime = Math.max(0, p.stationaryTime - 2);
+        p.stationaryTime = Math.max(0, p.stationaryTime - 1);
       }
       
-      // Remove particles that go off screen
+      // Remove particles off screen
       if (p.x < 0 || p.x > this.canvas.width || 
           p.y < 0 || p.y > this.canvas.height) {
         this.particles.splice(i, 1);
@@ -355,127 +952,125 @@ class StormwaterFlowAnimation {
     }
   }
   
-  // Get particle color based on flow accumulation
+  /**
+   * Get particle color based on flow accumulation
+   */
   getParticleColor(accumulation) {
     if (!accumulation || !this.logMaxAcc) {
-      return 'rgba(200, 220, 255, 0.7)'; // Default light blue (flowing water)
+      return 'rgba(200, 220, 255, 0.7)';
     }
     
-    // Use log scale for better color distribution
     const accNorm = Math.log10(accumulation + 1) / this.logMaxAcc;
     
-    // White to blue gradient:
-    // Low accumulation (flowing water) = white/very light blue
-    // High accumulation (pooled water) = deep blue
-    const r = Math.floor(255 - accNorm * 245);  // 255 -> 10 (white to deep blue)
-    const g = Math.floor(255 - accNorm * 205);  // 255 -> 50 (white to deep blue)
-    const b = 255;                               // Always full blue component
-    const a = 0.65 + accNorm * 0.3;              // More opaque with more accumulation
+    // White to blue gradient
+    const r = Math.floor(255 - accNorm * 245);
+    const g = Math.floor(255 - accNorm * 205);
+    const b = 255;
+    const a = 0.65 + accNorm * 0.3;
     
     return `rgba(${r}, ${g}, ${b}, ${a})`;
   }
   
-  // Get particle size based on flow accumulation and stationary time
+  /**
+   * Get particle size based on flow accumulation and stationary time
+   */
   getParticleSize(accumulation, stationaryTime) {
-    // Base size from accumulation
     let size = this.particleSize;
     
     if (accumulation && this.logMaxAcc) {
       const accNorm = Math.log10(accumulation + 1) / this.logMaxAcc;
-      size += accNorm * 1.5; // Up to +1.5px from accumulation
+      size += accNorm * 1.5;
     }
     
-    // Grow larger when stationary (pooling effect)
-    // Caps at +3px additional size after ~30 frames of being stationary
-    const stationaryBonus = Math.min(stationaryTime / 10, 3);
-    size += stationaryBonus;
-    
-    return size; // Range: 2px (flowing) to 6.5px (heavily pooled and stationary)
+    return size;
   }
   
-  // Draw particles
+  /**
+   * Draw particles
+   */
   drawParticles() {
     this.ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
     
-    // Draw DEM elevation background
-    // PNG dimensions (625w x 375h) - rotated 90° in Python to match canvas aspect
-    // The image is stretched to fill the canvas dimensions
-    if (this.showDEM && this.demImage) {
-      this.ctx.drawImage(this.demImage, 0, 0, this.canvas.width, this.canvas.height);
+    // Draw DEM background if enabled
+    if (this.showDEM && this.demCanvas) {
+      this.ctx.drawImage(
+        this.demCanvas, 
+        0, 0, this.demCanvas.width, this.demCanvas.height,
+        0, 0, this.canvas.width, this.canvas.height
+      );
     }
     
-    // Debug: Draw flow direction arrows (set debugFlowLines = true to enable)
+    // Draw pool areas (pre-rendered)
+    if (this.showPools && this.poolCanvas) {
+      this.ctx.drawImage(this.poolCanvas, 0, 0);
+    }
+    
+    // Debug: Draw flow direction arrows
     if (this.debugFlowLines && this.flowData?.flow_lines_screen) {
       this.ctx.strokeStyle = 'rgba(255, 0, 0, 0.3)';
       this.ctx.lineWidth = 1;
       
-      // Sample every 50th flow line to avoid clutter
       for (let i = 0; i < this.flowData.flow_lines_screen.length; i += 50) {
         const line = this.flowData.flow_lines_screen[i];
         this.ctx.beginPath();
         this.ctx.moveTo(line.from_x, line.from_y);
         this.ctx.lineTo(line.to_x, line.to_y);
         this.ctx.stroke();
-        
-        // Draw arrow head
-        const dx = line.to_x - line.from_x;
-        const dy = line.to_y - line.from_y;
-        const angle = Math.atan2(dy, dx);
-        const arrowSize = 3;
-        
-        this.ctx.beginPath();
-        this.ctx.moveTo(line.to_x, line.to_y);
-        this.ctx.lineTo(
-          line.to_x - arrowSize * Math.cos(angle - Math.PI / 6),
-          line.to_y - arrowSize * Math.sin(angle - Math.PI / 6)
-        );
-        this.ctx.moveTo(line.to_x, line.to_y);
-        this.ctx.lineTo(
-          line.to_x - arrowSize * Math.cos(angle + Math.PI / 6),
-          line.to_y - arrowSize * Math.sin(angle + Math.PI / 6)
-        );
-        this.ctx.stroke();
       }
     }
     
-    // Draw trails
-    this.ctx.strokeStyle = this.particleTrailColor;
-    this.ctx.lineWidth = 1;
-    
+    // Draw simple trails (no shadowBlur for performance)
+    this.ctx.lineCap = 'round';
+    this.ctx.lineJoin = 'round';
     for (const p of this.particles) {
-      if (p.trail.length > 1) {
+      if (p.trail.length > 2) {
+        const alpha = Math.max(0.1, 1.0 - (p.age / this.particleLifetime));
+        
+        // Draw trail as simple line (skip every other point for performance)
         this.ctx.beginPath();
         this.ctx.moveTo(p.trail[0].x, p.trail[0].y);
         
-        for (let i = 1; i < p.trail.length; i++) {
+        for (let i = 2; i < p.trail.length; i += 2) {
           this.ctx.lineTo(p.trail[i].x, p.trail[i].y);
         }
+        this.ctx.lineTo(p.x, p.y);
         
+        this.ctx.strokeStyle = `rgba(80, 170, 255, ${alpha * 0.4})`;
+        this.ctx.lineWidth = p.size * 0.8;
         this.ctx.stroke();
       }
     }
     
-    // Draw particles with color and size based on accumulation and velocity
-    for (const p of this.particles) {
-      // Fade out older particles
-      const alpha = 1.0 - (p.age / this.particleLifetime);
-      this.ctx.globalAlpha = alpha;
+    // Draw particles using pre-rendered glow sprite (much faster than gradients)
+    if (this.glowSprite) {
+      const spriteSize = this.glowSpriteSize;
+      const halfSprite = spriteSize / 2;
       
-      // Color based on flow accumulation (shows pooling effect)
-      this.ctx.fillStyle = this.getParticleColor(p.accumulation);
-      
-      // Size based on flow accumulation AND stationary time (pooled water is larger)
-      const size = this.getParticleSize(p.accumulation, p.stationaryTime);
-      
-      this.ctx.beginPath();
-      this.ctx.arc(p.x, p.y, size, 0, Math.PI * 2);
-      this.ctx.fill();
+      for (const p of this.particles) {
+        const lifeRatio = p.age / this.particleLifetime;
+        const alpha = Math.max(0.3, 1.0 - lifeRatio * 0.6);
+        const scale = (p.size / 3) * (0.8 + 0.4 * (1 - lifeRatio)); // Shrink as it ages
+        
+        this.ctx.globalAlpha = alpha * this.glowIntensity;
+        
+        // Draw scaled sprite at particle position
+        const drawSize = spriteSize * scale;
+        const halfDraw = drawSize / 2;
+        this.ctx.drawImage(
+          this.glowSprite,
+          p.x - halfDraw,
+          p.y - halfDraw,
+          drawSize,
+          drawSize
+        );
+      }
+      this.ctx.globalAlpha = 1.0;
     }
-    
-    this.ctx.globalAlpha = 1.0;
   }
   
-  // Main animation loop
+  /**
+   * Main animation loop
+   */
   animate() {
     if (!this.isActive) return;
     
@@ -513,7 +1108,7 @@ function initStormwaterFlow() {
         });
       }
       
-      console.log('Stormwater flow animation initialized');
+      console.log('Stormwater flow animation initialized (dynamic DEM processing)');
     }
   }, 100);
 }
