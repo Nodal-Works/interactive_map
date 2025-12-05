@@ -53,10 +53,10 @@ class SunStudy {
     
     this.timeOfDay = 12;
     this.isAnimating = false;
-    this.animationSpeed = 1;
+    this.animationSpeed = 2;
     
     // Shadow settings
-    this.shadowOpacity = 1;
+    this.shadowOpacity = 0.8;
     
     // Manual adjustment offsets
     this.offsetX = 0;      // X position offset
@@ -135,32 +135,16 @@ class SunStudy {
       </div>
       <div class="sun-control">
         <label>Shadow Opacity</label>
-        <input type="range" id="shadow-opacity" min="0.1" max="0.9" step="0.1" value="0.5">
+        <input type="range" id="shadow-opacity" min="0.1" max="1.0" step="0.1" value="0.8">
       </div>
       <div class="sun-actions">
         <button id="sun-animate-btn" class="sun-btn">▶ Animate Day</button>
       </div>
       <div class="sun-control">
-        <label>Speed: <span id="speed-display">1x</span></label>
-        <input type="range" id="sun-speed" min="0.5" max="5" step="0.5" value="1">
+        <label>Speed: <span id="speed-display">2x</span></label>
+        <input type="range" id="sun-speed" min="0.5" max="5" step="0.5" value="2">
       </div>
-      <hr style="border: none; border-top: 1px solid #ddd; margin: 12px 0;">
-      <div class="sun-control">
-        <label>X Offset: <span id="offset-x-display">-12</span></label>
-        <input type="range" id="offset-x" min="-50" max="50" step="1" value="-12">
-      </div>
-      <div class="sun-control">
-        <label>Y Offset: <span id="offset-z-display">0</span></label>
-        <input type="range" id="offset-z" min="-50" max="50" step="1" value="0">
-      </div>
-      <div class="sun-control">
-        <label>Rotation: <span id="rotation-offset-display">0</span>°</label>
-        <input type="range" id="rotation-offset" min="-10" max="10" step="0.5" value="0">
-      </div>
-      <div class="sun-control">
-        <label>Scale: <span id="scale-mult-display">1.00</span>x</label>
-        <input type="range" id="scale-mult" min="0.8" max="1.2" step="0.01" value="1">
-      </div>
+
       <hr style="border: none; border-top: 1px solid #ddd; margin: 12px 0;">
       <div class="sun-actions">
         <button id="false-color-btn" class="sun-btn">🌈 False Color</button>
@@ -239,6 +223,7 @@ class SunStudy {
         this.shadowOpacity = parseFloat(e.target.value);
         if (this.shadowMaterial) {
           this.shadowMaterial.opacity = this.shadowOpacity;
+          this.shadowMaterial.needsUpdate = true;
         }
       });
     }
@@ -251,43 +236,7 @@ class SunStudy {
       });
     }
     
-    // Manual adjustment controls
-    const offsetXSlider = document.getElementById('offset-x');
-    const offsetZSlider = document.getElementById('offset-z');
-    const rotationSlider = document.getElementById('rotation-offset');
-    const scaleSlider = document.getElementById('scale-mult');
-    
-    if (offsetXSlider) {
-      offsetXSlider.addEventListener('input', (e) => {
-        this.offsetX = parseFloat(e.target.value);
-        document.getElementById('offset-x-display').textContent = this.offsetX;
-        this.applyManualAdjustments();
-      });
-    }
-    
-    if (offsetZSlider) {
-      offsetZSlider.addEventListener('input', (e) => {
-        this.offsetZ = parseFloat(e.target.value);
-        document.getElementById('offset-z-display').textContent = this.offsetZ;
-        this.applyManualAdjustments();
-      });
-    }
-    
-    if (rotationSlider) {
-      rotationSlider.addEventListener('input', (e) => {
-        this.rotationOffset = parseFloat(e.target.value);
-        document.getElementById('rotation-offset-display').textContent = this.rotationOffset;
-        this.applyManualAdjustments();
-      });
-    }
-    
-    if (scaleSlider) {
-      scaleSlider.addEventListener('input', (e) => {
-        this.scaleMultiplier = parseFloat(e.target.value);
-        document.getElementById('scale-mult-display').textContent = this.scaleMultiplier.toFixed(2);
-        this.applyManualAdjustments();
-      });
-    }
+
     
     // False color toggle
     const falseColorBtn = document.getElementById('false-color-btn');
@@ -483,25 +432,27 @@ class SunStudy {
   
   setupLights() {
     // Hemisphere light for sky dome effect (sky color from above, ground color from below)
+    // Reduced intensity for higher contrast in projection
     const hemiLight = new THREE.HemisphereLight(
-      0x87CEEB,  // Sky color (light blue)
-      0x5e4b35,  // Ground color (darker warm earth)
-      0.6        // Intensity
+      0xfff4e5,  // Warmer sky (less blue/white)
+      0x444444,  // Dark ground
+      0.2        // Low intensity for high contrast
     );
     hemiLight.position.set(0, 500, 0);
     this.scene.add(hemiLight);
     
-    // Minimal ambient for fill - slightly warm for cinematic feel
-    const ambient = new THREE.AmbientLight(0xfff5e6, 0.4);
+    // Minimal ambient for fill - very low for high contrast
+    const ambient = new THREE.AmbientLight(0xffffff, 0.1);
     this.scene.add(ambient);
     
-    // Directional sun light for shadows - starts warm
-    this.sunLight = new THREE.DirectionalLight(0xfffaed, 1.0);
+    // Directional sun light for shadows
+    this.sunLight = new THREE.DirectionalLight(0xffffff, 1.5);
     this.sunLight.castShadow = true;
     
     // Higher resolution shadow map
-    this.sunLight.shadow.mapSize.width = 4096;
-    this.sunLight.shadow.mapSize.height = 4096;
+    this.sunLight.shadow.mapSize.width = 8192;
+    this.sunLight.shadow.mapSize.height = 8192;
+    this.sunLight.shadow.radius = 2; // Soften shadows to reduce aliasing
     
     // Shadow camera settings - will be updated dynamically with sun position
     this.sunLight.shadow.camera.near = 0.5;
@@ -515,8 +466,8 @@ class SunStudy {
     this.sunLight.shadow.camera.bottom = -shadowSize;
     
     // Bias settings to reduce shadow artifacts (shadow acne)
-    this.sunLight.shadow.bias = -0.001;
-    this.sunLight.shadow.normalBias = 0.02;
+    this.sunLight.shadow.bias = -0.0005;
+    this.sunLight.shadow.normalBias = 0.05;
     
     this.scene.add(this.sunLight);
     this.scene.add(this.sunLight.target);
@@ -537,9 +488,9 @@ class SunStudy {
     
     // SSAO pass for ambient occlusion
     this.ssaoPass = new SSAOPass(this.scene, this.camera, width, height);
-    this.ssaoPass.kernelRadius = 16;
+    this.ssaoPass.kernelRadius = 32; // Increased radius for stronger AO
     this.ssaoPass.minDistance = 0.005;
-    this.ssaoPass.maxDistance = 0.1;
+    this.ssaoPass.maxDistance = 0.15; // Increased distance
     this.composer.addPass(this.ssaoPass);
   }
   
@@ -601,12 +552,13 @@ class SunStudy {
       } else {
         // Day - Warm White
         const t = Math.min(1, (altitude - 25) / 40);
-        color.setHSL(0.12, 0.5 - t * 0.3, 0.8 + t * 0.2);
+        // Warmer sun: Hue 0.08 (orange-yellow) instead of 0.12 (yellow)
+        color.setHSL(0.08, 0.6 - t * 0.2, 0.8 + t * 0.2);
       }
       this.sunLight.color.copy(color);
       
-      // Adjust intensity for cinematic feel
-      this.sunLight.intensity = Math.min(1.5, 0.5 + Math.sin(altitude * Math.PI / 180) * 1.2);
+      // Adjust intensity for cinematic feel - boosted for projection
+      this.sunLight.intensity = Math.min(2.5, 0.8 + Math.sin(altitude * Math.PI / 180) * 2.0);
     }
     
     // Position the sun light
@@ -654,10 +606,11 @@ class SunStudy {
         geometry.computeBoundingBox();
         
         // Material - semi-transparent model with shadows
+        // Matte white for better projection contrast
         this.standardMaterial = new THREE.MeshStandardMaterial({
           color: 0xffffff,
-          roughness: 0.7,
-          metalness: 0.1,
+          roughness: 1.0, // Fully matte
+          metalness: 0.0,
           side: THREE.DoubleSide,
           transparent: true,
           opacity: 1,
@@ -726,7 +679,7 @@ class SunStudy {
     
     // Update shadow camera to cover the model
     const worldSize = maxDim * scale;
-    const shadowSize = worldSize * 1.5;
+    const shadowSize = worldSize * 1.2; // Tighter fit for better shadow resolution
     
     this.sunLight.shadow.camera.left = -shadowSize;
     this.sunLight.shadow.camera.right = shadowSize;
