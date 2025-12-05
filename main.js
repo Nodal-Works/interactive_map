@@ -17,45 +17,35 @@ let tableCenter = [11.977770568930168, 57.68839377903814]; // [lon, lat]
 let initialZoom = 15.806953679037164;
 let initialBearing = -92.58546386659737; // degrees
 
-// Map instance (created after loading calibration)
-let map;
-
-// Load calibration from JSON file and initialize the map
-async function initMap() {
-  try {
-    const response = await fetch('map-calibration.json');
-    if (response.ok) {
-      const calibration = await response.json();
-      tableCenter = [calibration.center.lng, calibration.center.lat];
-      initialZoom = calibration.zoom;
-      initialBearing = calibration.bearing;
-      console.log('Loaded map calibration from map-calibration.json');
-    } else {
-      console.warn('Could not load map-calibration.json, using defaults');
-    }
-  } catch (e) {
-    console.warn('Error loading map-calibration.json, using defaults:', e);
+// Try to load calibration synchronously via XMLHttpRequest (for compatibility with other scripts)
+try {
+  const xhr = new XMLHttpRequest();
+  xhr.open('GET', 'map-calibration.json', false); // synchronous request
+  xhr.send(null);
+  if (xhr.status === 200) {
+    const calibration = JSON.parse(xhr.responseText);
+    tableCenter = [calibration.center.lng, calibration.center.lat];
+    initialZoom = calibration.zoom;
+    initialBearing = calibration.bearing;
+    console.log('Loaded map calibration from map-calibration.json');
   }
-
-  // Create the map with loaded (or default) calibration
-  map = new maplibregl.Map({
-    container: 'map',
-    style: {
-      version: 8,
-      sources: {},
-      layers: []
-    },
-    center: tableCenter,
-    zoom: initialZoom,
-    bearing: initialBearing,
-    pitch: 0
-  });
-
-  // Continue with map initialization
-  setupMap();
+} catch (e) {
+  console.warn('Could not load map-calibration.json, using defaults:', e);
 }
 
-function setupMap() {
+// Create the map with loaded (or default) calibration
+const map = new maplibregl.Map({
+  container: 'map',
+  style: {
+    version: 8,
+    sources: {},
+    layers: []
+  },
+  center: tableCenter,
+  zoom: initialZoom,
+  bearing: initialBearing,
+  pitch: 0
+});
 
 // Navigation controls hidden - map is calibrated for projection
 
@@ -401,10 +391,6 @@ basemapToggleBtn.addEventListener('click', () => {
 // expose setBasemap for debugging
 window.setBasemap = setBasemap;
 window.map = map;
-} // end setupMap()
-
-// Initialize the map (loads calibration first)
-initMap();
 
 // Laser pointer cursor tracking
 const laserPointer = document.getElementById('laser-pointer');
