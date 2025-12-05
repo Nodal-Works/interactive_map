@@ -4,16 +4,7 @@
  * Visualizes stormwater drainage using particle-based flow animation.
  * Dynamically computes flow direction and accumulation from DEM GeoTIFF
  * using the D8 algorithm - no Python preprocessing required!
- * 
- * Water pools are rendered using Three.js with reflective water shaders.
  */
-
-let THREE;
-
-async function loadThreeJS() {
-  if (THREE) return;
-  THREE = await import('three');
-}
 
 class StormwaterFlowAnimation {
   constructor(map, canvas) {
@@ -25,20 +16,12 @@ class StormwaterFlowAnimation {
     
     // Particle system
     this.particles = [];
-    this.maxParticles = 800;  // Reduced for performance
-    this.particleSpawnRate = 4; // particles per frame
+    this.maxParticles = 800;
+    this.particleSpawnRate = 4;
     
     // Offscreen canvas for particle glow (pre-rendered sprite)
     this.glowSprite = null;
     this.glowSpriteSize = 32;
-    
-    // Three.js water pools
-    this.poolRenderer = null;
-    this.poolScene = null;
-    this.poolCamera = null;
-    this.poolCanvas = null;
-    this.waterMeshes = [];
-    this.poolTime = 0;
     
     // DEM and flow data (computed dynamically)
     this.dem = null;
@@ -59,15 +42,15 @@ class StormwaterFlowAnimation {
     this.particleSize = 3;
     this.flowIntensity = 1.0;
     this.showDEM = false;  // Hide DEM elevation background
-    this.showPools = true; // Show pool accumulation areas
+    this.showPools = false; // Disabled - just show particles
     this.debugFlowLines = false;
     
     // Glow parameters
-    this.glowIntensity = 1.2;  // Glow brightness multiplier (reduced for performance)
+    this.glowIntensity = 1.2;
     
     // Smoothing parameters for fluid motion
-    this.velocitySmoothing = 0.85; // How much previous velocity affects current (0-1)
-    this.noiseScale = 0.3; // Random motion scale
+    this.velocitySmoothing = 0.85;
+    this.noiseScale = 0.3;
     
     // DEM visualization
     this.demImageData = null;
@@ -569,45 +552,6 @@ class StormwaterFlowAnimation {
   }
   
   /**
-   * Create pool visualization overlay
-   */
-  createPoolVisualization() {
-    if (!this.flowData?.pools) return;
-    
-    this.poolCanvas = document.createElement('canvas');
-    this.poolCanvas.width = this.canvas.width;
-    this.poolCanvas.height = this.canvas.height;
-    const ctx = this.poolCanvas.getContext('2d');
-    
-    // Find max accumulation for normalization
-    const maxAcc = Math.max(...this.flowData.pools.map(p => p.accumulation));
-    const logMaxAcc = Math.log10(maxAcc + 1);
-    
-    // Draw pools as subtle soft circles
-    for (const pool of this.flowData.pools) {
-      const x = pool.x_norm * this.canvas.width;
-      const y = pool.y_norm * this.canvas.height;
-      const accNorm = Math.log10(pool.accumulation + 1) / logMaxAcc;
-      
-      // Smaller size and lower opacity
-      const radius = 2 + accNorm * 8;  // 2-10px radius (was 3-18)
-      const alpha = 0.05 + accNorm * 0.15;  // Much more subtle (was 0.1-0.4)
-      
-      // Create radial gradient for soft pool effect
-      const gradient = ctx.createRadialGradient(x, y, 0, x, y, radius);
-      gradient.addColorStop(0, `rgba(40, 120, 220, ${alpha})`);
-      gradient.addColorStop(0.6, `rgba(60, 150, 240, ${alpha * 0.4})`);
-      gradient.addColorStop(1, `rgba(80, 170, 255, 0)`);
-      
-      ctx.fillStyle = gradient;
-      ctx.beginPath();
-      ctx.arc(x, y, radius, 0, Math.PI * 2);
-      ctx.fill();
-    }
-    
-    console.log(`Created pool visualization with ${this.flowData.pools.length} pools`);
-  }
-  
   /**
    * Sample items evenly from array
    */
@@ -689,9 +633,6 @@ class StormwaterFlowAnimation {
     
     // Build spatial index for fast lookups
     this.buildFlowGrid();
-    
-    // Create pool visualization
-    this.createPoolVisualization();
     
     console.log(`Scaled ${this.flowData.flow_lines_screen.length} flow lines to ${width}x${height}px`);
   }
@@ -990,20 +931,6 @@ class StormwaterFlowAnimation {
    */
   drawParticles() {
     this.ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
-    
-    // Draw DEM background if enabled
-    if (this.showDEM && this.demCanvas) {
-      this.ctx.drawImage(
-        this.demCanvas, 
-        0, 0, this.demCanvas.width, this.demCanvas.height,
-        0, 0, this.canvas.width, this.canvas.height
-      );
-    }
-    
-    // Draw pool areas (pre-rendered)
-    if (this.showPools && this.poolCanvas) {
-      this.ctx.drawImage(this.poolCanvas, 0, 0);
-    }
     
     // Debug: Draw flow direction arrows
     if (this.debugFlowLines && this.flowData?.flow_lines_screen) {
