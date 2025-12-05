@@ -16,12 +16,13 @@ class StormwaterFlowAnimation {
     
     // Particle system
     this.particles = [];
-    this.maxParticles = 800;
-    this.particleSpawnRate = 4;
+    this.maxParticles = 8000;
+    this.particleSpawnRate = 40;
     
     // Offscreen canvas for particle glow (pre-rendered sprite)
     this.glowSprite = null;
-    this.glowSpriteSize = 32;
+    this.poolingGlowSprite = null;  // Separate sprite for pooling particles
+    this.glowSpriteSize = 20;
     
     // DEM and flow data (computed dynamically)
     this.dem = null;
@@ -39,18 +40,23 @@ class StormwaterFlowAnimation {
     // Animation parameters
     this.particleSpeed = 1.5;
     this.particleLifetime = 300; // frames
-    this.particleSize = 3;
+    this.particleSize = 2;
     this.flowIntensity = 1.0;
     this.showDEM = false;  // Hide DEM elevation background
     this.showPools = false; // Disabled - just show particles
     this.debugFlowLines = false;
     
     // Glow parameters
-    this.glowIntensity = 1.2;
+    this.glowIntensity = 0.5;
+    this.poolingGlowIntensity = 1.2;  // Extra glow for stagnating/pooling particles
     
     // Smoothing parameters for fluid motion
     this.velocitySmoothing = 0.85;
     this.noiseScale = 0.3;
+    
+    // Pooling detection parameters
+    this.poolingThreshold = 15;  // frames of low displacement to be considered pooling
+    this.poolingDisplacementThreshold = 20;  // pixels - if particle hasn't moved this far, it's pooling
     
     // DEM visualization
     this.demImageData = null;
@@ -167,11 +173,11 @@ class StormwaterFlowAnimation {
   /**
    * Create DEM visualization as an offscreen canvas
    * Uses terrain colors: low = green/tan, high = brown/white
-   * Rotates 90° clockwise to match screen orientation (DEM is tall, canvas is wide)
+   * Rotates 90° counter-clockwise to match screen orientation (DEM is tall, canvas is wide)
    */
   createDEMVisualization() {
     // The DEM is stored as rows×cols (height×width)
-    // We need to rotate 90° clockwise for landscape canvas
+    // We need to rotate 90° counter-clockwise for landscape canvas
     // After rotation: width = demHeight, height = demWidth
     
     // Create offscreen canvas with ROTATED dimensions
@@ -202,14 +208,11 @@ class StormwaterFlowAnimation {
       for (let col = 0; col < this.demWidth; col++) {
         const elev = this.dem[row][col];
         
-        // 90° clockwise rotation transformation
+        // 90° counter-clockwise rotation transformation
         // new_x = demHeight - 1 - row (so row 0 goes to right edge)
         // new_y = col (column stays as Y)
-        // Wait, that's 90° CCW. For CW:
-        // new_x = row
-        // new_y = demWidth - 1 - col
-        const newX = row;
-        const newY = this.demWidth - 1 - col;
+        const newX = this.demHeight - 1 - row;
+        const newY = col;
         const idx = (newY * this.demHeight + newX) * 4;
         
         if (isNaN(elev)) {
@@ -408,7 +411,7 @@ class StormwaterFlowAnimation {
   /**
    * Generate flow lines and start points for particle animation
    * Uses normalized coordinates (0-1) for screen-independent rendering
-   * Applies 90° clockwise rotation to match DEM visualization
+   * Applies 90° counter-clockwise rotation to match DEM visualization
    */
   generateFlowData() {
     const rows = this.demHeight;
@@ -430,13 +433,13 @@ class StormwaterFlowAnimation {
     const flowLines = [];
     const startPoints = [];
     
-    // Helper function to apply 90° clockwise rotation
+    // Helper function to apply 90° counter-clockwise rotation
     // Original DEM: dem[row][col] where row is Y (0=north), col is X (0=west)
-    // After 90° CW rotation: new_x = row/rows, new_y = 1 - col/cols
+    // After 90° CCW rotation: new_x = 1 - row/rows, new_y = col/cols
     const rotatePoint = (row, col) => {
       return {
-        x: row / rows,           // row becomes X (left to right)
-        y: 1 - (col / cols)      // col becomes Y (flipped: col=0 -> bottom)
+        x: 1 - (row / rows),     // row becomes X (flipped: row=0 -> right)
+        y: col / cols            // col becomes Y (col=0 -> top)
       };
     };
     
@@ -643,6 +646,8 @@ class StormwaterFlowAnimation {
    */
   createGlowSprite() {
     const size = this.glowSpriteSize;
+    
+    // Create flowing water sprite (blue)
     const canvas = document.createElement('canvas');
     canvas.width = size;
     canvas.height = size;
@@ -650,21 +655,21 @@ class StormwaterFlowAnimation {
     
     const center = size / 2;
     
-    // Outer glow
-    const gradient1 = ctx.createRadialGradient(center, center, 0, center, center, center);
-    gradient1.addColorStop(0, 'rgba(100, 200, 255, 0.8)');
-    gradient1.addColorStop(0.3, 'rgba(80, 180, 255, 0.4)');
-    gradient1.addColorStop(0.6, 'rgba(60, 160, 255, 0.15)');
+    // Tighter, less diffuse glow
+    const gradient1 = ctx.createRadialGradient(center, center, 0, center, center, center * 0.7);
+    gradient1.addColorStop(0, 'rgba(120, 200, 255, 0.9)');
+    gradient1.addColorStop(0.4, 'rgba(80, 180, 255, 0.4)');
+    gradient1.addColorStop(0.8, 'rgba(60, 160, 255, 0.1)');
     gradient1.addColorStop(1, 'rgba(60, 160, 255, 0)');
     
     ctx.fillStyle = gradient1;
     ctx.fillRect(0, 0, size, size);
     
     // Bright core
-    const coreSize = size * 0.15;
+    const coreSize = size * 0.2;
     const gradient2 = ctx.createRadialGradient(center, center, 0, center, center, coreSize);
-    gradient2.addColorStop(0, 'rgba(230, 250, 255, 0.95)');
-    gradient2.addColorStop(0.5, 'rgba(150, 220, 255, 0.7)');
+    gradient2.addColorStop(0, 'rgba(240, 255, 255, 0.95)');
+    gradient2.addColorStop(0.6, 'rgba(150, 220, 255, 0.6)');
     gradient2.addColorStop(1, 'rgba(100, 200, 255, 0)');
     
     ctx.fillStyle = gradient2;
@@ -673,6 +678,35 @@ class StormwaterFlowAnimation {
     ctx.fill();
     
     this.glowSprite = canvas;
+    
+    // Create pooling water sprite (teal/cyan-green) - also tighter glow
+    const poolCanvas = document.createElement('canvas');
+    poolCanvas.width = size;
+    poolCanvas.height = size;
+    const poolCtx = poolCanvas.getContext('2d');
+    
+    // Tighter glow - teal/cyan color for pooling
+    const poolGradient1 = poolCtx.createRadialGradient(center, center, 0, center, center, center * 0.7);
+    poolGradient1.addColorStop(0, 'rgba(60, 220, 180, 0.9)');
+    poolGradient1.addColorStop(0.4, 'rgba(40, 200, 160, 0.4)');
+    poolGradient1.addColorStop(0.8, 'rgba(30, 180, 140, 0.1)');
+    poolGradient1.addColorStop(1, 'rgba(30, 180, 140, 0)');
+    
+    poolCtx.fillStyle = poolGradient1;
+    poolCtx.fillRect(0, 0, size, size);
+    
+    // Bright core - slightly greenish white
+    const poolGradient2 = poolCtx.createRadialGradient(center, center, 0, center, center, coreSize);
+    poolGradient2.addColorStop(0, 'rgba(230, 255, 245, 0.95)');
+    poolGradient2.addColorStop(0.6, 'rgba(120, 230, 200, 0.6)');
+    poolGradient2.addColorStop(1, 'rgba(50, 220, 180, 0)');
+    
+    poolCtx.fillStyle = poolGradient2;
+    poolCtx.beginPath();
+    poolCtx.arc(center, center, coreSize, 0, Math.PI * 2);
+    poolCtx.fill();
+    
+    this.poolingGlowSprite = poolCanvas;
   }
   
   stop() {
@@ -748,7 +782,15 @@ class StormwaterFlowAnimation {
       prevVelocity: { x: 0, y: 0 },  // For smoothing
       accumulation: selectedPoint.weight,
       stationaryTime: 0,
-      size: this.particleSize + Math.random() * 1  // Slight size variation
+      size: this.particleSize + Math.random() * 1,  // Slight size variation
+      // Pooling detection
+      startX: selectedPoint.x + offsetX,
+      startY: selectedPoint.y + offsetY,
+      checkpointX: selectedPoint.x + offsetX,
+      checkpointY: selectedPoint.y + offsetY,
+      checkpointAge: 0,
+      isPooling: false,
+      poolingIntensity: 0  // 0-1 for color blending
     };
   }
   
@@ -885,6 +927,29 @@ class StormwaterFlowAnimation {
         p.stationaryTime = Math.max(0, p.stationaryTime - 1);
       }
       
+      // Pooling detection: check displacement from checkpoint every N frames
+      const checkInterval = 20;  // frames between checks
+      if (p.age - p.checkpointAge >= checkInterval) {
+        const dx = p.x - p.checkpointX;
+        const dy = p.y - p.checkpointY;
+        const displacement = Math.sqrt(dx * dx + dy * dy);
+        
+        if (displacement < this.poolingDisplacementThreshold) {
+          // Not moving much - increase pooling intensity
+          p.poolingIntensity = Math.min(1, p.poolingIntensity + 0.15);
+          p.isPooling = p.poolingIntensity > 0.3;
+        } else {
+          // Moving - decrease pooling intensity
+          p.poolingIntensity = Math.max(0, p.poolingIntensity - 0.1);
+          p.isPooling = p.poolingIntensity > 0.3;
+        }
+        
+        // Update checkpoint
+        p.checkpointX = p.x;
+        p.checkpointY = p.y;
+        p.checkpointAge = p.age;
+      }
+      
       // Remove particles off screen
       if (p.x < 0 || p.x > this.canvas.width || 
           p.y < 0 || p.y > this.canvas.height) {
@@ -962,14 +1027,19 @@ class StormwaterFlowAnimation {
         }
         this.ctx.lineTo(p.x, p.y);
         
-        this.ctx.strokeStyle = `rgba(80, 170, 255, ${alpha * 0.4})`;
+        // Trail color changes based on pooling state
+        if (p.isPooling) {
+          this.ctx.strokeStyle = `rgba(50, 200, 170, ${alpha * 0.4})`;
+        } else {
+          this.ctx.strokeStyle = `rgba(80, 170, 255, ${alpha * 0.4})`;
+        }
         this.ctx.lineWidth = p.size * 0.8;
         this.ctx.stroke();
       }
     }
     
     // Draw particles using pre-rendered glow sprite (much faster than gradients)
-    if (this.glowSprite) {
+    if (this.glowSprite && this.poolingGlowSprite) {
       const spriteSize = this.glowSpriteSize;
       const halfSprite = spriteSize / 2;
       
@@ -978,18 +1048,53 @@ class StormwaterFlowAnimation {
         const alpha = Math.max(0.3, 1.0 - lifeRatio * 0.6);
         const scale = (p.size / 3) * (0.8 + 0.4 * (1 - lifeRatio)); // Shrink as it ages
         
-        this.ctx.globalAlpha = alpha * this.glowIntensity;
+        // Pooling particles get slightly larger
+        const poolScale = p.isPooling ? 1.0 + p.poolingIntensity * 0.4 : 1.0;
+        
+        // Calculate glow intensity - pooling particles get more glow
+        const baseGlow = this.glowIntensity;
+        const extraPoolGlow = p.poolingIntensity * (this.poolingGlowIntensity - this.glowIntensity);
+        const effectiveGlow = baseGlow + extraPoolGlow;
+        
+        this.ctx.globalAlpha = alpha * effectiveGlow;
         
         // Draw scaled sprite at particle position
-        const drawSize = spriteSize * scale;
+        const drawSize = spriteSize * scale * poolScale;
         const halfDraw = drawSize / 2;
-        this.ctx.drawImage(
-          this.glowSprite,
-          p.x - halfDraw,
-          p.y - halfDraw,
-          drawSize,
-          drawSize
-        );
+        
+        // Choose sprite based on pooling intensity
+        // Blend between sprites by drawing both with adjusted alpha for smooth transition
+        if (p.poolingIntensity > 0) {
+          // Draw pooling sprite with pooling intensity (with extra glow)
+          this.ctx.globalAlpha = alpha * effectiveGlow * p.poolingIntensity;
+          this.ctx.drawImage(
+            this.poolingGlowSprite,
+            p.x - halfDraw,
+            p.y - halfDraw,
+            drawSize,
+            drawSize
+          );
+          
+          // Draw flowing sprite with remaining intensity
+          this.ctx.globalAlpha = alpha * baseGlow * (1 - p.poolingIntensity);
+          this.ctx.drawImage(
+            this.glowSprite,
+            p.x - halfDraw,
+            p.y - halfDraw,
+            drawSize,
+            drawSize
+          );
+        } else {
+          // Just draw flowing sprite
+          this.ctx.globalAlpha = alpha * baseGlow;
+          this.ctx.drawImage(
+            this.glowSprite,
+            p.x - halfDraw,
+            p.y - halfDraw,
+            drawSize,
+            drawSize
+          );
+        }
       }
       this.ctx.globalAlpha = 1.0;
     }

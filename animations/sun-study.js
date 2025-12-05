@@ -66,7 +66,7 @@ class SunStudy {
     this.offsetX = 0;      // X position offset
     this.offsetZ = 0;      // Z position offset (Y on screen in top-down)
     this.rotationOffset = 0; // Additional rotation in degrees
-    this.scaleMultiplier = 1.0; // Scale multiplier
+    this.scaleMultiplier = 0.89; // Scale multiplier
     
     this.controlPanel = null;
     this.dependenciesLoaded = false;
@@ -147,6 +147,10 @@ class SunStudy {
       <div class="sun-control">
         <label>Speed: <span id="speed-display">2x</span></label>
         <input type="range" id="sun-speed" min="0.5" max="5" step="0.5" value="2">
+      </div>
+      <div class="sun-control">
+        <label>Model Scale: <span id="scale-display">0.89x</span></label>
+        <input type="range" id="model-scale" min="0.5" max="2.0" step="0.01" value="0.89">
       </div>
 
       <hr style="border: none; border-top: 1px solid #ddd; margin: 12px 0;">
@@ -240,6 +244,15 @@ class SunStudy {
       });
     }
     
+    // Model scale slider
+    const scaleSlider = document.getElementById('model-scale');
+    if (scaleSlider) {
+      scaleSlider.addEventListener('input', (e) => {
+        this.scaleMultiplier = parseFloat(e.target.value);
+        document.getElementById('scale-display').textContent = `${this.scaleMultiplier.toFixed(2)}x`;
+        this.applyManualAdjustments();
+      });
+    }
 
     
     // False color toggle
@@ -723,8 +736,8 @@ class SunStudy {
     
     const scale = ((minCanvasDim * padding) / maxDim) * 2.0;
     
-    // Apply scale (preserving the Z flip)
-    this.mesh.scale.set(scale, scale, -scale);
+    // Apply scale with multiplier (preserving the Z flip)
+    this.mesh.scale.set(scale * this.scaleMultiplier, scale * this.scaleMultiplier, -scale * this.scaleMultiplier);
     
 
     this.baseScale = scale;
