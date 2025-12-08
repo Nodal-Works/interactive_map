@@ -310,31 +310,8 @@ function stopStreetAnimation() {
   flowParticles = [];
 }
 
-// Add button to control panel if it doesn't exist
-document.addEventListener('DOMContentLoaded', () => {
-  const iconControls = document.querySelector('.icon-controls');
-  if (iconControls && !document.getElementById('street-animation-btn')) {
-    const streetBtn = document.createElement('button');
-    streetBtn.id = 'street-animation-btn';
-    streetBtn.className = 'icon-btn';
-    streetBtn.title = 'Animate Streets';
-    streetBtn.innerHTML = `
-      <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-        <path d="M3 12h3m3 0h3m3 0h3m3 0h3M3 6h3m3 0h3m3 0h3m3 0h3M3 18h3m3 0h3m3 0h3m3 0h3"/>
-      </svg>
-    `;
-    
-    // Insert after grid animation button
-    const gridBtn = document.getElementById('grid-animation-btn');
-    if (gridBtn) {
-      gridBtn.parentNode.insertBefore(streetBtn, gridBtn.nextSibling);
-    } else {
-      iconControls.insertBefore(streetBtn, iconControls.firstChild);
-    }
-    
-    streetBtn.addEventListener('click', startStreetAnimation);
-  }
-});
+// Button removed as per request
+
 
 // Resize on window resize
 window.addEventListener('resize', () => {
