@@ -18,6 +18,10 @@
   let animationFrame = null;
   let isSimulating = false;
   
+  // Audio setup
+  const windAudio = new Audio('media/sound/wind.mp3');
+  windAudio.loop = true;
+  
   // Simulation parameters
   let GRID_RESOLUTION = 200; // Number of cells along longer dimension
   const UPSTREAM_FACTOR = 1.0; // Extend domain 1x to the left (reduced for performance)
@@ -944,6 +948,9 @@
     cfdBtn.style.background = '#0078d4';
     cfdBtn.style.color = '#fff';
     
+    // Play wind sound
+    windAudio.play().catch(e => console.warn("Audio play failed:", e));
+    
     resizeCanvas();
     initParticles();
     animate();
@@ -959,6 +966,10 @@
     cfdBtn.classList.remove('toggled-on');
     cfdBtn.style.background = '';
     cfdBtn.style.color = '';
+    
+    // Stop wind sound
+    windAudio.pause();
+    windAudio.currentTime = 0;
     
     if (animationFrame) {
       cancelAnimationFrame(animationFrame);

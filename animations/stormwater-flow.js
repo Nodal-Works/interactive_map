@@ -67,6 +67,10 @@ class StormwaterFlowAnimation {
     this.particleColor = 'rgba(0, 150, 255, 0.7)';
     this.particleTrailColor = 'rgba(0, 150, 255, 0.3)';
     
+    // Audio setup
+    this.rainAudio = new Audio('media/sound/rain.mp3');
+    this.rainAudio.loop = true;
+    
     // Bind methods
     this.animate = this.animate.bind(this);
     this.handleResize = this.handleResize.bind(this);
@@ -585,6 +589,9 @@ class StormwaterFlowAnimation {
     this.canvas.classList.add('active');
     this.handleResize();
     
+    // Play rain sound
+    this.rainAudio.play().catch(e => console.warn("Audio play failed:", e));
+    
     // Scale normalized flow data to current canvas size
     this.scaleFlowToScreen();
     
@@ -714,6 +721,10 @@ class StormwaterFlowAnimation {
     
     this.isActive = false;
     this.canvas.classList.remove('active');
+    
+    // Stop rain sound
+    this.rainAudio.pause();
+    this.rainAudio.currentTime = 0;
     
     if (this.animationFrame) {
       cancelAnimationFrame(this.animationFrame);
