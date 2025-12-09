@@ -1,35 +1,121 @@
-# Interactive Map (interactive_map)
+# ACE MR Studio - Interactive Map
 
-This is a small, self-contained interactive map using Leaflet. It lives in `interactive_map/`.
+An interactive mixed-reality urban visualization platform built for the ACE MR Studio at Chalmers University of Technology. This application provides multiple data visualization layers for urban planning, environmental analysis, and stakeholder engagement.
 
-What it provides
-- `index.html` — the web page with a Leaflet map
-- `style.css` — minimal styling and layout
-- `main.js` — map initialization, base layers, scale, and GeoJSON loader (file input + drag/drop)
+![Main Map View](./media/screenshots/default.png)
 
-How to run
+## Features
 
-1. Quick (open file locally):
+### 🗺️ Main Map View
+The default view displays a dark basemap with the study area in Gothenburg, Sweden. Multiple basemaps are available including OpenStreetMap, Carto Positron/Dark, Esri Satellite, and OpenTopoMap.
 
-   - You can open `interactive_map/index.html` directly in a browser, but some browsers block local file requests for scripts or XHR. If the map doesn't show tiles or scripts, use the local server option below.
+### 🌬️ CFD Wind Simulation
+Real-time Lattice Boltzmann CFD simulation showing wind flow patterns around buildings. The simulation computes fluid dynamics on the fly and visualizes velocity fields with color-coded flow lines.
 
-2. Recommended (local server):
+![CFD Wind Simulation](./media/screenshots/cfd-simulation.png)
 
-   Run a simple HTTP server from the repo root (macOS/Linux):
+### 💧 Stormwater Flow Analysis
+Particle-based visualization of stormwater drainage using the D8 flow direction algorithm. Computes flow accumulation from a Digital Elevation Model (DEM) GeoTIFF and shows how water would flow across the terrain.
 
-   ```
-   python3 -m http.server 8000
-   ```
+![Stormwater Flow](./media/screenshots/stormwater.png)
 
-   Then open http://localhost:8000/interactive_map/ in your browser.
+### ☀️ Sun Study
+3D shadow analysis using Three.js. Loads an STL model of the buildings and computes solar shadow positions based on date, time, and the location's latitude/longitude (Gothenburg, Sweden).
 
-- Using the app
-- Switch base layers using the control in the top-right of the map. Available base maps include OpenStreetMap, CartoDB Positron, CartoDB Dark, Esri World Imagery (satellite), Stamen Terrain, Stamen Toner, and OpenTopoMap (topographic).
-- Use the "Load GeoJSON" button to select a GeoJSON file from disk.
-- You can also drag & drop a `.geojson` or `.json` file directly onto the map.
+![Sun Study](./media/screenshots/sun-study.png)
 
-Next steps / optional enhancements
-- Add marker clustering for large point datasets (Leaflet.markercluster)
-- Support vector tiles with MapLibre GL for high-performance large datasets
-- Add a fullscreen control and permalink / shareable view
-- Convert to a small web app (React/Vue) if you want more UI features
+### 🖼️ Slideshow
+Animated slideshow of various data layers including building footprints, street networks, historic satellite imagery, and analysis results. Supports GeoJSON, images, and videos with metadata overlays.
+
+![Slideshow](./media/screenshots/slideshow.png)
+
+### 📐 Grid Animation
+Holographic grid overlay showing physical table tile boundaries. Used for calibrating the projection onto the physical model table.
+
+![Grid Animation](./media/screenshots/grid-animation.png)
+
+### 👁️ Isovist Analysis
+Interactive visibility/viewshed analysis. Click on the map to place a viewer and see the visible area based on building obstructions. Supports adjustable viewing distance and field of view.
+
+![Isovist Analysis](./media/screenshots/isovist.png)
+
+### 🐦 Bird Sounds
+Spatial audio visualization showing simulated bird sound sensors. Plays audio samples from various bird species with visual feedback on the map.
+
+![Bird Sounds](./media/screenshots/bird-sounds.png)
+
+## Controller Interface
+
+A secondary controller screen provides a touch-friendly interface for operating the visualizations remotely. It communicates with the main display via the BroadcastChannel API.
+
+| Controller Main | Stormwater Dashboard | Sun Study Controls | Credits |
+|----------------|---------------------|-------------------|---------|
+| ![Controller Main](./media/screenshots/controller-main.png) | ![Stormwater](./media/screenshots/controller-stormwater.png) | ![Sun Study](./media/screenshots/controller-sun-study.png) | ![Credits](./media/screenshots/controller-credits.png) |
+
+## How to Run
+
+### Quick Start (Local Server)
+
+```bash
+# From the repository root
+python3 -m http.server 8000
+```
+
+Then open:
+- Main display: http://localhost:8000/index.html
+- Controller: http://localhost:8000/controller.html
+
+### Files Structure
+
+```
+├── index.html           # Main display page
+├── controller.html      # Remote controller interface
+├── main.js              # Map initialization and core functionality
+├── controller.js        # Controller logic
+├── style.css            # Styling for both interfaces
+├── map-calibration.json # Saved map position/zoom/bearing
+├── animations/          # Feature modules
+│   ├── bird-sounds.js
+│   ├── cfd-simulation.js
+│   ├── grid-animation.js
+│   ├── isovist.js
+│   ├── slideshow.js
+│   ├── stormwater-flow.js
+│   ├── street-glow-animation.js
+│   └── sun-study.js
+├── media/               # Data files and assets
+│   ├── building-footprints.geojson
+│   ├── street-network.geojson
+│   ├── clipped_dem.geotiff.tif
+│   ├── mesh.stl
+│   └── slideshow/
+└── scripts/             # Utility scripts
+    ├── process_dem_flow.py
+    └── take_screenshots.py
+```
+
+## Technologies
+
+- **MapLibre GL JS** - Map rendering with native rotation/bearing support
+- **Three.js** - 3D rendering for sun study shadows
+- **GeoTIFF.js** - DEM raster processing in-browser
+- **BroadcastChannel API** - Cross-window communication
+- **Web Audio API** - Spatial audio for bird sounds
+
+## Python Dependencies (for data processing)
+
+```bash
+pip install numpy rasterio scipy Pillow playwright
+```
+
+## Credits
+
+- **Principal Investigator**: Alexander Hollberg
+- **Development Lead**: Sanjay Somanath  
+- **Model Design & Printing**: Arvid Hall
+- **Organizations**: Digital Twin Cities Centre, Chalmers University of Technology
+
+## License
+
+This project is part of the ACE MR Studio research initiative at Chalmers University of Technology.
+
