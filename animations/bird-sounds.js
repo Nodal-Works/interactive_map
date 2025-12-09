@@ -364,7 +364,7 @@ class BirdSoundsLayer {
 
       // Draw pulsating glow under the sensor
       if (intensity > 0.01) {
-        const glowRadius = 10 + intensity * 80; // Dynamic radius based on volume
+        const glowRadius = 50 + intensity * 500; // Dynamic radius based on volume
         const gradient = this.ctx.createRadialGradient(pos.x, pos.y, 0, pos.x, pos.y, glowRadius);
         
         // Convert hex color to rgb for rgba usage
@@ -384,7 +384,7 @@ class BirdSoundsLayer {
 
         // Draw Loop Waveform Visualizer
         // Map frequency data to a circle
-        const baseRadius = 30 + intensity * 20;
+        const baseRadius = 75 + intensity * 70;
         const scale = 0.5;
         
         this.ctx.beginPath();
@@ -420,7 +420,7 @@ class BirdSoundsLayer {
       // Use a dynamic threshold based on recent average to detect beats/peaks
       // Simple peak detection: if current > threshold and time elapsed > min_interval
       // We lower the interval to allow faster beats if the song is fast
-      if (average > 25 && now - sound.lastWaveTime > 400) {
+      if (average > 25 && now - sound.lastWaveTime > 1000) {
         // Check if this is a local peak (simple version: just check if it's loud enough)
         // For better beat detection we'd need history, but this is a visualizer
         
@@ -435,10 +435,10 @@ class BirdSoundsLayer {
       // Update and draw waves
       for (let i = sound.waves.length - 1; i >= 0; i--) {
         const wave = sound.waves[i];
-        wave.r += 0.1 + wave.intensity * 0.2; // Slower expansion
+        wave.r += 0.5 + wave.intensity * 1.0; // Faster expansion
         
         // Fade out slower to let them travel farther
-        wave.opacity -= 0.0005; 
+        wave.opacity -= 0.001; 
 
         if (wave.opacity <= 0) {
           sound.waves.splice(i, 1);
