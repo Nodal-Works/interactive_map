@@ -15,13 +15,38 @@
   let updateRequestId = null;
   let animationFrameId = null;
 
-  const MAX_VIEW_DISTANCE = 200; // meters
+  let MAX_VIEW_DISTANCE = 200; // meters
   const RAY_COUNT = 360; // number of rays to cast
-  const HUMAN_FOV = 120; // human field of view in degrees (120° total, 60° each side)
-  const USE_HUMAN_FOV = true; // set to false for full 360° view
-  const FOLLOW_CURSOR = true; // viewer follows cursor when it moves far enough
+  let HUMAN_FOV = 120; // human field of view in degrees (120° total, 60° each side)
+  let USE_HUMAN_FOV = true; // set to false for full 360° view
+  let FOLLOW_CURSOR = true; // viewer follows cursor when it moves far enough
   const FOLLOW_THRESHOLD = 50; // distance in meters before viewer starts following
   const FOLLOW_SPEED = 0.15; // how fast viewer follows (0-1, higher = faster)
+
+  // Listen for remote control messages
+  const channel = new BroadcastChannel('map_controller_channel');
+  channel.onmessage = (event) => {
+    const data = event.data;
+    if (data.type === 'isovist_control') {
+        switch (data.action) {
+            case 'set_radius':
+                MAX_VIEW_DISTANCE = parseInt(data.value);
+                if (isovistActive && viewerPosition) updateVisualization();
+                break;
+            case 'set_fov':
+                HUMAN_FOV = parseInt(data.value);
+                if (isovistActive && viewerPosition) updateVisualization();
+                break;
+            case 'toggle_360':
+                USE_HUMAN_FOV = !USE_HUMAN_FOV;
+                if (isovistActive && viewerPosition) updateVisualization();
+                break;
+             case 'toggle_follow':
+                FOLLOW_CURSOR = !FOLLOW_CURSOR;
+                break;
+        }
+    }
+  };
 
   // Initialize isovist mode
   function initIsovist() {

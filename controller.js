@@ -406,6 +406,124 @@ function updateDashboard(targetId) {
             sendCfdControl('set_resolution', e.target.value);
         });
 
+    } else if (targetId === 'isovist-btn') {
+        dashboardContent.innerHTML = `
+            <div class="dashboard-container">
+                <div class="dashboard-card">
+                    <div class="dashboard-section-title">
+                        <span class="material-icons" style="font-size: 18px;">visibility</span>
+                        Isovist Controls
+                    </div>
+                    
+                    <div class="control-row">
+                        <label class="control-label">View Radius</label>
+                        <input type="range" id="isovist-radius" class="modern-range" min="50" max="500" step="10" value="200">
+                        <span id="radius-display" class="control-value">200m</span>
+                    </div>
+
+                    <div class="control-row">
+                        <label class="control-label">Field of View</label>
+                        <input type="range" id="isovist-fov" class="modern-range" min="30" max="180" step="5" value="120">
+                        <span id="fov-display" class="control-value">120°</span>
+                    </div>
+
+                    <div class="action-grid">
+                        <button id="toggle-360-btn" class="modern-btn">
+                            <span class="material-icons">360</span> Toggle 360°
+                        </button>
+                        <button id="toggle-follow-btn" class="modern-btn active">
+                            <span class="material-icons">mouse</span> Follow Cursor
+                        </button>
+                    </div>
+                </div>
+
+                <div class="dashboard-card">
+                    <div class="dashboard-section-title">
+                        <span class="material-icons" style="font-size: 18px;">school</span>
+                        Educational Context
+                    </div>
+                    <div class="info-box" style="margin-bottom: 1rem; border-left-color: #eab308;">
+                        <div class="info-title">Methodology</div>
+                        <p class="info-text">
+                            Calculates a <strong>visibility polygon</strong> (isovist) from a specific point by casting rays in all directions until they hit an obstacle (building). 
+                            Simulates human visual perception in urban space.
+                        </p>
+                    </div>
+                    <div class="info-box" style="border-left-color: #eab308;">
+                        <div class="info-title">Application</div>
+                        <p class="info-text">
+                            Used in <strong>urban design</strong> and <strong>criminology</strong> (CPTED) to analyze surveillance, openness, and spatial connectivity. 
+                            Helps identify "dead spaces" with poor visibility or maximize scenic views.
+                        </p>
+                    </div>
+                </div>
+            </div>
+        `;
+        
+        legendContent.innerHTML = `
+            <div class="dashboard-card">
+                <div class="dashboard-section-title">Legend</div>
+                <div style="display: flex; flex-direction: column; gap: 0.5rem;">
+                    <div class="legend-item">
+                        <div class="legend-color" style="background: rgba(255, 255, 0, 0.3); border: 1px solid #eab308;"></div>
+                        <span class="legend-label">Visible Area</span>
+                    </div>
+                    <div class="legend-item">
+                        <div class="legend-color" style="width: 12px; height: 12px; border-radius: 50%; background: #ff0000; border: 2px solid white; margin: 6px;"></div>
+                        <span class="legend-label">Viewer Position</span>
+                    </div>
+                    <div class="legend-item">
+                        <div class="legend-color" style="height: 3px; background: #ff0000; margin: 10px 0;"></div>
+                        <span class="legend-label">View Direction</span>
+                    </div>
+                </div>
+            </div>
+        `;
+
+        // Attach event listeners
+        const radiusInput = document.getElementById('isovist-radius');
+        const radiusDisplay = document.getElementById('radius-display');
+        const fovInput = document.getElementById('isovist-fov');
+        const fovDisplay = document.getElementById('fov-display');
+        const toggle360Btn = document.getElementById('toggle-360-btn');
+        const toggleFollowBtn = document.getElementById('toggle-follow-btn');
+
+        const sendIsovistControl = (action, value) => {
+            channel.postMessage({
+                type: 'isovist_control',
+                action: action,
+                value: value
+            });
+        };
+
+        radiusInput.addEventListener('input', (e) => {
+            radiusDisplay.textContent = e.target.value + 'm';
+            sendIsovistControl('set_radius', e.target.value);
+        });
+
+        fovInput.addEventListener('input', (e) => {
+            fovDisplay.textContent = e.target.value + '°';
+            sendIsovistControl('set_fov', e.target.value);
+        });
+
+        toggle360Btn.addEventListener('click', () => {
+            toggle360Btn.classList.toggle('active');
+            sendIsovistControl('toggle_360');
+            // Disable FOV slider if 360 is active
+            if (toggle360Btn.classList.contains('active')) {
+                fovInput.disabled = true;
+                fovInput.parentElement.style.opacity = '0.5';
+            } else {
+                fovInput.disabled = false;
+                fovInput.parentElement.style.opacity = '1';
+            }
+        });
+
+        toggleFollowBtn.addEventListener('click', () => {
+            toggleFollowBtn.classList.toggle('active');
+            sendIsovistControl('toggle_follow');
+        });
+
     } else if (targetId === 'grid-animation-btn') {
         dashboardContent.innerHTML = `
             <div class="dashboard-container">
