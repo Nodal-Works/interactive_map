@@ -6,6 +6,9 @@ const slideshowCtx = slideshowCanvas ? slideshowCanvas.getContext('2d') : null;
 const slideshowBtn = document.getElementById('slideshow-btn');
 const slideshowMetadata = document.getElementById('slideshow-metadata');
 
+// BroadcastChannel for controller communication
+const slideshowChannel = new BroadcastChannel('map_controller_channel');
+
 // Slideshow state
 let slideshowConfig = null;
 let currentSlideIndex = 0;
@@ -276,71 +279,35 @@ function animateTransition(oldMedia, newMedia, transitionType, duration = 500, o
 
 // Display metadata
 function displayMetadata(slide, highlightValue = null) {
-  if (!slideshowMetadata || !slideshowConfig.settings.showMetadata || !slide.metadata) {
-    if (slideshowMetadata) slideshowMetadata.style.display = 'none';
-    return;
+  // Hide metadata overlay in main window - it's now shown in controller
+  if (slideshowMetadata) {
+    slideshowMetadata.style.display = 'none';
   }
   
-  slideshowMetadata.style.display = 'block';
-  
-  let html = '';
-  
-  if (slide.metadata.title) {
-    html += `<div class="slideshow-title">${slide.metadata.title}</div>`;
-  }
-  
-  if (slide.metadata.description) {
-    html += `<div class="slideshow-description">${slide.metadata.description}</div>`;
-  }
-  
-  if (slide.metadata.source) {
-    html += `<div class="slideshow-source">${slide.metadata.source}</div>`;
-  }
-  
-  if (slide.metadata.legend && slide.metadata.legend.items) {
-    html += '<div class="slideshow-legend">';
-    
-    // Get color map to match legend items with property values
-    const colorMap = slide.metadata.style?.colorMap || {};
-    const colorToValue = {};
-    Object.entries(colorMap).forEach(([value, color]) => {
-      colorToValue[color] = value;
-    });
-    
-    slide.metadata.legend.items.forEach(item => {
-      const propertyValue = colorToValue[item.color];
-      const isActive = highlightValue && propertyValue === highlightValue;
-      const activeClass = isActive ? ' legend-item-active' : '';
-      
-      html += `
-        <div class="legend-item${activeClass}" data-value="${propertyValue || ''}">
-          <span class="legend-color" style="background-color: ${item.color}"></span>
-          <span class="legend-label">${item.label}</span>
-        </div>
-      `;
-    });
-    html += '</div>';
-  }
-  
-  slideshowMetadata.innerHTML = html;
-  
-  // Position metadata
-  const position = slideshowConfig.settings.metadataPosition || 'bottom-right';
-  slideshowMetadata.className = 'slideshow-metadata ' + position;
+  // Still broadcast to controller
+  broadcastSlideshowState(slide);
 }
 
-// Update legend to highlight current attribute
-function highlightLegendItem(slide, propertyValue) {
-  if (!slideshowMetadata) return;
+// Broadcast slideshow state to controller window
+function broadcastSlideshowState(slide) {
+  if (!slideshowConfig) return;
   
-  const legendItems = slideshowMetadata.querySelectorAll('.legend-item');
-  legendItems.forEach(item => {
-    const itemValue = item.getAttribute('data-value');
-    if (itemValue === propertyValue) {
-      item.classList.add('legend-item-active');
-    } else {
-      item.classList.remove('legend-item-active');
-    }
+  slideshowChannel.postMessage({
+    type: 'slideshow_update',
+    isActive: isSlideShowActive,
+    currentIndex: currentSlideIndex,
+    totalSlides: slideshowConfig.slides.length,
+    metadata: slide?.metadata || null,
+    slideType: slide?.type || null
+  });
+}
+
+// Update legend to highlight current attribute - broadcasts to controller only
+function highlightLegendItem(slide, propertyValue) {
+  // Broadcast highlight state to controller
+  slideshowChannel.postMessage({
+    type: 'slideshow_legend_highlight',
+    highlightValue: propertyValue
   });
 }
 
@@ -401,11 +368,11 @@ async function animateGeoJSONByProperty(geojson, slide) {
     }
   }
   
-  // Clear highlight when done
-  if (slideshowMetadata) {
-    const legendItems = slideshowMetadata.querySelectorAll('.legend-item');
-    legendItems.forEach(item => item.classList.remove('legend-item-active'));
-  }
+  // Broadcast clear highlight to controller
+  slideshowChannel.postMessage({
+    type: 'slideshow_legend_highlight',
+    highlightValue: null
+  });
   
   // Return true if animation completed successfully
   return geojsonAnimationActive;
@@ -545,6 +512,18 @@ function stopGeoJSONAnimation() {
   // Remove glow layer
   if (map.getLayer('slideshow-glow')) {
     map.removeLayer('slideshow-glow');
+  }
+}
+
+// Remove all slideshow GeoJSON layers from the map
+function removeGeoJSONLayers() {
+  stopGeoJSONAnimation();
+  
+  if (map.getSource('slideshow-geojson')) {
+    ['slideshow-fill', 'slideshow-line', 'slideshow-polygon-outline', 'slideshow-point', 'slideshow-glow'].forEach(id => {
+      if (map.getLayer(id)) map.removeLayer(id);
+    });
+    map.removeSource('slideshow-geojson');
   }
 }
 
@@ -717,6 +696,9 @@ async function displaySlide(index) {
         }
       }
     } else if (slide.type === 'video') {
+      // Remove any GeoJSON layers from previous slide
+      removeGeoJSONLayers();
+      
       // For video, show canvas and play it
       if (slideshowCanvas) {
         slideshowCanvas.classList.add('active');
@@ -741,6 +723,9 @@ async function displaySlide(index) {
       // Display metadata for video
       displayMetadata(slide);
     } else {
+      // Remove any GeoJSON layers from previous slide
+      removeGeoJSONLayers();
+      
       // For images/gifs, show canvas
       if (slideshowCanvas) {
         slideshowCanvas.classList.add('active');
@@ -893,6 +878,16 @@ function stopSlideshow() {
   currentMediaElement = null;
   currentSlideIndex = 0;
   
+  // Broadcast stop state to controller
+  slideshowChannel.postMessage({
+    type: 'slideshow_update',
+    isActive: false,
+    currentIndex: 0,
+    totalSlides: 0,
+    metadata: null,
+    slideType: null
+  });
+  
   showToast('Slideshow stopped');
 }
 
@@ -939,6 +934,35 @@ document.addEventListener('keydown', (e) => {
     displaySlide(currentSlideIndex);
   } else if (e.key === 'Escape') {
     e.preventDefault();
+    stopSlideshow();
+  }
+});
+
+// Listen for slideshow control messages from controller
+slideshowChannel.addEventListener('message', (event) => {
+  const data = event.data;
+  if (data.type !== 'slideshow_control') return;
+  
+  if (data.action === 'next') {
+    if (!isSlideShowActive) return;
+    stopGeoJSONAnimation();
+    advanceSlide();
+  } else if (data.action === 'previous') {
+    if (!isSlideShowActive) return;
+    stopGeoJSONAnimation();
+    if (slideshowTimer) {
+      clearTimeout(slideshowTimer);
+      slideshowTimer = null;
+    }
+    if (currentMediaElement instanceof HTMLVideoElement) {
+      currentMediaElement.pause();
+    }
+    currentSlideIndex = currentSlideIndex - 1;
+    if (currentSlideIndex < 0) {
+      currentSlideIndex = slideshowConfig.slides.length - 1;
+    }
+    displaySlide(currentSlideIndex);
+  } else if (data.action === 'stop') {
     stopSlideshow();
   }
 });
