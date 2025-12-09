@@ -290,13 +290,14 @@ function displayMetadata(slide, highlightValue = null) {
 
 // Broadcast slideshow state to controller window
 function broadcastSlideshowState(slide) {
-  if (!slideshowConfig) return;
+  // Allow broadcasting even if config is missing (e.g. during loading or error)
+  const total = slideshowConfig && slideshowConfig.slides ? slideshowConfig.slides.length : 0;
   
   slideshowChannel.postMessage({
     type: 'slideshow_update',
     isActive: isSlideShowActive,
     currentIndex: currentSlideIndex,
-    totalSlides: slideshowConfig.slides.length,
+    totalSlides: total,
     metadata: slide?.metadata || null,
     slideType: slide?.type || null
   });
@@ -798,11 +799,27 @@ async function startSlideshow() {
   
   if (!slideshowConfig.slides || slideshowConfig.slides.length === 0) {
     showToast('No slides found in slideshow configuration');
+    broadcastSlideshowState(null);
     return;
   }
   
   isSlideShowActive = true;
   currentSlideIndex = 0;
+  
+  // Broadcast initial state immediately
+  if (slideshowConfig && slideshowConfig.slides && slideshowConfig.slides.length > 0) {
+    broadcastSlideshowState(slideshowConfig.slides[0]);
+  } else {
+    // Broadcast empty/loading state if config failed or empty
+    slideshowChannel.postMessage({
+      type: 'slideshow_update',
+      isActive: true, // Still active, just empty
+      currentIndex: 0,
+      totalSlides: 0,
+      metadata: { title: "No Slides Found", description: "Check configuration." },
+      slideType: null
+    });
+  }
   
   // Prepare canvas (but don't show it yet - displaySlide will decide)
   if (slideshowCanvas) {
@@ -964,5 +981,8 @@ slideshowChannel.addEventListener('message', (event) => {
     displaySlide(currentSlideIndex);
   } else if (data.action === 'stop') {
     stopSlideshow();
+  } else if (data.action === 'request_status') {
+    const slide = slideshowConfig?.slides?.[currentSlideIndex];
+    broadcastSlideshowState(slide);
   }
 });

@@ -59,6 +59,8 @@ class BirdSoundsLayer {
                 this.setVolume(value);
             } else if (action === 'stop_all') {
                 this.stopAll();
+            } else if (action === 'request_status') {
+                this.broadcastActiveBirds();
             }
         }
     };

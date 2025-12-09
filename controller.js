@@ -48,6 +48,13 @@ document.querySelectorAll('.control-btn[data-target]').forEach(btn => {
         
         updateMetadata(targetId);
         updateDashboard(targetId);
+
+        // Request immediate status update for dynamic layers
+        if (targetId === 'bird-sounds-btn') {
+            channel.postMessage({ type: 'bird_control', action: 'request_status' });
+        } else if (targetId === 'slideshow-btn') {
+            channel.postMessage({ type: 'slideshow_control', action: 'request_status' });
+        }
     });
 });
 
@@ -63,7 +70,42 @@ function updateDashboard(targetId) {
     
     // Use dedicated slideshow dashboard function for slideshow
     if (targetId === 'slideshow-btn') {
-        updateSlideshowDashboard();
+        // If we already know the slideshow is active, show the dashboard immediately
+        // This prevents overwriting the active state with "Loading..." if the state update
+        // arrives before this function is called (race condition).
+        if (slideshowState.isActive) {
+            updateSlideshowDashboard();
+            return;
+        }
+
+        // Optimistically show loading state
+        const dashboardContent = document.getElementById('dashboard-content');
+        const legendContent = document.getElementById('legend-content');
+        
+        dashboardContent.innerHTML = `
+            <div class="dashboard-container">
+                <div class="dashboard-card">
+                    <div class="dashboard-section-title">
+                        <span class="material-icons" style="font-size: 18px;">slideshow</span>
+                        Slideshow
+                    </div>
+                    <div class="info-box" style="border-left-color: #8b5cf6;">
+                        <div class="info-title">Loading...</div>
+                        <p class="info-text">
+                            Starting slideshow and loading media...
+                        </p>
+                    </div>
+                </div>
+            </div>
+        `;
+        
+        legendContent.innerHTML = `
+            <div class="dashboard-card">
+                <div class="dashboard-section-title">Legend</div>
+                <p style="color: #6b7280; font-size: 0.9rem;">Loading legend...</p>
+            </div>
+        `;
+        
         return;
     }
 
@@ -764,66 +806,65 @@ function updateDashboard(targetId) {
     } else if (targetId === 'bird-sounds-btn') {
         dashboardContent.innerHTML = `
             <div class="dashboard-container">
-                <div class="dashboard-card">
-                    <div class="dashboard-section-title">
-                        <span class="material-icons" style="font-size: 18px;">volume_up</span>
-                        Audio Controls
-                    </div>
-                    
-                    <div class="control-row">
-                        <label class="control-label">Master Volume</label>
-                        <input type="range" id="bird-volume" class="modern-range" min="0" max="1" step="0.1" value="0.5">
-                    </div>
-
-                    <div class="action-grid">
-                        <button id="stop-sounds-btn" class="modern-btn">
-                            <span class="material-icons">stop</span> Stop All
+                <div class="dashboard-card" style="padding: 0.75rem;">
+                    <div style="display: flex; align-items: center; gap: 10px;">
+                        <span class="material-icons" style="font-size: 20px; color: #84cc16;">volume_up</span>
+                        <input type="range" id="bird-volume" class="modern-range" min="0" max="1" step="0.1" value="0.5" style="flex: 1;">
+                        <button id="stop-sounds-btn" class="modern-btn" style="padding: 6px 10px; font-size: 0.8rem;">
+                            <span class="material-icons" style="font-size: 16px;">stop</span>
                         </button>
                     </div>
                 </div>
 
-                <div class="dashboard-card">
-                    <div class="dashboard-section-title">
-                        <span class="material-icons" style="font-size: 18px;">school</span>
-                        Educational Context
-                    </div>
-                    <div class="info-box" style="margin-bottom: 1rem; border-left-color: #84cc16;">
-                        <div class="info-title">Methodology</div>
-                        <p class="info-text">
-                            Visualizes and spatializes bird calls based on <strong>simulated sensor data</strong>. 
-                            Different species are mapped to specific habitats within the district.
-                        </p>
-                    </div>
-                    <div class="info-box" style="border-left-color: #84cc16;">
-                        <div class="info-title">Application</div>
-                        <p class="info-text">
-                            Used for <strong>biodiversity monitoring</strong> and assessing the quality of urban green spaces. 
-                            Soundscapes are a key indicator of ecosystem health in cities.
-                        </p>
+                <div id="active-birds-container">
+                    <div class="dashboard-card">
+                        <div class="dashboard-section-title">Active Birds</div>
+                        <p style="color: #888; font-size: 0.85rem;">Listening for bird calls...</p>
                     </div>
                 </div>
-            </div>
         `;
         
         legendContent.innerHTML = `
             <div class="dashboard-card">
-                <div class="dashboard-section-title">Legend</div>
-                <div style="display: flex; flex-direction: column; gap: 0.5rem;">
-                    <div class="legend-item">
-                        <div class="legend-color" style="background: #FFD700; border-radius: 50%;"></div>
-                        <span class="legend-label">Thrush Nightingale</span>
+                <div class="dashboard-section-title">Species Guide</div>
+                <div style="display: flex; flex-direction: column; gap: 12px;">
+                    <div style="display: flex; gap: 10px; align-items: start;">
+                        <img src="https://upload.wikimedia.org/wikipedia/commons/9/93/Luscinia_luscinia_vogelartinfo_chris_romeiks_CHR3635.jpg" style="width: 50px; height: 50px; object-fit: cover; border-radius: 4px;">
+                        <div style="flex: 1;">
+                            <div style="display: flex; align-items: center; gap: 6px; margin-bottom: 2px;">
+                                <span style="width: 10px; height: 10px; border-radius: 50%; background: #FFD700;"></span>
+                                <span style="font-weight: bold; font-size: 0.9rem;">Thrush Nightingale</span>
+                            </div>
+                            <div style="font-size: 0.8rem; color: #666; line-height: 1.3;">
+                                Known for its powerful and melodious song, often heard at night. It breeds in dense damp thickets.
+                            </div>
+                        </div>
                     </div>
-                    <div class="legend-item">
-                        <div class="legend-color" style="background: #00BFFF; border-radius: 50%;"></div>
-                        <span class="legend-label">European Pied Flycatcher</span>
+
+                    <div style="display: flex; gap: 10px; align-items: start;">
+                        <img src="https://upload.wikimedia.org/wikipedia/commons/5/53/Ficedula_hypoleuca_-Wood_of_Cree_Nature_Reserve%2C_Scotland_-male-8a.jpg" style="width: 50px; height: 50px; object-fit: cover; border-radius: 4px;">
+                        <div style="flex: 1;">
+                            <div style="display: flex; align-items: center; gap: 6px; margin-bottom: 2px;">
+                                <span style="width: 10px; height: 10px; border-radius: 50%; background: #00BFFF;"></span>
+                                <span style="font-weight: bold; font-size: 0.9rem;">European Pied Flycatcher</span>
+                            </div>
+                            <div style="font-size: 0.8rem; color: #666; line-height: 1.3;">
+                                A small passerine bird that breeds in most of Europe and western Asia. It is migratory, wintering in western Africa.
+                            </div>
+                        </div>
                     </div>
-                    <div class="legend-item">
-                        <div class="legend-color" style="background: #FF4500; border-radius: 50%;"></div>
-                        <span class="legend-label">Black Redstart</span>
-                    </div>
-                     <div class="legend-item">
-                        <div class="legend-color" style="border: 2px solid #666; background: transparent; border-radius: 50%;"></div>
-                        <span class="legend-label">Audio Sensor</span>
+
+                    <div style="display: flex; gap: 10px; align-items: start;">
+                        <img src="https://upload.wikimedia.org/wikipedia/commons/1/14/Hausrotschwanz_Brutpflege_2006-05-21-05.jpg" style="width: 50px; height: 50px; object-fit: cover; border-radius: 4px;">
+                        <div style="flex: 1;">
+                            <div style="display: flex; align-items: center; gap: 6px; margin-bottom: 2px;">
+                                <span style="width: 10px; height: 10px; border-radius: 50%; background: #FF4500;"></span>
+                                <span style="font-weight: bold; font-size: 0.9rem;">Black Redstart</span>
+                            </div>
+                            <div style="font-size: 0.8rem; color: #666; line-height: 1.3;">
+                                A small passerine bird that has adapted to live in the heart of industrial and urban centers.
+                            </div>
+                        </div>
                     </div>
                 </div>
             </div>
@@ -887,9 +928,11 @@ let slideshowState = {
     slideType: null
 };
 
-// Listen for updates from the main window
+// Listen for messages from main app
 channel.onmessage = (event) => {
     const data = event.data;
+    console.log('Controller received message:', data.type, data);
+    
     if (data.type === 'state_update') {
         // Update controller UI based on main window state
         console.log('Received state update:', data);
@@ -933,25 +976,38 @@ channel.onmessage = (event) => {
         const timeSlider = document.getElementById('sun-time');
         const timeDisplay = document.getElementById('time-display');
         if (timeSlider && timeDisplay) {
-            // Only update if not currently being dragged (optional check, but good for UX)
-            // For simplicity, we'll just update it, which might fight the user if they drag while animating
-            // But usually animation is paused when dragging manually
             timeSlider.value = data.time;
             const h = Math.floor(data.time);
             const m = Math.floor((data.time - h) * 60);
             timeDisplay.textContent = `${h.toString().padStart(2, '0')}:${m.toString().padStart(2, '0')}`;
         }
+    } else if (data.type === 'calibration_data') {
+        const calibrationText = data.text;
+        navigator.clipboard.writeText(calibrationText).then(() => {
+            alert('Calibration copied to clipboard!');
+        }).catch(err => {
+            console.error('Clipboard error:', err);
+            alert('Failed to copy to clipboard. Check console for data.');
+            console.log(calibrationText);
+        });
     }
 };
 
 function updateBirdDashboard(activeBirds) {
-    const dashboardContent = document.getElementById('dashboard-content');
+    const container = document.getElementById('active-birds-container');
+    if (!container) return;
+
     // Only update if Bird Sounds is the active layer (checked via button state)
     const birdBtn = document.querySelector('.control-btn[data-target="bird-sounds-btn"]');
     if (!birdBtn || !birdBtn.classList.contains('active')) return;
 
     if (!activeBirds || activeBirds.length === 0) {
-        dashboardContent.innerHTML = '<p>Listening for bird calls...</p>';
+        container.innerHTML = `
+            <div class="dashboard-card">
+                <div class="dashboard-section-title">Active Birds</div>
+                <p>Listening for bird calls...</p>
+            </div>
+        `;
         return;
     }
 
@@ -959,17 +1015,17 @@ function updateBirdDashboard(activeBirds) {
         <style>
             .bird-card {
                 background: #fff;
-                border-radius: 8px;
+                border-radius: 6px;
                 overflow: hidden;
-                box-shadow: 0 2px 4px rgba(0,0,0,0.05);
-                margin-bottom: 10px;
-                border-left: 4px solid transparent;
+                box-shadow: 0 1px 3px rgba(0,0,0,0.05);
+                margin-bottom: 6px;
+                border-left: 3px solid transparent;
                 display: flex;
-                height: 80px;
+                height: 50px;
             }
             .bird-image-container {
-                width: 80px;
-                height: 80px;
+                width: 50px;
+                height: 50px;
                 flex-shrink: 0;
             }
             .bird-image {
@@ -978,55 +1034,57 @@ function updateBirdDashboard(activeBirds) {
                 object-fit: cover;
             }
             .bird-info {
-                padding: 8px 12px;
+                padding: 4px 8px;
                 flex-grow: 1;
                 display: flex;
-                flex-direction: column;
-                justify-content: center;
+                align-items: center;
+                gap: 8px;
                 overflow: hidden;
             }
             .bird-name {
-                font-weight: bold;
-                font-size: 0.95rem;
-                margin-bottom: 4px;
+                font-weight: 600;
+                font-size: 0.8rem;
                 white-space: nowrap;
                 overflow: hidden;
                 text-overflow: ellipsis;
+                min-width: 0;
             }
             .sensor-info {
-                font-size: 0.75rem;
+                font-size: 0.7rem;
                 color: #888;
                 display: flex;
                 align-items: center;
-                gap: 4px;
-                margin-bottom: 4px;
+                gap: 2px;
+                flex-shrink: 0;
             }
             
             /* CSS Waveform Animation */
             .waveform-visualizer {
                 display: flex;
-                align-items: flex-end;
-                gap: 2px;
-                height: 24px;
-                margin-top: auto;
+                align-items: center;
+                gap: 1px;
+                height: 20px;
+                flex-shrink: 0;
             }
             .wave-bar {
-                width: 4px;
+                width: 2px;
                 background-color: #ccc;
                 animation: wave 1s ease-in-out infinite;
-                border-radius: 2px;
+                border-radius: 1px;
             }
             @keyframes wave {
                 0%, 100% { height: 20%; }
                 50% { height: 100%; }
             }
         </style>
-        <div style="display: flex; flex-direction: column;">
+        <div class="dashboard-card" style="padding: 0.5rem;">
+            <div class="dashboard-section-title" style="margin-bottom: 0.5rem; font-size: 0.85rem;">Active Birds</div>
+            <div style="display: flex; flex-direction: column;">
     `;
 
     activeBirds.forEach(item => {
         // Generate random animation delays for a more organic look
-        const bars = Array.from({length: 15}, (_, i) => {
+        const bars = Array.from({length: 8}, (_, i) => {
             const delay = Math.random() * 1;
             return `<div class="wave-bar" style="background-color: ${item.bird.color}; animation-delay: -${delay}s;"></div>`;
         }).join('');
@@ -1039,8 +1097,8 @@ function updateBirdDashboard(activeBirds) {
                 <div class="bird-info">
                     <div class="bird-name" style="color: ${item.bird.color};">${item.bird.name}</div>
                     <div class="sensor-info">
-                        <span class="material-icons" style="font-size: 12px;">sensors</span>
-                        Sensor #${item.sensor.id}
+                        <span class="material-icons" style="font-size: 10px;">sensors</span>
+                        #${item.sensor.id}
                     </div>
                     <div class="waveform-visualizer">
                         ${bars}
@@ -1049,8 +1107,8 @@ function updateBirdDashboard(activeBirds) {
             </div>
         `;
     });
-    html += '</div>';
-    dashboardContent.innerHTML = html;
+    html += '</div></div>';
+    container.innerHTML = html;
 }
 
 // Update slideshow dashboard with live metadata and controls
@@ -1066,15 +1124,35 @@ function updateSlideshowDashboard() {
                         <span class="material-icons" style="font-size: 18px;">slideshow</span>
                         Slideshow
                     </div>
-                    <div class="info-box" style="border-left-color: #8b5cf6;">
+                    <div class="info-box" style="border-left-color: #8b5cf6; margin-bottom: 1rem;">
                         <div class="info-title">Ready to Start</div>
                         <p class="info-text">
-                            Click the slideshow button to begin cycling through curated visualizations of the project area.
+                            The slideshow is currently stopped.
                         </p>
                     </div>
+                    <button id="slideshow-start-btn" class="modern-btn primary" style="width: 100%;">
+                        <span class="material-icons">play_arrow</span> Start Slideshow
+                    </button>
                 </div>
             </div>
         `;
+        
+        // Add listener for start button
+        setTimeout(() => {
+            const startBtn = document.getElementById('slideshow-start-btn');
+            if (startBtn) {
+                startBtn.addEventListener('click', () => {
+                    // Send toggle command
+                    channel.postMessage({
+                        type: 'control_action',
+                        target: 'slideshow-btn'
+                    });
+                    // Show loading state locally
+                    dashboardContent.innerHTML = '<div class="dashboard-container"><div class="dashboard-card"><p>Starting...</p></div></div>';
+                });
+            }
+        }, 0);
+
         legendContent.innerHTML = `
             <div class="dashboard-card">
                 <div class="dashboard-section-title">Legend</div>
@@ -1763,19 +1841,4 @@ document.addEventListener('keydown', (e) => {
         channel.postMessage({ type: 'slideshow_control', action: 'stop' });
     }
 });
-
-// Listen for messages from main app
-channel.onmessage = (event) => {
-    const data = event.data;
-    if (data.type === 'calibration_data') {
-        const calibrationText = data.text;
-        navigator.clipboard.writeText(calibrationText).then(() => {
-            alert('Calibration copied to clipboard!');
-        }).catch(err => {
-            console.error('Clipboard error:', err);
-            alert('Failed to copy to clipboard. Check console for data.');
-            console.log(calibrationText);
-        });
-    }
-};
 
