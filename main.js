@@ -409,3 +409,51 @@ document.addEventListener('mouseenter', () => {
 
 // end of MapLibre main.js
 
+// --- Controller / Second Screen Logic ---
+
+const controllerChannel = new BroadcastChannel('map_controller_channel');
+
+controllerChannel.onmessage = (event) => {
+    const data = event.data;
+    console.log('Main window received:', data);
+
+    if (data.type === 'control_action') {
+        const targetId = data.target;
+        const btn = document.getElementById(targetId);
+        if (btn) {
+            // Simulate click or trigger the function directly
+            // Using click() is easiest as it triggers existing event listeners
+            btn.click();
+            
+            // Show toast to confirm action from controller
+            showToast(`Remote command: ${targetId}`);
+        }
+    } else if (data.type === 'reset_view') {
+        map.flyTo({
+            center: tableCenter,
+            zoom: initialZoom,
+            bearing: initialBearing,
+            pitch: 0
+        });
+    }
+};
+
+// Broadcast state changes to controller
+function broadcastState(activeLayerId) {
+    controllerChannel.postMessage({
+        type: 'state_update',
+        activeLayer: activeLayerId
+    });
+}
+
+// Hook into existing buttons to broadcast state
+['cfd-simulation-btn', 'stormwater-btn', 'sun-study-btn', 'slideshow-btn', 'grid-animation-btn', 'isovist-btn'].forEach(id => {
+    const btn = document.getElementById(id);
+    if (btn) {
+        btn.addEventListener('click', () => {
+            broadcastState(id);
+        });
+    }
+});
+
+

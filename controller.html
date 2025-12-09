@@ -1,0 +1,355 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Map Controller</title>
+    <link rel="stylesheet" href="style.css" />
+    <link href="https://fonts.googleapis.com/icon?family=Material+Icons" rel="stylesheet">
+    <style>
+        body {
+            background: #ffffff;
+            color: #333;
+            display: grid;
+            grid-template-columns: 80px 1fr;
+            grid-template-rows: auto 1fr;
+            height: 100vh;
+            overflow: hidden;
+            font-family: system-ui, -apple-system, sans-serif;
+        }
+
+        header {
+            grid-column: 1 / -1;
+            background: #fff;
+            padding: 1rem;
+            border-bottom: 1px solid #ccc;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        h1 { margin: 0; font-size: 1.2rem; }
+
+        #controls-panel {
+            background: #fff;
+            border-right: 1px solid #ccc;
+            padding: 1rem 0.5rem;
+            overflow-y: auto;
+            display: flex;
+            flex-direction: column;
+            gap: 1.5rem;
+            align-items: center;
+        }
+
+        #main-panel {
+            padding: 1rem;
+            overflow-y: auto;
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            grid-template-rows: 1fr 1fr;
+            gap: 1rem;
+        }
+
+        .panel-section {
+            background: #fff;
+            padding: 1rem;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+        }
+
+        .control-group {
+            display: flex;
+            flex-direction: column;
+            gap: 0.75rem;
+            align-items: center;
+            width: 100%;
+        }
+
+        .control-group h3 {
+            display: none; /* Hide labels for compact view */
+        }
+
+        button.control-btn {
+            width: 50px;
+            height: 50px;
+            padding: 0;
+            border: 1px solid #ddd;
+            background: #f8f8f8;
+            border-radius: 8px;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: all 0.2s;
+        }
+
+        button.control-btn:hover {
+            background: #eee;
+            border-color: #ccc;
+        }
+
+        button.control-btn.active {
+            background: #e6f7ff;
+            border-color: #1890ff;
+            color: #0050b3;
+        }
+
+        .status-indicator {
+            width: 10px;
+            height: 10px;
+            border-radius: 50%;
+            background: #ccc;
+            display: inline-block;
+            margin-right: 5px;
+        }
+
+        .status-indicator.connected {
+            background: #52c41a;
+        }
+
+        #legend-container, #dashboard-container, #metadata-container {
+            height: 100%;
+        }
+        
+        h2 { margin-top: 0; font-size: 1rem; border-bottom: 1px solid #eee; padding-bottom: 0.5rem; }
+
+        .metadata-item {
+            margin-bottom: 0.5rem;
+        }
+        .metadata-label {
+            font-weight: bold;
+            font-size: 0.8rem;
+            color: #666;
+        }
+        .metadata-value {
+            font-size: 0.9rem;
+        }
+
+        #welcome-screen {
+            grid-column: 1 / -1;
+            grid-row: 1 / -1;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            background: #fff;
+            border-radius: 8px;
+            z-index: 10;
+            position: relative;
+            padding: 2rem;
+        }
+
+        .welcome-logo {
+            height: 60px;
+            width: auto;
+            object-fit: contain;
+        }
+
+        .welcome-title {
+            font-size: 5rem;
+            font-weight: 800;
+            color: #1a1a1a;
+            margin: 0;
+            text-align: center;
+            line-height: 1.1;
+            margin-bottom: 2rem;
+            animation: titleEntrance 1.2s cubic-bezier(0.2, 0.8, 0.2, 1) forwards;
+            position: relative;
+            z-index: 2;
+        }
+
+        .logo-container {
+            position: absolute;
+            bottom: 2rem;
+            left: 2rem;
+            right: 2rem;
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-end;
+            margin: 0;
+            opacity: 0;
+            animation: logoEntrance 1s ease-out 0.6s forwards;
+            z-index: 2;
+        }
+
+        #bg-canvas {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            z-index: 1;
+            pointer-events: none;
+            opacity: 0.6;
+        }
+
+        @keyframes titleEntrance {
+            0% {
+                opacity: 0;
+                transform: translateY(40px) scale(0.95);
+                filter: blur(10px);
+            }
+            100% {
+                opacity: 1;
+                transform: translateY(0) scale(1);
+                filter: blur(0);
+            }
+        }
+
+        @keyframes logoEntrance {
+            0% {
+                opacity: 0;
+                transform: translateY(20px);
+            }
+            100% {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        .tour-info {
+            text-align: center;
+            height: 120px;
+            opacity: 0;
+            transition: opacity 0.5s ease-in-out;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            max-width: 600px;
+        }
+
+        .tour-info.active {
+            opacity: 1;
+        }
+
+        .tour-title {
+            font-size: 1.5rem;
+            font-weight: 600;
+            color: #1890ff;
+            margin-bottom: 0.5rem;
+        }
+
+        .tour-desc {
+            font-size: 1.2rem;
+            color: #666;
+            line-height: 1.4;
+        }
+
+        /* Highlight style for buttons during tour */
+        button.control-btn.tour-highlight {
+            background: #e6f7ff;
+            border-color: #1890ff;
+            box-shadow: 0 0 15px rgba(24, 144, 255, 0.6);
+            transform: scale(1.15);
+            z-index: 100;
+        }
+        
+        .hidden {
+            display: none !important;
+        }
+    </style>
+</head>
+<body>
+    <header>
+        <div style="display: flex; align-items: center; gap: 1rem;">
+            <button id="home-btn" style="background: none; border: none; cursor: pointer; font-size: 1.5rem; padding: 0; display: flex; align-items: center;" title="Home">
+                <span class="material-icons">home</span>
+            </button>
+            <h1>MR Studio Dashboard</h1>
+        </div>
+        <div>
+            <span id="connection-status" class="status-indicator"></span>
+            <span id="connection-text">Disconnected</span>
+        </div>
+    </header>
+
+    <aside id="controls-panel">
+        <div class="control-group">
+            <h3>Simulations</h3>
+            <button class="control-btn" data-action="click" data-target="cfd-simulation-btn" title="CFD Wind Simulation">
+                <span class="material-icons">air</span>
+            </button>
+            <button class="control-btn" data-action="click" data-target="stormwater-btn" title="Stormwater Flow">
+                <span class="material-icons">water_drop</span>
+            </button>
+            <button class="control-btn" data-action="click" data-target="sun-study-btn" title="Sun Study">
+                <span class="material-icons">wb_sunny</span>
+            </button>
+        </div>
+
+        <div class="control-group">
+            <h3>Visualization</h3>
+            <button class="control-btn" data-action="click" data-target="slideshow-btn" title="Slideshow">
+                <span class="material-icons">slideshow</span>
+            </button>
+            <button class="control-btn" data-action="click" data-target="grid-animation-btn" title="Grid Animation">
+                <span class="material-icons">grid_on</span>
+            </button>
+            <button class="control-btn" data-action="click" data-target="isovist-btn" title="Interactive Isovist">
+                <span class="material-icons">visibility</span>
+            </button>
+        </div>
+        
+        <div class="control-group">
+            <h3>Map Controls</h3>
+             <button class="control-btn" id="reset-view-btn" title="Reset View">
+                <span class="material-icons">restart_alt</span>
+            </button>
+             <button class="control-btn" id="fullscreen-btn" title="Toggle Full Screen">
+                <span class="material-icons">fullscreen</span>
+            </button>
+        </div>
+    </aside>
+
+    <main id="main-panel">
+        <div id="welcome-screen">
+            <canvas id="bg-canvas"></canvas>
+            <h1 class="welcome-title">Welcome to the ACE MR Studio</h1>
+            
+            <div id="tour-info" class="tour-info" style="position: relative; z-index: 2;">
+                <div id="tour-title" class="tour-title"></div>
+                <div id="tour-desc" class="tour-desc"></div>
+            </div>
+
+            <div class="logo-container">
+                <img src="media/chalmers_logo.png" alt="Chalmers University of Technology" class="welcome-logo">
+                <img src="media/dtcc_logo.png" alt="DTCC" class="welcome-logo">
+            </div>
+        </div>
+
+        <section class="panel-section" style="grid-column: 1; grid-row: 1;">
+            <h2>Legend</h2>
+            <div id="legend-content">
+                <p>Select a simulation to view its legend.</p>
+            </div>
+        </section>
+
+        <section class="panel-section" style="grid-column: 2; grid-row: 1;">
+            <h2>Dashboard</h2>
+            <div id="dashboard-content">
+                <p>No active data.</p>
+            </div>
+        </section>
+
+        <section class="panel-section" style="grid-column: 1 / -1; grid-row: 2;">
+            <h2>Metadata</h2>
+            <div id="metadata-content">
+                <div class="metadata-item">
+                    <div class="metadata-label">Current View</div>
+                    <div class="metadata-value" id="meta-view">Default</div>
+                </div>
+                <div class="metadata-item">
+                    <div class="metadata-label">Active Layer</div>
+                    <div class="metadata-value" id="meta-layer">None</div>
+                </div>
+                 <div class="metadata-item">
+                    <div class="metadata-label">Description</div>
+                    <div class="metadata-value" id="meta-desc">Interactive map of the district. Use controls to toggle layers.</div>
+                </div>
+            </div>
+        </section>
+    </main>
+
+    <script src="controller.js"></script>
+</body>
+</html>
