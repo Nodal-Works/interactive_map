@@ -67,6 +67,89 @@ function updateDashboard(targetId) {
         return;
     }
 
+    if (targetId === 'credits-btn') {
+        if (dashboardTitle) dashboardTitle.textContent = 'Project Team';
+        if (legendTitle) legendTitle.textContent = 'About';
+
+        dashboardContent.innerHTML = `
+            <div class="dashboard-container">
+                <div class="dashboard-card">
+                    <div class="dashboard-section-title">Contributors</div>
+                    <div class="credits-grid">
+                        <div class="credit-item">
+                            <div class="credit-role">Principle Investigator</div>
+                            <div class="credit-name">Alexander Hollberg</div>
+                        </div>
+                        <div class="credit-item">
+                            <div class="credit-role">Development Lead</div>
+                            <div class="credit-name">Sanjay Somanath</div>
+                        </div>
+                        <div class="credit-item">
+                            <div class="credit-role">Model Design, Prototyping & Printing</div>
+                            <div class="credit-name">Arvid Hall</div>
+                        </div>
+                        
+                        <div class="credit-item">
+                            <div class="credit-role">Digital Twin Cities Center</div>
+                            <div class="credit-name">Anders Logg, Vasilis Nasarentin</div>
+                            <div class="credit-contribution">Funding and Resources</div>
+                        </div>
+
+                        <div class="credit-item">
+                            <div class="credit-role">A-Verkstad</div>
+                            <div class="credit-name">Jarkko Nordlund</div>
+                            <div class="credit-contribution">3D Printing expertise & facilities</div>
+                        </div>
+
+                        <div class="credit-item">
+                            <div class="credit-role">Infravis</div>
+                            <div class="credit-name">Fabio Latino</div>
+                            <div class="credit-contribution">Funding and Resources</div>
+                        </div>
+
+                        <div class="credit-item">
+                            <div class="credit-role">Detailed 3D Model</div>
+                            <div class="credit-name">Sara Abouebeid</div>
+                        </div>
+
+                        <div class="credit-item">
+                            <div class="credit-role">CFD Simulation</div>
+                            <div class="credit-name">Franziska Hunger</div>
+                        </div>
+
+                        <div class="credit-item">
+                            <div class="credit-role">Office Coordinator</div>
+                            <div class="credit-name">Elisabeth Meyer</div>
+                            <div class="credit-contribution">Physical Location Support</div>
+                        </div>
+
+                        <div class="credit-item">
+                            <div class="credit-role">Data Sources</div>
+                            <div class="credit-name">Lantmäteriet, Trafikverket</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        `;
+
+        legendContent.innerHTML = `
+            <div class="dashboard-card">
+                <div class="dashboard-section-title">About the Project</div>
+                <p class="info-text" style="margin-bottom: 1rem;">
+                    The <strong>ACE MR Studio</strong> is an interactive platform designed to bridge the gap between complex urban data and stakeholder engagement.
+                </p>
+                <p class="info-text">
+                    We want this space to be a place to test and ask questions about complex data communication and also inspire a new form of data story telling and research.
+                </p>
+                <div style="margin-top: 1.5rem; display: flex; justify-content: center; align-items: center;">
+                    <img src="media/chalmers_logo.png" style="height: 40px; margin-right: 20px; opacity: 0.8;">
+                    <img src="media/dtcc_logo.png" style="height: 70px; opacity: 0.8;">
+                </div>
+            </div>
+        `;
+        return;
+    }
+
     if (targetId === 'calibrate-btn') {
         if (dashboardTitle) dashboardTitle.textContent = 'Calibration Controls';
         if (legendTitle) legendTitle.textContent = 'Instructions';
@@ -1231,6 +1314,11 @@ function updateMetadata(layerId) {
         case 'calibrate-btn':
             name = 'Projector Calibration';
             desc = 'Configure map projection to align with physical model.';
+            legend = '';
+            break;
+        case 'credits-btn':
+            name = 'Credits';
+            desc = 'The team behind the ACE MR Studio project.';
             legend = '';
             break;
     }

@@ -426,6 +426,43 @@
             color: #374151;
             font-weight: 500;
         }
+
+        .credits-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+            gap: 1rem;
+        }
+
+        .credit-item {
+            background: #fff;
+            border: 1px solid #e5e7eb;
+            border-radius: 8px;
+            padding: 1rem;
+            display: flex;
+            flex-direction: column;
+            gap: 0.25rem;
+        }
+
+        .credit-role {
+            font-size: 0.75rem;
+            text-transform: uppercase;
+            color: #6b7280;
+            font-weight: 600;
+            letter-spacing: 0.05em;
+        }
+
+        .credit-name {
+            font-size: 1rem;
+            font-weight: 600;
+            color: #111827;
+        }
+
+        .credit-contribution {
+            font-size: 0.85rem;
+            color: #4b5563;
+            margin-top: 0.25rem;
+            font-style: italic;
+        }
     </style>
 </head>
 <body>
@@ -486,6 +523,13 @@
                 <span class="material-icons">settings_overscan</span>
             </button>
         </div>
+
+        <div class="control-group">
+            <h3>About</h3>
+            <button class="control-btn" data-action="click" data-target="credits-btn" title="Credits">
+                <span class="material-icons">groups</span>
+            </button>
+        </div>
     </aside>
 
     <main id="main-panel">
@@ -500,7 +544,7 @@
 
             <div class="logo-container">
                 <img src="media/chalmers_logo.png" alt="Chalmers University of Technology" class="welcome-logo">
-                <img src="media/dtcc_logo.png" alt="DTCC" class="welcome-logo">
+                <img src="media/dtcc_logo.png" alt="DTCC" class="welcome-logo" style="height: 100px;">
             </div>
         </div>
 
