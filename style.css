@@ -296,6 +296,22 @@ html, body {
   display: block;
 }
 
+/* Bird Sounds canvas */
+#bird-sounds-canvas {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 100%;
+  height: 100%;
+  z-index: 900;
+  pointer-events: none;
+  display: none;
+}
+
+#bird-sounds-canvas.active {
+  display: block;
+}
+
 /* Slideshow metadata overlay */
 .slideshow-metadata {
   position: absolute;

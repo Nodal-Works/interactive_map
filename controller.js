@@ -47,16 +47,49 @@ document.querySelectorAll('.control-btn[data-target]').forEach(btn => {
         btn.classList.add('active');
         
         updateMetadata(targetId);
+        updateDashboard(targetId);
     });
 });
 
+function updateDashboard(targetId) {
+    const dashboardContent = document.getElementById('dashboard-content');
+    const legendContent = document.getElementById('legend-content');
+    
+    if (targetId === 'stormwater-btn') {
+        dashboardContent.innerHTML = `
+            <div style="font-size: 0.9rem; line-height: 1.5;">
+                <p><strong>Methodology:</strong> The stormwater simulation uses a D8 Flow Direction algorithm on a Digital Elevation Model (DEM). For each cell, it calculates the steepest descent to its 8 neighbors. Flow Accumulation is then computed to determine how much upstream area drains into each cell. A particle system visualizes this flow, with particles spawning in high-accumulation areas and following the flow paths. Sinks (local minima) are identified where water pools.</p>
+                <p><strong>Real-world Application:</strong> This simulation helps in urban planning and flood risk assessment. By identifying natural flow paths and accumulation zones (blue pools), planners can design better drainage systems, locate rain gardens, and avoid building in flood-prone areas. It visualizes how water moves across the terrain during heavy rainfall events.</p>
+            </div>
+        `;
+        legendContent.innerHTML = `
+            <div style="display: flex; flex-direction: column; gap: 0.5rem;">
+                <div style="display: flex; align-items: center; gap: 0.5rem;">
+                    <div style="width: 20px; height: 20px; background: linear-gradient(to right, #00f, #0ff);"></div>
+                    <span>Flow Intensity</span>
+                </div>
+                <div style="display: flex; align-items: center; gap: 0.5rem;">
+                    <div style="width: 20px; height: 20px; background: rgba(0, 100, 255, 0.5); border-radius: 50%;"></div>
+                    <span>Accumulation Pools</span>
+                </div>
+            </div>
+        `;
+    } else {
+        // Default or other tools
+        dashboardContent.innerHTML = '<p>Select a simulation to view details.</p>';
+        legendContent.innerHTML = '<p>Select a simulation to view its legend.</p>';
+    }
+}
+
 document.getElementById('reset-view-btn').addEventListener('click', () => {
+    stopTour();
     channel.postMessage({
         type: 'reset_view'
     });
 });
 
 document.getElementById('fullscreen-btn').addEventListener('click', () => {
+    stopTour();
     if (!document.fullscreenElement) {
         document.documentElement.requestFullscreen().catch(err => {
             console.log(`Error attempting to enable full-screen mode: ${err.message} (${err.name})`);
@@ -77,13 +110,125 @@ channel.onmessage = (event) => {
                  if (b.dataset.target === data.activeLayer) {
                      b.classList.add('active');
                      updateMetadata(data.activeLayer);
+                     updateDashboard(data.activeLayer);
                  } else {
                      b.classList.remove('active');
                  }
              });
         }
+    } else if (data.type === 'bird_status') {
+        updateBirdDashboard(data.activeBirds);
     }
 };
+
+function updateBirdDashboard(activeBirds) {
+    const dashboardContent = document.getElementById('dashboard-content');
+    // Only update if Bird Sounds is the active layer (checked via button state)
+    const birdBtn = document.querySelector('.control-btn[data-target="bird-sounds-btn"]');
+    if (!birdBtn || !birdBtn.classList.contains('active')) return;
+
+    if (!activeBirds || activeBirds.length === 0) {
+        dashboardContent.innerHTML = '<p>Listening for bird calls...</p>';
+        return;
+    }
+
+    let html = `
+        <style>
+            .bird-card {
+                background: #fff;
+                border-radius: 8px;
+                overflow: hidden;
+                box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+                margin-bottom: 10px;
+                border-left: 4px solid transparent;
+                display: flex;
+                height: 80px;
+            }
+            .bird-image-container {
+                width: 80px;
+                height: 80px;
+                flex-shrink: 0;
+            }
+            .bird-image {
+                width: 100%;
+                height: 100%;
+                object-fit: cover;
+            }
+            .bird-info {
+                padding: 8px 12px;
+                flex-grow: 1;
+                display: flex;
+                flex-direction: column;
+                justify-content: center;
+                overflow: hidden;
+            }
+            .bird-name {
+                font-weight: bold;
+                font-size: 0.95rem;
+                margin-bottom: 4px;
+                white-space: nowrap;
+                overflow: hidden;
+                text-overflow: ellipsis;
+            }
+            .sensor-info {
+                font-size: 0.75rem;
+                color: #888;
+                display: flex;
+                align-items: center;
+                gap: 4px;
+                margin-bottom: 4px;
+            }
+            
+            /* CSS Waveform Animation */
+            .waveform-visualizer {
+                display: flex;
+                align-items: flex-end;
+                gap: 2px;
+                height: 24px;
+                margin-top: auto;
+            }
+            .wave-bar {
+                width: 4px;
+                background-color: #ccc;
+                animation: wave 1s ease-in-out infinite;
+                border-radius: 2px;
+            }
+            @keyframes wave {
+                0%, 100% { height: 20%; }
+                50% { height: 100%; }
+            }
+        </style>
+        <div style="display: flex; flex-direction: column;">
+    `;
+
+    activeBirds.forEach(item => {
+        // Generate random animation delays for a more organic look
+        const bars = Array.from({length: 15}, (_, i) => {
+            const delay = Math.random() * 1;
+            return `<div class="wave-bar" style="background-color: ${item.bird.color}; animation-delay: -${delay}s;"></div>`;
+        }).join('');
+
+        html += `
+            <div class="bird-card" style="border-left-color: ${item.bird.color};">
+                <div class="bird-image-container">
+                    <img src="${item.bird.image}" alt="${item.bird.name}" class="bird-image">
+                </div>
+                <div class="bird-info">
+                    <div class="bird-name" style="color: ${item.bird.color};">${item.bird.name}</div>
+                    <div class="sensor-info">
+                        <span class="material-icons" style="font-size: 12px;">sensors</span>
+                        Sensor #${item.sensor.id}
+                    </div>
+                    <div class="waveform-visualizer">
+                        ${bars}
+                    </div>
+                </div>
+            </div>
+        `;
+    });
+    html += '</div>';
+    dashboardContent.innerHTML = html;
+}
 
 function updateMetadata(layerId) {
     welcomeScreen.classList.add('hidden');
@@ -106,6 +251,41 @@ function updateMetadata(layerId) {
                         <span>High Speed (> 10 m/s)</span>
                         <span>Medium Speed (5 m/s)</span>
                         <span>Low Speed (< 1 m/s)</span>
+                    </div>
+                </div>
+            `;
+            break;
+        case 'bird-sounds-btn':
+            name = 'Bird Sounds';
+            desc = 'Simulated bird sensors detecting local species. Visualizes sound intensity at sensor locations.';
+            legend = `
+                <div style="display: flex; flex-direction: column; gap: 12px;">
+                    <div style="display: flex; flex-direction: column; gap: 4px;">
+                        <div style="display: flex; align-items: center; gap: 10px;">
+                            <span style="width: 12px; height: 12px; border-radius: 50%; background: #FFD700;"></span>
+                            <span style="font-weight: bold;">Thrush Nightingale</span>
+                        </div>
+                        <div style="font-size: 0.85rem; color: #666; margin-left: 22px;">
+                            Known for its powerful and melodic song, often heard at night.
+                        </div>
+                    </div>
+                    <div style="display: flex; flex-direction: column; gap: 4px;">
+                        <div style="display: flex; align-items: center; gap: 10px;">
+                            <span style="width: 12px; height: 12px; border-radius: 50%; background: #00BFFF;"></span>
+                            <span style="font-weight: bold;">European Pied Flycatcher</span>
+                        </div>
+                        <div style="font-size: 0.85rem; color: #666; margin-left: 22px;">
+                            A small passerine bird with a rhythmic, repetitive song.
+                        </div>
+                    </div>
+                    <div style="display: flex; flex-direction: column; gap: 4px;">
+                        <div style="display: flex; align-items: center; gap: 10px;">
+                            <span style="width: 12px; height: 12px; border-radius: 50%; background: #FF4500;"></span>
+                            <span style="font-weight: bold;">Black Redstart</span>
+                        </div>
+                        <div style="font-size: 0.85rem; color: #666; margin-left: 22px;">
+                            Adapts well to urban environments, known for its warbling tail.
+                        </div>
                     </div>
                 </div>
             `;
@@ -156,7 +336,8 @@ const tourSteps = [
     { selector: '[data-target="grid-animation-btn"]', title: 'Grid Animation', desc: 'Toggle the animated grid overlay for spatial reference.' },
     { selector: '[data-target="isovist-btn"]', title: 'Interactive Isovist', desc: 'Analyze visibility fields from specific vantage points.' },
     { selector: '#reset-view-btn', title: 'Reset View', desc: 'Return the map to the default starting position.' },
-    { selector: '#fullscreen-btn', title: 'Full Screen', desc: 'Toggle full screen mode for this controller.' }
+    { selector: '#fullscreen-btn', title: 'Full Screen', desc: 'Toggle full screen mode for this controller.' },
+    { selector: '[data-target="bird-sounds-btn"]', title: 'Bird Sounds', desc: 'Listen to simulated bird sensors and view real-time activity.' }
 ];
 
 let tourInterval;
@@ -201,6 +382,7 @@ function showTourStep() {
     else if (step.selector.includes('isovist')) setEffect('isovist');
     else if (step.selector.includes('grid')) setEffect('grid');
     else if (step.selector.includes('slideshow')) setEffect('slideshow');
+    else if (step.selector.includes('bird-sounds')) setEffect('soundwaves');
     else setEffect('default');
 }
 
@@ -303,6 +485,18 @@ function createParticle(effect) {
             vy: (Math.random() - 0.5) * 1,
             opacity: Math.random() * 0.3
         };
+    } else if (effect === 'soundwaves') {
+        // Floating sine waves
+        return {
+            x: Math.random() * w,
+            y: Math.random() * h,
+            width: Math.random() * 100 + 50,
+            amplitude: Math.random() * 20 + 5,
+            frequency: Math.random() * 0.1 + 0.02,
+            speed: Math.random() * 2 + 0.5,
+            phase: Math.random() * Math.PI * 2,
+            opacity: Math.random() * 0.5 + 0.2
+        };
     }
     
     return {};
@@ -347,6 +541,10 @@ function updateParticles() {
             p.y += p.vy;
             if (p.x < 0 || p.x > w) p.vx *= -1;
             if (p.y < 0 || p.y > h) p.vy *= -1;
+        } else if (currentEffect === 'soundwaves') {
+            p.x += p.speed;
+            p.phase += 0.1;
+            if (p.x > w) p.x = -p.width;
         }
     });
 }
@@ -445,6 +643,18 @@ function drawParticles() {
         particles.forEach(p => {
             ctx.globalAlpha = p.opacity;
             ctx.fillRect(p.x, p.y, p.size, p.size * 0.6); // Aspect ratio like a slide
+        });
+    } else if (currentEffect === 'soundwaves') {
+        ctx.strokeStyle = 'rgba(255, 20, 147, 0.6)'; // Deep pink
+        particles.forEach(p => {
+            ctx.beginPath();
+            ctx.globalAlpha = p.opacity;
+            for (let i = 0; i < p.width; i++) {
+                const y = p.y + Math.sin(i * p.frequency + p.phase) * p.amplitude;
+                if (i === 0) ctx.moveTo(p.x + i, y);
+                else ctx.lineTo(p.x + i, y);
+            }
+            ctx.stroke();
         });
     }
     

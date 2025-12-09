@@ -1,6 +1,23 @@
 // MapLibre GL JS implementation for interactive_map
 // Native bearing/rotation support and raster basemap switching
 
+// Handle Start Overlay and Audio Context
+document.addEventListener('DOMContentLoaded', () => {
+  const overlay = document.getElementById('start-overlay');
+  if (overlay) {
+    overlay.addEventListener('click', () => {
+      // Resume any existing audio contexts or create a dummy one to unlock
+      const AudioContext = window.AudioContext || window.webkitAudioContext;
+      const ctx = new AudioContext();
+      ctx.resume().then(() => {
+        console.log('AudioContext unlocked');
+        overlay.style.opacity = '0';
+        setTimeout(() => overlay.remove(), 500);
+      });
+    });
+  }
+});
+
 // Helper: read DOM elements
 const toastContainer = document.getElementById('toast-container');
 function showToast(msg, timeout = 3000) {
@@ -447,7 +464,7 @@ function broadcastState(activeLayerId) {
 }
 
 // Hook into existing buttons to broadcast state
-['cfd-simulation-btn', 'stormwater-btn', 'sun-study-btn', 'slideshow-btn', 'grid-animation-btn', 'isovist-btn'].forEach(id => {
+['cfd-simulation-btn', 'stormwater-btn', 'sun-study-btn', 'slideshow-btn', 'grid-animation-btn', 'isovist-btn', 'bird-sounds-btn'].forEach(id => {
     const btn = document.getElementById(id);
     if (btn) {
         btn.addEventListener('click', () => {
