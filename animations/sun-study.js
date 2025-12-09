@@ -72,6 +72,10 @@ class SunStudy {
     this.dependenciesLoaded = false;
     
     this.initUI();
+    
+    // Listen for remote control messages
+    this.channel = new BroadcastChannel('map_controller_channel');
+    this.channel.onmessage = (event) => this.handleRemoteControl(event.data);
   }
   
   initUI() {
@@ -93,7 +97,8 @@ class SunStudy {
     `;
     document.body.appendChild(this.canvas);
     
-    this.createControlPanel();
+    // Control panel moved to remote controller
+    // this.createControlPanel();
     
     const sunBtn = document.getElementById('sun-study-btn');
     if (sunBtn) {
@@ -101,6 +106,36 @@ class SunStudy {
     }
     
     window.addEventListener('resize', () => this.onResize());
+  }
+
+  handleRemoteControl(data) {
+    if (!this.isActive && data.type !== 'control_action') return;
+
+    if (data.type === 'sun_control') {
+        switch (data.action) {
+            case 'set_date':
+                this.date = new Date(data.value);
+                this.updateSunPosition();
+                break;
+            case 'set_time':
+                this.timeOfDay = parseFloat(data.value);
+                this.updateSunPosition();
+                break;
+            case 'set_opacity':
+                this.shadowOpacity = parseFloat(data.value);
+                if (this.mesh) this.mesh.material.opacity = this.shadowOpacity;
+                break;
+            case 'toggle_animation':
+                this.toggleAnimation();
+                break;
+            case 'set_speed':
+                this.animationSpeed = parseFloat(data.value);
+                break;
+            case 'toggle_false_color':
+                this.toggleFalseColor();
+                break;
+        }
+    }
   }
   
   async initThreeJS() {
@@ -118,153 +153,34 @@ class SunStudy {
     this.loadSTLModel();
   }
   
-  createControlPanel() {
-    this.controlPanel = document.createElement('div');
-    this.controlPanel.id = 'sun-study-panel';
-    this.controlPanel.innerHTML = `
-      <h3>☀️ Sun Study</h3>
-      <div class="sun-control">
-        <label>Date</label>
-        <input type="date" id="sun-date" value="${this.date.toISOString().split('T')[0]}">
-      </div>
-      <div class="sun-control">
-        <label>Time: <span id="time-display">12:00</span></label>
-        <input type="range" id="sun-time" min="0" max="24" step="0.25" value="12">
-      </div>
-      <div class="sun-control">
-        <label>Sun Altitude: <span id="altitude-display">--</span>°</label>
-      </div>
-      <div class="sun-control">
-        <label>Sun Azimuth: <span id="azimuth-display">--</span>°</label>
-      </div>
-      <div class="sun-control">
-        <label>Shadow Opacity</label>
-        <input type="range" id="shadow-opacity" min="0.1" max="1.0" step="0.1" value="0.8">
-      </div>
-      <div class="sun-actions">
-        <button id="sun-animate-btn" class="sun-btn">▶ Animate Day</button>
-      </div>
-      <div class="sun-control">
-        <label>Speed: <span id="speed-display">2x</span></label>
-        <input type="range" id="sun-speed" min="0.5" max="5" step="0.5" value="2">
-      </div>
-      <div class="sun-control">
-        <label>Model Scale: <span id="scale-display">0.89x</span></label>
-        <input type="range" id="model-scale" min="0.5" max="2.0" step="0.01" value="0.89">
-      </div>
-
-      <hr style="border: none; border-top: 1px solid #ddd; margin: 12px 0;">
-      <div class="sun-actions">
-        <button id="false-color-btn" class="sun-btn">🌈 False Color</button>
-      </div>
-      <div class="sun-info">
-        <small>📍 Gothenburg, Sweden</small>
-      </div>
-    `;
-    this.controlPanel.style.cssText = `
-      position: fixed;
-      right: 72px;
-      top: 20px;
-      z-index: 600;
-      background: rgba(255, 255, 255, 0.95);
-      border-radius: 8px;
-      box-shadow: 0 4px 20px rgba(0, 0, 0, 0.15);
-      padding: 16px;
-      width: 220px;
-      font-family: system-ui, -apple-system, sans-serif;
-      font-size: 13px;
-      display: none;
-    `;
-    document.body.appendChild(this.controlPanel);
-    
-    const style = document.createElement('style');
-    style.textContent = `
-      #sun-study-panel h3 { margin: 0 0 12px 0; font-size: 16px; color: #333; }
-      .sun-control { margin-bottom: 12px; }
-      .sun-control label { display: block; margin-bottom: 4px; color: #555; font-weight: 500; }
-      .sun-control input[type="date"], .sun-control input[type="range"] { width: 100%; box-sizing: border-box; }
-      .sun-control input[type="date"] { padding: 6px 8px; border: 1px solid #ddd; border-radius: 4px; font-size: 13px; }
-      .sun-control input[type="range"] { -webkit-appearance: none; height: 6px; background: #ddd; border-radius: 3px; cursor: pointer; }
-      .sun-control input[type="range"]::-webkit-slider-thumb { -webkit-appearance: none; width: 16px; height: 16px; background: #f59e0b; border-radius: 50%; cursor: pointer; }
-      .sun-actions { display: flex; gap: 8px; margin: 16px 0; }
-      .sun-btn { flex: 1; padding: 8px 12px; border: none; border-radius: 4px; background: #f59e0b; color: white; font-weight: 600; cursor: pointer; }
-      .sun-btn:hover { background: #d97706; }
-      .sun-btn.active { background: #059669; }
-      .sun-info { margin-top: 12px; padding-top: 12px; border-top: 1px solid #eee; color: #888; }
-    `;
-    document.head.appendChild(style);
-    
-    setTimeout(() => this.bindControlEvents(), 100);
-  }
+  // Control panel removed - logic moved to remote controller
   
   bindControlEvents() {
-    const dateInput = document.getElementById('sun-date');
-    const timeSlider = document.getElementById('sun-time');
-    const speedSlider = document.getElementById('sun-speed');
-    const opacitySlider = document.getElementById('shadow-opacity');
-    const animateBtn = document.getElementById('sun-animate-btn');
-    
-    if (dateInput) {
-      dateInput.addEventListener('change', (e) => {
-        this.date = new Date(e.target.value);
-        this.updateSunPosition();
-      });
-    }
-    
-    if (timeSlider) {
-      timeSlider.addEventListener('input', (e) => {
-        this.timeOfDay = parseFloat(e.target.value);
-        this.updateTimeDisplay();
-        this.updateSunPosition();
-      });
-    }
-    
-    if (speedSlider) {
-      speedSlider.addEventListener('input', (e) => {
-        this.animationSpeed = parseFloat(e.target.value);
-        document.getElementById('speed-display').textContent = `${this.animationSpeed}x`;
-      });
-    }
-    
-    if (opacitySlider) {
-      opacitySlider.addEventListener('input', (e) => {
-        this.shadowOpacity = parseFloat(e.target.value);
-        if (this.shadowMaterial) {
-          this.shadowMaterial.opacity = this.shadowOpacity;
-          this.shadowMaterial.needsUpdate = true;
-        }
-      });
-    }
-    
-    if (animateBtn) {
-      animateBtn.addEventListener('click', () => {
-        this.isAnimating = !this.isAnimating;
-        animateBtn.textContent = this.isAnimating ? '⏸ Pause' : '▶ Animate Day';
-        animateBtn.classList.toggle('active', this.isAnimating);
-      });
-    }
-    
-    // Model scale slider
-    const scaleSlider = document.getElementById('model-scale');
-    if (scaleSlider) {
-      scaleSlider.addEventListener('input', (e) => {
-        this.scaleMultiplier = parseFloat(e.target.value);
-        document.getElementById('scale-display').textContent = `${this.scaleMultiplier.toFixed(2)}x`;
-        this.applyManualAdjustments();
-      });
-    }
+    // No local controls to bind
+  }
+  
+  toggleAnimation() {
+    this.isAnimating = !this.isAnimating;
+  }
 
-    
-    // False color toggle
-    const falseColorBtn = document.getElementById('false-color-btn');
-    if (falseColorBtn) {
-      falseColorBtn.addEventListener('click', () => {
-        this.toggleFalseColorMode();
-        falseColorBtn.textContent = this.isFalseColorMode ? '🎨 Normal View' : '🌈 False Color';
-        falseColorBtn.classList.toggle('active', this.isFalseColorMode);
-      });
+  toggleFalseColor() {
+    this.toggleFalseColorMode();
+  }
+  
+  updateTimeDisplay() {
+    if (this.channel) {
+        this.channel.postMessage({
+            type: 'sun_time_update',
+            time: this.timeOfDay
+        });
     }
   }
+  
+  /*
+  createControlPanel() {
+    // ... removed ...
+  }
+  */
   
   createFalseColorMaterial() {
     // Custom shader for false color sun exposure visualization
@@ -416,13 +332,7 @@ class SunStudy {
     this.mesh.position.z = this.offsetZ;
   }
   
-  updateTimeDisplay() {
-    const hours = Math.floor(this.timeOfDay);
-    const minutes = Math.round((this.timeOfDay - hours) * 60);
-    const timeStr = `${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}`;
-    document.getElementById('time-display').textContent = timeStr;
-    document.getElementById('sun-time').value = this.timeOfDay;
-  }
+
   
   setupRenderer() {
     const width = window.innerWidth - 120;
@@ -597,8 +507,14 @@ class SunStudy {
       this.date, this.timeOfDay, this.latitude
     );
     
-    document.getElementById('altitude-display').textContent = altitude.toFixed(1);
-    document.getElementById('azimuth-display').textContent = azimuth.toFixed(1);
+    // Send sun position to controller
+    if (this.channel) {
+        this.channel.postMessage({
+            type: 'sun_position',
+            altitude: altitude,
+            azimuth: azimuth
+        });
+    }
     
     const distance = 500;
     const altRad = Math.max(0.05, altitude * Math.PI / 180);
@@ -837,7 +753,7 @@ class SunStudy {
     }
     
     this.canvas.style.display = 'block';
-    this.controlPanel.style.display = 'block';
+    // this.controlPanel.style.display = 'block'; // Panel moved to controller
     
     setTimeout(() => {
       this.onResize();
@@ -847,7 +763,7 @@ class SunStudy {
   
   hide() {
     this.canvas.style.display = 'none';
-    this.controlPanel.style.display = 'none';
+    // this.controlPanel.style.display = 'none'; // Panel moved to controller
     this.isAnimating = false;
     
     if (this.animationId) {
@@ -855,11 +771,7 @@ class SunStudy {
       this.animationId = null;
     }
     
-    const animateBtn = document.getElementById('sun-animate-btn');
-    if (animateBtn) {
-      animateBtn.textContent = '▶ Animate Day';
-      animateBtn.classList.remove('active');
-    }
+    // Button logic moved to controller
   }
 }
 

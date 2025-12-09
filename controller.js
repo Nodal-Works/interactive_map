@@ -74,6 +74,96 @@ function updateDashboard(targetId) {
                 </div>
             </div>
         `;
+    } else if (targetId === 'sun-study-btn') {
+        dashboardContent.innerHTML = `
+            <div class="control-panel-embedded">
+                <div class="sun-control">
+                    <label>Date</label>
+                    <input type="date" id="sun-date" value="${new Date().toISOString().split('T')[0]}">
+                </div>
+                <div class="sun-control">
+                    <label>Time: <span id="time-display">12:00</span></label>
+                    <input type="range" id="sun-time" min="0" max="24" step="0.25" value="12">
+                </div>
+                <div class="sun-control">
+                    <label>Shadow Opacity</label>
+                    <input type="range" id="shadow-opacity" min="0.1" max="1.0" step="0.1" value="0.8">
+                </div>
+                <div class="sun-actions" style="display: flex; gap: 10px; margin: 10px 0;">
+                    <button id="sun-animate-btn" class="sun-btn" style="flex: 1; padding: 8px; background: #f59e0b; color: white; border: none; border-radius: 4px; cursor: pointer;">▶ Animate Day</button>
+                    <button id="false-color-btn" class="sun-btn" style="flex: 1; padding: 8px; background: #f59e0b; color: white; border: none; border-radius: 4px; cursor: pointer;">🌈 False Color</button>
+                </div>
+                <div class="sun-control">
+                    <label>Speed: <span id="speed-display">2x</span></label>
+                    <input type="range" id="sun-speed" min="0.5" max="5" step="0.5" value="2">
+                </div>
+            </div>
+            <hr style="margin: 15px 0; border: 0; border-top: 1px solid #eee;">
+            <div style="font-size: 0.9rem; line-height: 1.5;">
+                <p><strong>Methodology:</strong> The Sun Study simulation uses Three.js to render accurate shadows based on the sun's position for a specific date and time at Gothenburg's latitude. It employs Screen Space Ambient Occlusion (SSAO) for depth and realism. The "False Color" mode visualizes solar exposure intensity.</p>
+                <p><strong>Real-world Application:</strong> Architects and urban planners use sun studies to analyze shadow impact on buildings and public spaces. This helps in optimizing natural light, designing energy-efficient buildings, and ensuring parks and plazas receive adequate sunlight throughout the year.</p>
+            </div>
+        `;
+        
+        legendContent.innerHTML = `
+            <div style="display: flex; flex-direction: column; gap: 0.5rem;">
+                <div style="display: flex; align-items: center; gap: 0.5rem;">
+                    <div style="width: 20px; height: 20px; background: rgba(0,0,0,0.5);"></div>
+                    <span>Shadow</span>
+                </div>
+                <div style="display: flex; align-items: center; gap: 0.5rem;">
+                    <div style="width: 20px; height: 20px; background: linear-gradient(to right, blue, green, yellow, red);"></div>
+                    <span>Solar Exposure (False Color)</span>
+                </div>
+            </div>
+        `;
+
+        // Attach event listeners for Sun Study controls
+        const dateInput = document.getElementById('sun-date');
+        const timeInput = document.getElementById('sun-time');
+        const timeDisplay = document.getElementById('time-display');
+        const opacityInput = document.getElementById('shadow-opacity');
+        const animateBtn = document.getElementById('sun-animate-btn');
+        const speedInput = document.getElementById('sun-speed');
+        const speedDisplay = document.getElementById('speed-display');
+        const falseColorBtn = document.getElementById('false-color-btn');
+
+        const sendControl = (action, value) => {
+            channel.postMessage({
+                type: 'sun_control',
+                action: action,
+                value: value
+            });
+        };
+
+        dateInput.addEventListener('change', (e) => sendControl('set_date', e.target.value));
+        
+        timeInput.addEventListener('input', (e) => {
+            const val = parseFloat(e.target.value);
+            const h = Math.floor(val);
+            const m = Math.floor((val - h) * 60);
+            timeDisplay.textContent = `${h.toString().padStart(2, '0')}:${m.toString().padStart(2, '0')}`;
+            sendControl('set_time', val);
+        });
+
+        opacityInput.addEventListener('input', (e) => sendControl('set_opacity', e.target.value));
+        
+        animateBtn.addEventListener('click', () => {
+            animateBtn.classList.toggle('active');
+            animateBtn.textContent = animateBtn.classList.contains('active') ? '⏸ Pause' : '▶ Animate Day';
+            sendControl('toggle_animation');
+        });
+
+        speedInput.addEventListener('input', (e) => {
+            speedDisplay.textContent = e.target.value + 'x';
+            sendControl('set_speed', e.target.value);
+        });
+
+        falseColorBtn.addEventListener('click', () => {
+            falseColorBtn.classList.toggle('active');
+            sendControl('toggle_false_color');
+        });
+
     } else {
         // Default or other tools
         dashboardContent.innerHTML = '<p>Select a simulation to view details.</p>';
@@ -118,6 +208,24 @@ channel.onmessage = (event) => {
         }
     } else if (data.type === 'bird_status') {
         updateBirdDashboard(data.activeBirds);
+    } else if (data.type === 'sun_position') {
+        const altDisplay = document.getElementById('altitude-display');
+        const azDisplay = document.getElementById('azimuth-display');
+        // Only update if elements exist (i.e., Sun Study dashboard is active)
+        if (altDisplay) altDisplay.textContent = data.altitude.toFixed(1);
+        if (azDisplay) azDisplay.textContent = data.azimuth.toFixed(1);
+    } else if (data.type === 'sun_time_update') {
+        const timeSlider = document.getElementById('sun-time');
+        const timeDisplay = document.getElementById('time-display');
+        if (timeSlider && timeDisplay) {
+            // Only update if not currently being dragged (optional check, but good for UX)
+            // For simplicity, we'll just update it, which might fight the user if they drag while animating
+            // But usually animation is paused when dragging manually
+            timeSlider.value = data.time;
+            const h = Math.floor(data.time);
+            const m = Math.floor((data.time - h) * 60);
+            timeDisplay.textContent = `${h.toString().padStart(2, '0')}:${m.toString().padStart(2, '0')}`;
+        }
     }
 };
 
