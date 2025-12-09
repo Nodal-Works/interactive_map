@@ -57,63 +57,137 @@ function updateDashboard(targetId) {
     
     if (targetId === 'stormwater-btn') {
         dashboardContent.innerHTML = `
-            <div style="font-size: 0.9rem; line-height: 1.5;">
-                <p><strong>Methodology:</strong> The stormwater simulation uses a D8 Flow Direction algorithm on a Digital Elevation Model (DEM). For each cell, it calculates the steepest descent to its 8 neighbors. Flow Accumulation is then computed to determine how much upstream area drains into each cell. A particle system visualizes this flow, with particles spawning in high-accumulation areas and following the flow paths. Sinks (local minima) are identified where water pools.</p>
-                <p><strong>Real-world Application:</strong> This simulation helps in urban planning and flood risk assessment. By identifying natural flow paths and accumulation zones (blue pools), planners can design better drainage systems, locate rain gardens, and avoid building in flood-prone areas. It visualizes how water moves across the terrain during heavy rainfall events.</p>
+            <div class="dashboard-container">
+                <div class="dashboard-card">
+                    <div class="dashboard-section-title">
+                        <span class="material-icons" style="font-size: 18px;">info</span>
+                        Simulation Info
+                    </div>
+                    <div class="info-box" style="margin-bottom: 1rem; border-left-color: #0ea5e9;">
+                        <div class="info-title">Methodology</div>
+                        <p class="info-text">
+                            Uses a <strong>D8 Flow Direction</strong> algorithm on a Digital Elevation Model (DEM). 
+                            Calculates steepest descent for each cell and computes <strong>Flow Accumulation</strong>.
+                            Particles spawn in high-accumulation zones to visualize drainage paths.
+                        </p>
+                    </div>
+                    <div class="info-box" style="border-left-color: #0ea5e9;">
+                        <div class="info-title">Real-world Application</div>
+                        <p class="info-text">
+                            Critical for <strong>urban planning</strong> and <strong>flood risk assessment</strong>. 
+                            Identifies natural drainage paths and potential pooling zones to inform infrastructure design 
+                            and avoid flood-prone construction.
+                        </p>
+                    </div>
+                </div>
             </div>
         `;
         legendContent.innerHTML = `
-            <div style="display: flex; flex-direction: column; gap: 0.5rem;">
-                <div style="display: flex; align-items: center; gap: 0.5rem;">
-                    <div style="width: 20px; height: 20px; background: linear-gradient(to right, #00f, #0ff);"></div>
-                    <span>Flow Intensity</span>
-                </div>
-                <div style="display: flex; align-items: center; gap: 0.5rem;">
-                    <div style="width: 20px; height: 20px; background: rgba(0, 100, 255, 0.5); border-radius: 50%;"></div>
-                    <span>Accumulation Pools</span>
+            <div class="dashboard-card">
+                <div class="dashboard-section-title">Legend</div>
+                <div style="display: flex; flex-direction: column; gap: 0.5rem;">
+                    <div class="legend-item">
+                        <div class="legend-color" style="background: linear-gradient(to right, #00f, #0ff);"></div>
+                        <span class="legend-label">Flow Intensity</span>
+                    </div>
+                    <div class="legend-item">
+                        <div class="legend-color" style="background: rgba(0, 100, 255, 0.5); border-radius: 50%;"></div>
+                        <span class="legend-label">Accumulation Pools</span>
+                    </div>
                 </div>
             </div>
         `;
     } else if (targetId === 'sun-study-btn') {
         dashboardContent.innerHTML = `
-            <div class="control-panel-embedded">
-                <div class="sun-control">
-                    <label>Date</label>
-                    <input type="date" id="sun-date" value="${new Date().toISOString().split('T')[0]}">
+            <div class="dashboard-container">
+                <div class="dashboard-card">
+                    <div class="dashboard-section-title">
+                        <span class="material-icons" style="font-size: 18px;">tune</span>
+                        Controls
+                    </div>
+                    
+                    <div class="control-row">
+                        <label class="control-label">Date</label>
+                        <input type="date" id="sun-date" class="modern-date" value="${new Date().toISOString().split('T')[0]}">
+                    </div>
+
+                    <div class="control-row">
+                        <label class="control-label">Time</label>
+                        <input type="range" id="sun-time" class="modern-range" min="0" max="24" step="0.25" value="12">
+                        <span id="time-display" class="control-value">12:00</span>
+                    </div>
+
+                    <div class="control-row">
+                        <label class="control-label">Shadow Opacity</label>
+                        <input type="range" id="shadow-opacity" class="modern-range" min="0.1" max="1.0" step="0.1" value="0.8">
+                    </div>
+
+                    <div class="control-row">
+                        <label class="control-label">Animation Speed</label>
+                        <input type="range" id="sun-speed" class="modern-range" min="0.5" max="5" step="0.5" value="2">
+                        <span id="speed-display" class="control-value">2x</span>
+                    </div>
+
+                    <div class="action-grid">
+                        <button id="sun-animate-btn" class="modern-btn primary">
+                            <span class="material-icons">play_arrow</span> Animate Day
+                        </button>
+                        <button id="false-color-btn" class="modern-btn">
+                            <span class="material-icons">palette</span> False Color
+                        </button>
+                    </div>
                 </div>
-                <div class="sun-control">
-                    <label>Time: <span id="time-display">12:00</span></label>
-                    <input type="range" id="sun-time" min="0" max="24" step="0.25" value="12">
+
+                <div class="dashboard-card">
+                    <div class="dashboard-section-title">
+                        <span class="material-icons" style="font-size: 18px;">analytics</span>
+                        Analysis Data
+                    </div>
+                    <div class="control-row">
+                        <span class="control-label">Sun Altitude</span>
+                        <span id="altitude-display" class="control-value">--</span>
+                    </div>
+                    <div class="control-row">
+                        <span class="control-label">Sun Azimuth</span>
+                        <span id="azimuth-display" class="control-value">--</span>
+                    </div>
                 </div>
-                <div class="sun-control">
-                    <label>Shadow Opacity</label>
-                    <input type="range" id="shadow-opacity" min="0.1" max="1.0" step="0.1" value="0.8">
+
+                <div class="dashboard-card">
+                    <div class="dashboard-section-title">
+                        <span class="material-icons" style="font-size: 18px;">school</span>
+                        Educational Context
+                    </div>
+                    <div class="info-box" style="margin-bottom: 1rem;">
+                        <div class="info-title">Methodology</div>
+                        <p class="info-text">
+                            Renders accurate shadows using <strong>Three.js</strong> based on astronomical calculations for Gothenburg's latitude. 
+                            Uses <strong>SSAO</strong> (Screen Space Ambient Occlusion) for depth perception.
+                        </p>
+                    </div>
+                    <div class="info-box">
+                        <div class="info-title">Application</div>
+                        <p class="info-text">
+                            Used by architects to optimize <strong>natural light</strong>, design energy-efficient buildings, 
+                            and ensure public spaces receive adequate sunlight (solar access analysis).
+                        </p>
+                    </div>
                 </div>
-                <div class="sun-actions" style="display: flex; gap: 10px; margin: 10px 0;">
-                    <button id="sun-animate-btn" class="sun-btn" style="flex: 1; padding: 8px; background: #f59e0b; color: white; border: none; border-radius: 4px; cursor: pointer;">▶ Animate Day</button>
-                    <button id="false-color-btn" class="sun-btn" style="flex: 1; padding: 8px; background: #f59e0b; color: white; border: none; border-radius: 4px; cursor: pointer;">🌈 False Color</button>
-                </div>
-                <div class="sun-control">
-                    <label>Speed: <span id="speed-display">2x</span></label>
-                    <input type="range" id="sun-speed" min="0.5" max="5" step="0.5" value="2">
-                </div>
-            </div>
-            <hr style="margin: 15px 0; border: 0; border-top: 1px solid #eee;">
-            <div style="font-size: 0.9rem; line-height: 1.5;">
-                <p><strong>Methodology:</strong> The Sun Study simulation uses Three.js to render accurate shadows based on the sun's position for a specific date and time at Gothenburg's latitude. It employs Screen Space Ambient Occlusion (SSAO) for depth and realism. The "False Color" mode visualizes solar exposure intensity.</p>
-                <p><strong>Real-world Application:</strong> Architects and urban planners use sun studies to analyze shadow impact on buildings and public spaces. This helps in optimizing natural light, designing energy-efficient buildings, and ensuring parks and plazas receive adequate sunlight throughout the year.</p>
             </div>
         `;
         
         legendContent.innerHTML = `
-            <div style="display: flex; flex-direction: column; gap: 0.5rem;">
-                <div style="display: flex; align-items: center; gap: 0.5rem;">
-                    <div style="width: 20px; height: 20px; background: rgba(0,0,0,0.5);"></div>
-                    <span>Shadow</span>
-                </div>
-                <div style="display: flex; align-items: center; gap: 0.5rem;">
-                    <div style="width: 20px; height: 20px; background: linear-gradient(to right, blue, green, yellow, red);"></div>
-                    <span>Solar Exposure (False Color)</span>
+            <div class="dashboard-card">
+                <div class="dashboard-section-title">Legend</div>
+                <div style="display: flex; flex-direction: column; gap: 0.5rem;">
+                    <div class="legend-item">
+                        <div class="legend-color" style="background: rgba(0,0,0,0.5);"></div>
+                        <span class="legend-label">Shadow Cast</span>
+                    </div>
+                    <div class="legend-item">
+                        <div class="legend-color" style="background: linear-gradient(to right, blue, green, yellow, red);"></div>
+                        <span class="legend-label">Solar Exposure (False Color)</span>
+                    </div>
                 </div>
             </div>
         `;
@@ -150,7 +224,10 @@ function updateDashboard(targetId) {
         
         animateBtn.addEventListener('click', () => {
             animateBtn.classList.toggle('active');
-            animateBtn.textContent = animateBtn.classList.contains('active') ? '⏸ Pause' : '▶ Animate Day';
+            const isActive = animateBtn.classList.contains('active');
+            animateBtn.innerHTML = isActive 
+                ? '<span class="material-icons">pause</span> Pause' 
+                : '<span class="material-icons">play_arrow</span> Animate Day';
             sendControl('toggle_animation');
         });
 
