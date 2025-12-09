@@ -241,6 +241,213 @@ function updateDashboard(targetId) {
             sendControl('toggle_false_color');
         });
 
+    } else if (targetId === 'cfd-simulation-btn') {
+        dashboardContent.innerHTML = `
+            <div class="dashboard-container">
+                <div class="dashboard-card">
+                    <div class="dashboard-section-title">
+                        <span class="material-icons" style="font-size: 18px;">tune</span>
+                        Wind Controls
+                    </div>
+                    
+                    <div class="control-row">
+                        <label class="control-label">Wind Speed</label>
+                        <input type="range" id="wind-speed" class="modern-range" min="1" max="20" step="0.5" value="5">
+                        <span id="wind-speed-display" class="control-value">5.0 m/s</span>
+                    </div>
+
+                    <div class="control-row">
+                        <label class="control-label">Direction</label>
+                        <input type="range" id="wind-direction" class="modern-range" min="0" max="360" step="15" value="0">
+                        <span id="wind-dir-display" class="control-value">0°</span>
+                    </div>
+
+                    <div class="control-row">
+                        <label class="control-label">Particles</label>
+                        <select id="particle-count" class="modern-date" style="width: 100px;">
+                            <option value="300">Low</option>
+                            <option value="800" selected>Medium</option>
+                            <option value="1500">High</option>
+                        </select>
+                    </div>
+
+                    <div class="control-row">
+                        <label class="control-label">Particle Speed</label>
+                        <input type="range" id="particle-speed" class="modern-range" min="2" max="40" step="2" value="20">
+                        <span id="particle-speed-display" class="control-value">20x</span>
+                    </div>
+
+                    <div class="control-row">
+                        <label class="control-label">Viscosity</label>
+                        <input type="range" id="viscosity" class="modern-range" min="0" max="1" step="0.1" value="0.5">
+                    </div>
+
+                    <div class="control-row">
+                        <label class="control-label">Grid Resolution</label>
+                        <select id="grid-resolution" class="modern-date" style="width: 100px;">
+                            <option value="100">100 (Fast)</option>
+                            <option value="150">150</option>
+                            <option value="200" selected>200 (Normal)</option>
+                            <option value="250">250</option>
+                            <option value="300">300 (High)</option>
+                        </select>
+                    </div>
+                </div>
+
+                <div class="dashboard-card">
+                    <div class="dashboard-section-title">
+                        <span class="material-icons" style="font-size: 18px;">school</span>
+                        Educational Context
+                    </div>
+                    <div class="info-box" style="margin-bottom: 1rem; border-left-color: #10b981;">
+                        <div class="info-title">Methodology</div>
+                        <p class="info-text">
+                            Uses the <strong>Lattice Boltzmann Method (LBM)</strong>, a powerful CFD technique that simulates fluid dynamics by tracking particle distributions on a grid (D2Q9 lattice). It solves the Navier-Stokes equations in real-time.
+                        </p>
+                    </div>
+                    <div class="info-box" style="border-left-color: #10b981;">
+                        <div class="info-title">Application</div>
+                        <p class="info-text">
+                            Essential for <strong>wind comfort analysis</strong> in urban design. Helps architects ensure pedestrian safety, plan natural ventilation corridors, and mitigate dangerous wind tunnel effects around tall buildings.
+                        </p>
+                    </div>
+                </div>
+            </div>
+        `;
+        
+        legendContent.innerHTML = `
+            <div class="dashboard-card">
+                <div class="dashboard-section-title">Legend</div>
+                <div style="display: flex; flex-direction: column; gap: 1rem;">
+                    
+                    <div>
+                        <div class="legend-label" style="margin-bottom: 0.5rem;">Wind Velocity Scale</div>
+                        <div style="height: 12px; background: linear-gradient(to right, #3b82f6, #10b981, #ef4444); border-radius: 6px; margin-bottom: 0.25rem;"></div>
+                        <div style="display: flex; justify-content: space-between; font-size: 0.75rem; color: #6b7280;">
+                            <span>0 m/s</span>
+                            <span>Moderate</span>
+                            <span>High</span>
+                        </div>
+                    </div>
+
+                    <div class="legend-item">
+                        <div class="legend-color" style="background: #1f2937;"></div>
+                        <div>
+                            <span class="legend-label">Building Obstacles</span>
+                            <div style="font-size: 0.75rem; color: #6b7280;">Impermeable boundaries</div>
+                        </div>
+                    </div>
+
+                    <div class="legend-item">
+                        <div class="legend-color" style="background: rgba(255,255,255,0.5); border: 1px dashed #9ca3af;"></div>
+                        <div>
+                            <span class="legend-label">Airflow Particles</span>
+                            <div style="font-size: 0.75rem; color: #6b7280;">Tracers visualizing flow path</div>
+                        </div>
+                    </div>
+
+                    <div style="border-top: 1px solid #e5e7eb; padding-top: 0.5rem; margin-top: 0.5rem;">
+                        <div style="font-size: 0.8rem; color: #6b7280; display: flex; justify-content: space-between;">
+                            <span>Domain Width:</span>
+                            <span style="font-family: monospace;">~500m</span>
+                        </div>
+                        <div style="font-size: 0.8rem; color: #6b7280; display: flex; justify-content: space-between;">
+                            <span>Simulation Method:</span>
+                            <span style="font-family: monospace;">LBM D2Q9</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        `;
+
+        // Attach event listeners
+        const windSpeed = document.getElementById('wind-speed');
+        const windSpeedDisplay = document.getElementById('wind-speed-display');
+        const windDir = document.getElementById('wind-direction');
+        const windDirDisplay = document.getElementById('wind-dir-display');
+        const particleCount = document.getElementById('particle-count');
+        const particleSpeed = document.getElementById('particle-speed');
+        const particleSpeedDisplay = document.getElementById('particle-speed-display');
+        const viscosity = document.getElementById('viscosity');
+        const gridResolution = document.getElementById('grid-resolution');
+
+        const sendCfdControl = (action, value) => {
+            channel.postMessage({
+                type: 'cfd_control',
+                action: action,
+                value: value
+            });
+        };
+
+        windSpeed.addEventListener('input', (e) => {
+            windSpeedDisplay.textContent = parseFloat(e.target.value).toFixed(1) + ' m/s';
+            sendCfdControl('set_wind_speed', e.target.value);
+        });
+
+        windDir.addEventListener('input', (e) => {
+            windDirDisplay.textContent = e.target.value + '°';
+            sendCfdControl('set_wind_direction', e.target.value);
+        });
+
+        particleCount.addEventListener('change', (e) => {
+            sendCfdControl('set_particles', e.target.value);
+        });
+
+        particleSpeed.addEventListener('input', (e) => {
+            particleSpeedDisplay.textContent = e.target.value + 'x';
+            sendCfdControl('set_particle_speed', e.target.value);
+        });
+
+        viscosity.addEventListener('input', (e) => {
+            sendCfdControl('set_viscosity', e.target.value);
+        });
+
+        gridResolution.addEventListener('change', (e) => {
+            sendCfdControl('set_resolution', e.target.value);
+        });
+
+    } else if (targetId === 'grid-animation-btn') {
+        dashboardContent.innerHTML = `
+            <div class="dashboard-container">
+                <div class="dashboard-card">
+                    <div class="dashboard-section-title">
+                        <span class="material-icons" style="font-size: 18px;">info</span>
+                        System Info
+                    </div>
+                    <div class="info-box" style="margin-bottom: 1rem; border-left-color: #00ffff;">
+                        <div class="info-title">Physical Digital Twin</div>
+                        <p class="info-text">
+                            This grid projection aligns perfectly with the <strong>physical 3D printed tiles</strong> on the table. 
+                            It serves as a calibration layer to ensure the digital projection matches the physical model boundaries.
+                        </p>
+                    </div>
+                    <div class="info-box" style="border-left-color: #00ffff;">
+                        <div class="info-title">Grid Structure</div>
+                        <p class="info-text">
+                            The table is divided into a <strong>5x3 grid</strong> of 20x20cm tiles. 
+                            Each cell represents a modular section of the city model, allowing for swappable districts.
+                        </p>
+                    </div>
+                </div>
+            </div>
+        `;
+        
+        legendContent.innerHTML = `
+            <div class="dashboard-card">
+                <div class="dashboard-section-title">Legend</div>
+                <div style="display: flex; flex-direction: column; gap: 0.5rem;">
+                    <div class="legend-item">
+                        <div class="legend-color" style="border: 2px solid #00ffff; background: rgba(0, 255, 255, 0.1);"></div>
+                        <span class="legend-label">Tile Boundary</span>
+                    </div>
+                    <div class="legend-item">
+                        <div class="legend-color" style="width: 12px; height: 12px; border-radius: 50%; background: #00ffff; box-shadow: 0 0 5px #00ffff; margin: 6px;"></div>
+                        <span class="legend-label">Calibration Node</span>
+                    </div>
+                </div>
+            </div>
+        `;
+
     } else {
         // Default or other tools
         dashboardContent.innerHTML = '<p>Select a simulation to view details.</p>';

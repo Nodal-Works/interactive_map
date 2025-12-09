@@ -560,9 +560,6 @@
     
     // Draw animated flow particles
     drawFlowParticles(time);
-    
-    // Add legend
-    drawLegend();
   }
   
   // Particle system for flow visualization
@@ -710,209 +707,10 @@
     return latticeSpeed * metersPerCell * 60; // Approximate scaling factor
   }
   
-  function drawLegend() {
-    const padding = 10;
-    const legendWidth = 220;
-    const legendHeight = 400; // Increased for resolution control and new controls
-    const x = cfdCanvas.width - legendWidth - padding;
-    const y = padding;
-    
-    // Background
-    ctx.fillStyle = 'rgba(0, 0, 0, 0.9)';
-    ctx.fillRect(x, y, legendWidth, legendHeight);
-    
-    // Border
-    ctx.strokeStyle = 'rgba(255, 255, 255, 0.3)';
-    ctx.lineWidth = 1;
-    ctx.strokeRect(x, y, legendWidth, legendHeight);
-    
-    let currentY = y + 20;
-    
-    // Title
-    ctx.fillStyle = '#00d4ff';
-    ctx.font = 'bold 14px sans-serif';
-    ctx.fillText('Wind Flow CFD', x + 10, currentY);
-    currentY += 25;
-    
-    // Separator
-    ctx.strokeStyle = 'rgba(255, 255, 255, 0.2)';
-    ctx.beginPath();
-    ctx.moveTo(x + 10, currentY);
-    ctx.lineTo(x + legendWidth - 10, currentY);
-    ctx.stroke();
-    currentY += 15;
-    
-    // Wind Speed Control
-    ctx.fillStyle = '#fff';
-    ctx.font = 'bold 11px sans-serif';
-    ctx.fillText('Wind Speed', x + 10, currentY);
-    currentY += 3;
-    
-    ctx.font = '11px sans-serif';
-    ctx.fillStyle = '#00ff88';
-    ctx.fillText(`${REAL_WIND_SPEED_MPS.toFixed(1)} m/s`, x + legendWidth - 60, currentY);
-    currentY += 10;
-    
-    // Wind speed slider bar
-    drawSlider(x + 10, currentY, legendWidth - 20, REAL_WIND_SPEED_MPS, 1, 20);
-    currentY += 10;
-    
-    ctx.fillStyle = '#aaa';
-    ctx.font = '9px sans-serif';
-    ctx.fillText('↑↓ to adjust', x + 10, currentY);
-    currentY += 20;
-    
-    // Wind Direction Control
-    ctx.fillStyle = '#fff';
-    ctx.font = 'bold 11px sans-serif';
-    ctx.fillText('Wind Direction', x + 10, currentY);
-    currentY += 3;
-    
-    ctx.font = '11px sans-serif';
-    ctx.fillStyle = '#00ff88';
-    ctx.fillText(`${WIND_ANGLE.toFixed(0)}°`, x + legendWidth - 60, currentY);
-    currentY += 10;
-    
-    // Direction slider bar
-    drawSlider(x + 10, currentY, legendWidth - 20, WIND_ANGLE, 0, 360);
-    currentY += 10;
-    
-    ctx.fillStyle = '#aaa';
-    ctx.font = '9px sans-serif';
-    ctx.fillText('←→ to adjust', x + 10, currentY);
-    currentY += 20;
-    
-    // Particles Control
-    ctx.fillStyle = '#fff';
-    ctx.font = 'bold 11px sans-serif';
-    ctx.fillText('Particle Count', x + 10, currentY);
-    currentY += 3;
-    
-    ctx.font = '11px sans-serif';
-    ctx.fillStyle = '#00ff88';
-    ctx.fillText(`${NUM_PARTICLES}`, x + legendWidth - 60, currentY);
-    currentY += 10;
-    
-    // Particle count indicator
-    const particleRatio = (NUM_PARTICLES - 300) / (1500 - 300);
-    drawSlider(x + 10, currentY, legendWidth - 20, particleRatio * 100, 0, 100);
-    currentY += 10;
-    
-    ctx.fillStyle = '#aaa';
-    ctx.font = '9px sans-serif';
-    ctx.fillText('P to cycle', x + 10, currentY);
-    currentY += 20;
-    
-    // Particle Speed Control
-    ctx.fillStyle = '#fff';
-    ctx.font = 'bold 11px sans-serif';
-    ctx.fillText('Particle Speed', x + 10, currentY);
-    currentY += 3;
-    
-    ctx.font = '11px sans-serif';
-    ctx.fillStyle = '#00ff88';
-    ctx.fillText(`${PARTICLE_SPEED_MULTIPLIER}x`, x + legendWidth - 60, currentY);
-    currentY += 10;
-    
-    const speedRatio = (PARTICLE_SPEED_MULTIPLIER - 2) / (20 - 2);
-    drawSlider(x + 10, currentY, legendWidth - 20, speedRatio * 100, 0, 100);
-    currentY += 10;
-    
-    ctx.fillStyle = '#aaa';
-    ctx.font = '9px sans-serif';
-    ctx.fillText('R to cycle', x + 10, currentY);
-    currentY += 20;
-    
-    // Resolution Control
-    ctx.fillStyle = '#fff';
-    ctx.font = 'bold 11px sans-serif';
-    ctx.fillText('Grid Resolution', x + 10, currentY);
-    currentY += 3;
-    
-    ctx.font = '11px sans-serif';
-    ctx.fillStyle = '#00ff88';
-    ctx.fillText(`${GRID_RESOLUTION}`, x + legendWidth - 60, currentY);
-    currentY += 10;
-    
-    const resRatio = (GRID_RESOLUTION - 100) / (300 - 100);
-    drawSlider(x + 10, currentY, legendWidth - 20, resRatio * 100, 0, 100);
-    currentY += 10;
-    
-    ctx.fillStyle = '#aaa';
-    ctx.font = '9px sans-serif';
-    ctx.fillText('G to cycle', x + 10, currentY);
-    currentY += 25;
-    
-    // Separator
-    ctx.strokeStyle = 'rgba(255, 255, 255, 0.2)';
-    ctx.beginPath();
-    ctx.moveTo(x + 10, currentY);
-    ctx.lineTo(x + legendWidth - 10, currentY);
-    ctx.stroke();
-    currentY += 15;
-    
-    // Velocity color scale
-    ctx.fillStyle = '#aaa';
-    ctx.font = '10px sans-serif';
-    ctx.fillText('Velocity Scale (Dynamic)', x + 10, currentY);
-    currentY += 10;
-    
-    const gradHeight = 15;
-    const gradY = currentY;
-    for (let i = 0; i < legendWidth - 20; i++) {
-      const normalized = i / (legendWidth - 20);
-      const hue = 240 - normalized * 240;
-      const saturation = 80 + normalized * 20;
-      const lightness = 30 + normalized * 40;
-      ctx.fillStyle = `hsl(${hue}, ${saturation}%, ${lightness}%)`;
-      ctx.fillRect(x + 10 + i, gradY, 1, gradHeight);
-    }
-    currentY += gradHeight + 10;
-    
-    // Velocity scale labels (dynamic max speed based on current flow)
-    ctx.fillStyle = '#fff';
-    ctx.font = '9px sans-serif';
-    ctx.fillText('0', x + 10, currentY);
-    
-    // Convert lattice units to m/s for display
-    const maxSpeedMPS = (maxVelocitySmoothed / WIND_SPEED) * REAL_WIND_SPEED_MPS;
-    const maxSpeedText = maxSpeedMPS.toFixed(1) + ' m/s';
-    ctx.fillText(maxSpeedText, x + legendWidth - ctx.measureText(maxSpeedText).width - 10, currentY);
-    currentY += 15;
-    
-    // Domain info
-    ctx.fillStyle = '#aaa';
-    ctx.font = '9px sans-serif';
-    ctx.fillText(`Resolution: ${GRID_RESOLUTION} cells`, x + 10, currentY);
-    currentY += 12;
-    ctx.fillText(`Domain: ~${DOMAIN_WIDTH_METERS}m`, x + 10, currentY);
-  }
+  // Legend and controls are now handled by the remote controller
+
   
-  function drawSlider(x, y, width, value, min, max) {
-    const barHeight = 4;
-    const normalizedValue = (value - min) / (max - min);
-    const fillWidth = width * normalizedValue;
-    
-    // Background bar
-    ctx.fillStyle = 'rgba(255, 255, 255, 0.2)';
-    ctx.fillRect(x, y, width, barHeight);
-    
-    // Filled portion
-    const gradient = ctx.createLinearGradient(x, y, x + width, y);
-    gradient.addColorStop(0, '#0088ff');
-    gradient.addColorStop(1, '#00ff88');
-    ctx.fillStyle = gradient;
-    ctx.fillRect(x, y, fillWidth, barHeight);
-    
-    // Thumb
-    ctx.fillStyle = '#fff';
-    ctx.shadowBlur = 4;
-    ctx.shadowColor = 'rgba(0, 255, 136, 0.8)';
-    ctx.beginPath();
-    ctx.arc(x + fillWidth, y + barHeight / 2, 6, 0, Math.PI * 2);
-    ctx.fill();
-    ctx.shadowBlur = 0;
-  }
+  
   
   let simulationSteps = 0;
   const WARMUP_STEPS = 100; // Run faster during initial warmup
@@ -991,95 +789,42 @@
     if (isSimulating) resizeCanvas();
   });
   
-  // Keyboard controls for dynamic adjustment
-  window.addEventListener('keydown', (e) => {
-    if (!isSimulating) return;
-    
-    let changed = false;
-    
-    switch(e.key) {
-      case 'ArrowUp':
-        REAL_WIND_SPEED_MPS = Math.min(20, REAL_WIND_SPEED_MPS + 0.5);
-        WIND_SPEED = Math.min(0.1, WIND_SPEED + 0.005);
-        changed = true;
-        if (typeof showToast === 'function') {
-          showToast(`Wind speed: ${REAL_WIND_SPEED_MPS.toFixed(1)} m/s`, 1000);
-        }
-        break;
-        
-      case 'ArrowDown':
-        REAL_WIND_SPEED_MPS = Math.max(1, REAL_WIND_SPEED_MPS - 0.5);
-        WIND_SPEED = Math.max(0.01, WIND_SPEED - 0.005);
-        changed = true;
-        if (typeof showToast === 'function') {
-          showToast(`Wind speed: ${REAL_WIND_SPEED_MPS.toFixed(1)} m/s`, 1000);
-        }
-        break;
-        
-      case 'ArrowLeft':
-        WIND_ANGLE = (WIND_ANGLE - 15 + 360) % 360;
-        changed = true;
-        if (typeof showToast === 'function') {
-          showToast(`Wind direction: ${WIND_ANGLE.toFixed(0)}°`, 1000);
-        }
-        break;
-        
-      case 'ArrowRight':
-        WIND_ANGLE = (WIND_ANGLE + 15) % 360;
-        changed = true;
-        if (typeof showToast === 'function') {
-          showToast(`Wind direction: ${WIND_ANGLE.toFixed(0)}°`, 1000);
-        }
-        break;
-        
-      case 'p':
-      case 'P':
-        NUM_PARTICLES = NUM_PARTICLES === 800 ? 1500 : NUM_PARTICLES === 1500 ? 300 : 800;
-        initParticles();
-        if (typeof showToast === 'function') {
-          showToast(`Particles: ${NUM_PARTICLES}`, 1000);
-        }
-        break;
-        
-      case 'r':
-      case 'R':
-        PARTICLE_SPEED_MULTIPLIER = PARTICLE_SPEED_MULTIPLIER === 2 ? 5 : PARTICLE_SPEED_MULTIPLIER === 5 ? 10 : PARTICLE_SPEED_MULTIPLIER === 10 ? 20 : 2;
-        if (typeof showToast === 'function') {
-          showToast(`Particle speed: ${PARTICLE_SPEED_MULTIPLIER}x`, 1000);
-        }
-        break;
-        
-      case 'o':
-      case 'O':
-        OMEGA = OMEGA === 1.0 ? 1.3 : OMEGA === 1.3 ? 0.7 : 1.0;
-        if (typeof showToast === 'function') {
-          showToast(`Relaxation: ${OMEGA.toFixed(1)}`, 1000);
-        }
-        break;
-        
-      case 'g':
-      case 'G':
-        // Cycle through: 100 → 150 → 200 → 250 → 300 → 100
-        if (GRID_RESOLUTION === 100) GRID_RESOLUTION = 150;
-        else if (GRID_RESOLUTION === 150) GRID_RESOLUTION = 200;
-        else if (GRID_RESOLUTION === 200) GRID_RESOLUTION = 250;
-        else if (GRID_RESOLUTION === 250) GRID_RESOLUTION = 300;
-        else GRID_RESOLUTION = 100;
-        
-        resizeCanvas(); // Reinitialize with new resolution
-        initParticles();
-        if (typeof showToast === 'function') {
-          showToast(`Grid resolution: ${GRID_RESOLUTION} cells`, 2000);
-        }
-        break;
-    }
-    
-    if (changed) {
-      e.preventDefault();
-    }
-  });
-  
   console.log('CFD Simulation module loaded');
-  console.log('Controls: Arrow keys (wind), P (particles), R (speed), O (relaxation), G (resolution)');
+  console.log('Controls: Remote controller only');
+
+  // Listen for remote control messages
+  const channel = new BroadcastChannel('map_controller_channel');
+  channel.onmessage = (event) => {
+    const data = event.data;
+    if (data.type === 'cfd_control') {
+        switch (data.action) {
+            case 'set_wind_speed':
+                REAL_WIND_SPEED_MPS = parseFloat(data.value);
+                // Map 0-20 m/s to 0.01-0.1 lattice units roughly
+                WIND_SPEED = 0.01 + (REAL_WIND_SPEED_MPS / 20) * 0.09;
+                break;
+            case 'set_wind_direction':
+                WIND_ANGLE = parseFloat(data.value);
+                break;
+            case 'set_particles':
+                NUM_PARTICLES = parseInt(data.value);
+                initParticles();
+                break;
+            case 'set_particle_speed':
+                PARTICLE_SPEED_MULTIPLIER = parseFloat(data.value);
+                break;
+            case 'set_viscosity':
+                // Map 0-1 slider to 0.5-1.9 omega (relaxation)
+                // Higher omega = lower viscosity
+                OMEGA = 0.5 + parseFloat(data.value) * 1.4;
+                break;
+            case 'set_resolution':
+                GRID_RESOLUTION = parseInt(data.value);
+                resizeCanvas();
+                initParticles();
+                break;
+        }
+    }
+  };
   
 })();
