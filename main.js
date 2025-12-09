@@ -264,54 +264,11 @@ function addUserGeo(geojson) {
 
 // Calibration overlay (DOM rectangle centered on screen)
 const tableOverlay = document.getElementById('table-overlay');
-const calibrateToggle = document.getElementById('calibrate-toggle');
-const calibratePanel = document.getElementById('calibrate-panel');
-const showOverlayBtn = document.getElementById('show-overlay');
-const hideOverlayBtn = document.getElementById('hide-overlay');
-
-calibrateToggle.addEventListener('click', () => {
-  calibratePanel.classList.toggle('hidden');
-});
-
-function pixelsPerCm() {
-  const screenWcm = parseFloat(document.getElementById('screen-w').value) || 111.93;
-  return window.innerWidth / screenWcm;
-}
-function computeOverlayPixelSize() {
-  const px = pixelsPerCm();
-  const w = Math.round((parseFloat(document.getElementById('table-w').value)||100) * px);
-  const h = Math.round((parseFloat(document.getElementById('table-h').value)||60) * px);
-  return { w,h };
-}
-function showOverlay() {
-  const s = computeOverlayPixelSize();
-  tableOverlay.style.width = s.w + 'px';
-  tableOverlay.style.height = s.h + 'px';
-  tableOverlay.style.display = 'block';
-}
-function hideOverlay(){ tableOverlay.style.display = 'none'; }
-
-showOverlayBtn.addEventListener('click', () => showOverlay());
-hideOverlayBtn.addEventListener('click', () => hideOverlay());
 
 // Hide overlay by default
-hideOverlay();
-
-// zoom/rotate controls
-const zoomInBtn = document.getElementById('zoom-in');
-const zoomOutBtn = document.getElementById('zoom-out');
-const rotateLeftBtn = document.getElementById('rotate-left');
-const rotateRightBtn = document.getElementById('rotate-right');
-const resetRotationBtn = document.getElementById('reset-rotation');
-const lockCenterBtn = document.getElementById('lock-center');
+if (tableOverlay) tableOverlay.style.display = 'none';
 
 let centerLocked = false;
-
-zoomInBtn.addEventListener('click', () => map.zoomTo(Math.min(map.getZoom()+0.1, 22)));
-zoomOutBtn.addEventListener('click', () => map.zoomTo(Math.max(map.getZoom()-0.1, 0)));
-rotateLeftBtn.addEventListener('click', () => map.rotateTo((map.getBearing() - 0.1) % 360));
-rotateRightBtn.addEventListener('click', () => map.rotateTo((map.getBearing() + 0.1) % 360));
-resetRotationBtn.addEventListener('click', () => map.rotateTo(0));
 
 function setInteractionLock(locked) {
   centerLocked = locked;
@@ -324,7 +281,6 @@ function setInteractionLock(locked) {
     map.touchZoomRotate.disable();
     // keep center fixed on table center
     map.jumpTo({ center: tableCenter });
-    lockCenterBtn.classList.add('locked');
     showToast('Center locked');
   } else {
     try { map.dragPan.enable(); } catch(e){}
@@ -333,11 +289,9 @@ function setInteractionLock(locked) {
     try { map.boxZoom.enable(); } catch(e){}
     try { map.keyboard.enable(); } catch(e){}
     try { map.touchZoomRotate.enable(); } catch(e){}
-    lockCenterBtn.classList.remove('locked');
     showToast('Center unlocked');
   }
 }
-lockCenterBtn.addEventListener('click', () => setInteractionLock(!centerLocked));
 
 // if centerLocked, keep map centered when user attempts programmatic moves via buttons
 const originalZoomTo = map.zoomTo.bind(map);
@@ -345,41 +299,6 @@ map.zoomTo = (z) => {
   if (centerLocked) map.jumpTo({ center: tableCenter, zoom: z });
   else originalZoomTo(z);
 };
-
-// Copy current calibration to clipboard
-const calibrateFitBtn = document.getElementById('calibrate-fit');
-calibrateFitBtn.addEventListener('click', () => {
-  const center = map.getCenter();
-  const zoom = map.getZoom();
-  const bearing = map.getBearing();
-  
-  const calibration = {
-    center: {
-      lng: center.lng,
-      lat: center.lat
-    },
-    zoom: zoom,
-    bearing: bearing
-  };
-  
-  const calibrationText = `Map Calibration:
-Center: [${center.lng.toFixed(8)}, ${center.lat.toFixed(8)}]
-Zoom: ${zoom.toFixed(4)}
-Bearing: ${bearing.toFixed(4)}°
-
-JSON:
-${JSON.stringify(calibration, null, 2)}`;
-
-  // Copy to clipboard
-  navigator.clipboard.writeText(calibrationText).then(() => {
-    showToast('Calibration copied to clipboard!');
-    console.log(calibrationText);
-  }).catch(err => {
-    showToast('Failed to copy to clipboard');
-    console.error('Clipboard error:', err);
-    console.log(calibrationText);
-  });
-});
 
 // fullscreen handling
 const fsToggle = document.getElementById('fullscreen-toggle');
@@ -453,6 +372,64 @@ controllerChannel.onmessage = (event) => {
             bearing: initialBearing,
             pitch: 0
         });
+    } else if (data.type === 'calibrate_action') {
+        const action = data.action;
+        
+        if (action === 'show_overlay') {
+            const { sw, sh, tw, th } = data.params;
+            const px = window.innerWidth / parseFloat(sw);
+            const w = Math.round(parseFloat(tw) * px);
+            const h = Math.round(parseFloat(th) * px);
+            
+            const tableOverlay = document.getElementById('table-overlay');
+            if (tableOverlay) {
+                tableOverlay.style.width = w + 'px';
+                tableOverlay.style.height = h + 'px';
+                tableOverlay.style.display = 'block';
+            }
+            
+        } else if (action === 'hide_overlay') {
+            const tableOverlay = document.getElementById('table-overlay');
+            if (tableOverlay) tableOverlay.style.display = 'none';
+            
+        } else if (action === 'copy_calibration') {
+            const center = map.getCenter();
+            const zoom = map.getZoom();
+            const bearing = map.getBearing();
+            
+            const calibration = {
+                center: { lng: center.lng, lat: center.lat },
+                zoom: zoom,
+                bearing: bearing
+            };
+            
+            const calibrationText = `Map Calibration:
+Center: [${center.lng.toFixed(8)}, ${center.lat.toFixed(8)}]
+Zoom: ${zoom.toFixed(4)}
+Bearing: ${bearing.toFixed(4)}°
+
+JSON:
+${JSON.stringify(calibration, null, 2)}`;
+
+            // Send back to controller
+            controllerChannel.postMessage({
+                type: 'calibration_data',
+                text: calibrationText
+            });
+            
+        } else if (action === 'zoom_in') {
+            map.zoomTo(Math.min(map.getZoom()+0.1, 22));
+        } else if (action === 'zoom_out') {
+            map.zoomTo(Math.max(map.getZoom()-0.1, 0));
+        } else if (action === 'rotate_left') {
+            map.rotateTo((map.getBearing() - 0.1) % 360);
+        } else if (action === 'rotate_right') {
+            map.rotateTo((map.getBearing() + 0.1) % 360);
+        } else if (action === 'reset_rotation') {
+            map.rotateTo(0);
+        } else if (action === 'lock_center') {
+            setInteractionLock(data.value);
+        }
     }
 };
 

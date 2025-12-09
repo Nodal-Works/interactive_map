@@ -130,14 +130,6 @@
       
       <!-- Right sidebar controls (bottom group) -->
       <div class="icon-controls icon-controls-bottom">
-        <button id="calibrate-toggle" class="icon-btn" title="Calibrate">
-          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <circle cx="12" cy="12" r="10"/>
-            <circle cx="12" cy="12" r="6"/>
-            <circle cx="12" cy="12" r="2"/>
-          </svg>
-        </button>
-        
         <button id="fullscreen-toggle" class="icon-btn" title="Fullscreen">
           <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
             <path d="M8 3H5a2 2 0 0 0-2 2v3m18 0V5a2 2 0 0 0-2-2h-3m0 18h3a2 2 0 0 0 2-2v-3M3 16v3a2 2 0 0 0 2 2h3"/>
@@ -179,40 +171,6 @@
 
     <!-- Calibration overlay and panel -->
     <div id="table-overlay" aria-hidden="true"></div>
-
-    <div id="calibrate-panel" class="hidden">
-      <h3>Projection / Calibration</h3>
-      <div class="field">
-        <label>Screen width (cm)</label>
-        <input id="screen-w" type="number" step="0.1" value="111.93" />
-      </div>
-      <div class="field">
-        <label>Screen height (cm)</label>
-        <input id="screen-h" type="number" step="0.1" value="62.96" />
-      </div>
-      <div class="field">
-        <label>Table width (cm)</label>
-        <input id="table-w" type="number" step="0.1" value="100" />
-      </div>
-      <div class="field">
-        <label>Table height (cm)</label>
-        <input id="table-h" type="number" step="0.1" value="60" />
-      </div>
-      <div class="actions">
-        <button id="show-overlay" class="file-label">Show table overlay</button>
-        <button id="hide-overlay" class="file-label">Hide overlay</button>
-        <button id="calibrate-fit" class="file-label">Copy Current Calibration</button>
-        <div class="control-group">
-          <button id="zoom-in" class="file-label">Zoom +</button>
-          <button id="zoom-out" class="file-label">Zoom −</button>
-          <button id="rotate-left" class="file-label">⟲</button>
-          <button id="rotate-right" class="file-label">⟳</button>
-          <button id="reset-rotation" class="file-label">Reset</button>
-          <button id="lock-center" class="file-label">Lock Center</button>
-        </div>
-      </div>
-      <p class="note">Procedure: pan/zoom the map until the geographic area you want to place on the table is visible, then press "Calibrate to current map bounds". The map will zoom so that the current bounds fit exactly inside the physical table rectangle when projected.</p>
-    </div>
 
     <!-- Controller Link -->
     <div style="position: fixed; bottom: 10px; right: 70px; z-index: 2000;">

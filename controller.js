@@ -54,10 +54,116 @@ document.querySelectorAll('.control-btn[data-target]').forEach(btn => {
 function updateDashboard(targetId) {
     const dashboardContent = document.getElementById('dashboard-content');
     const legendContent = document.getElementById('legend-content');
+    const dashboardTitle = document.getElementById('dashboard-title');
+    const legendTitle = document.getElementById('legend-title');
+
+    // Reset titles by default
+    if (dashboardTitle) dashboardTitle.textContent = 'Dashboard';
+    if (legendTitle) legendTitle.textContent = 'Legend';
     
     // Use dedicated slideshow dashboard function for slideshow
     if (targetId === 'slideshow-btn') {
         updateSlideshowDashboard();
+        return;
+    }
+
+    if (targetId === 'calibrate-btn') {
+        if (dashboardTitle) dashboardTitle.textContent = 'Calibration Controls';
+        if (legendTitle) legendTitle.textContent = 'Instructions';
+
+        dashboardContent.innerHTML = `
+            <div class="dashboard-container">
+                <div class="dashboard-card">
+                    <div class="dashboard-section-title">Calibration Settings</div>
+                    
+                    <div class="control-row">
+                        <span class="control-label">Screen Width (cm)</span>
+                        <input type="number" id="ctrl-screen-w" class="modern-date" value="111.93" step="0.1" style="width: 80px;">
+                    </div>
+                    <div class="control-row">
+                        <span class="control-label">Screen Height (cm)</span>
+                        <input type="number" id="ctrl-screen-h" class="modern-date" value="62.96" step="0.1" style="width: 80px;">
+                    </div>
+                    <div class="control-row">
+                        <span class="control-label">Table Width (cm)</span>
+                        <input type="number" id="ctrl-table-w" class="modern-date" value="100" step="0.1" style="width: 80px;">
+                    </div>
+                    <div class="control-row">
+                        <span class="control-label">Table Height (cm)</span>
+                        <input type="number" id="ctrl-table-h" class="modern-date" value="60" step="0.1" style="width: 80px;">
+                    </div>
+
+                    <div class="action-grid">
+                        <button id="ctrl-show-overlay" class="modern-btn">Show Overlay</button>
+                        <button id="ctrl-hide-overlay" class="modern-btn">Hide Overlay</button>
+                    </div>
+                    
+                    <div style="margin-top: 1rem;">
+                        <button id="ctrl-calibrate-fit" class="modern-btn primary" style="width: 100%;">Copy Current Calibration</button>
+                    </div>
+                </div>
+
+                <div class="dashboard-card">
+                    <div class="dashboard-section-title">Map Adjustment</div>
+                    <div class="action-grid" style="grid-template-columns: repeat(3, 1fr);">
+                        <button id="ctrl-rotate-left" class="modern-btn"><span class="material-icons">rotate_left</span></button>
+                        <button id="ctrl-reset-rotation" class="modern-btn">Reset</button>
+                        <button id="ctrl-rotate-right" class="modern-btn"><span class="material-icons">rotate_right</span></button>
+                    </div>
+                    <div class="action-grid">
+                        <button id="ctrl-zoom-in" class="modern-btn"><span class="material-icons">add</span> Zoom</button>
+                        <button id="ctrl-zoom-out" class="modern-btn"><span class="material-icons">remove</span> Zoom</button>
+                    </div>
+                    <div style="margin-top: 1rem;">
+                        <button id="ctrl-lock-center" class="modern-btn" style="width: 100%;">Lock Center</button>
+                    </div>
+                </div>
+            </div>
+        `;
+        
+        legendContent.innerHTML = `
+            <div class="dashboard-card">
+                <div class="dashboard-section-title">Instructions</div>
+                <p class="info-text">
+                    1. Measure your physical screen dimensions.<br>
+                    2. Measure your physical table dimensions.<br>
+                    3. Enter values in the settings.<br>
+                    4. Click "Show Overlay" to see the target area.<br>
+                    5. Adjust map zoom/rotation to fit.<br>
+                    6. Click "Copy Current Calibration" to save.
+                </p>
+            </div>
+        `;
+
+        // Add event listeners
+        document.getElementById('ctrl-show-overlay').addEventListener('click', () => {
+            const sw = document.getElementById('ctrl-screen-w').value;
+            const sh = document.getElementById('ctrl-screen-h').value;
+            const tw = document.getElementById('ctrl-table-w').value;
+            const th = document.getElementById('ctrl-table-h').value;
+            channel.postMessage({ type: 'calibrate_action', action: 'show_overlay', params: { sw, sh, tw, th } });
+        });
+        
+        document.getElementById('ctrl-hide-overlay').addEventListener('click', () => {
+            channel.postMessage({ type: 'calibrate_action', action: 'hide_overlay' });
+        });
+
+        document.getElementById('ctrl-calibrate-fit').addEventListener('click', () => {
+            channel.postMessage({ type: 'calibrate_action', action: 'copy_calibration' });
+        });
+
+        document.getElementById('ctrl-zoom-in').addEventListener('click', () => channel.postMessage({ type: 'calibrate_action', action: 'zoom_in' }));
+        document.getElementById('ctrl-zoom-out').addEventListener('click', () => channel.postMessage({ type: 'calibrate_action', action: 'zoom_out' }));
+        document.getElementById('ctrl-rotate-left').addEventListener('click', () => channel.postMessage({ type: 'calibrate_action', action: 'rotate_left' }));
+        document.getElementById('ctrl-rotate-right').addEventListener('click', () => channel.postMessage({ type: 'calibrate_action', action: 'rotate_right' }));
+        document.getElementById('ctrl-reset-rotation').addEventListener('click', () => channel.postMessage({ type: 'calibrate_action', action: 'reset_rotation' }));
+        
+        const lockBtn = document.getElementById('ctrl-lock-center');
+        lockBtn.addEventListener('click', () => {
+            lockBtn.classList.toggle('active');
+            channel.postMessage({ type: 'calibrate_action', action: 'lock_center', value: lockBtn.classList.contains('active') });
+        });
+
         return;
     }
     
@@ -1122,6 +1228,11 @@ function updateMetadata(layerId) {
             desc = 'Visual field analysis from a specific point. Shows what is visible from the selected location.';
             legend = '<p>Click on map to set view point.</p>';
             break;
+        case 'calibrate-btn':
+            name = 'Projector Calibration';
+            desc = 'Configure map projection to align with physical model.';
+            legend = '';
+            break;
     }
 
     metaLayer.textContent = name;
@@ -1564,3 +1675,19 @@ document.addEventListener('keydown', (e) => {
         channel.postMessage({ type: 'slideshow_control', action: 'stop' });
     }
 });
+
+// Listen for messages from main app
+channel.onmessage = (event) => {
+    const data = event.data;
+    if (data.type === 'calibration_data') {
+        const calibrationText = data.text;
+        navigator.clipboard.writeText(calibrationText).then(() => {
+            alert('Calibration copied to clipboard!');
+        }).catch(err => {
+            console.error('Clipboard error:', err);
+            alert('Failed to copy to clipboard. Check console for data.');
+            console.log(calibrationText);
+        });
+    }
+};
+

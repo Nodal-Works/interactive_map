@@ -482,6 +482,9 @@
              <button class="control-btn" id="fullscreen-btn" title="Toggle Full Screen">
                 <span class="material-icons">fullscreen</span>
             </button>
+            <button class="control-btn" data-action="click" data-target="calibrate-btn" title="Calibrate">
+                <span class="material-icons">settings_overscan</span>
+            </button>
         </div>
     </aside>
 
@@ -502,14 +505,14 @@
         </div>
 
         <section class="panel-section" style="grid-column: 1; grid-row: 1;">
-            <h2>Legend</h2>
+            <h2 id="legend-title">Legend</h2>
             <div id="legend-content">
                 <p>Select a simulation to view its legend.</p>
             </div>
         </section>
 
         <section class="panel-section" style="grid-column: 2; grid-row: 1;">
-            <h2>Dashboard</h2>
+            <h2 id="dashboard-title">Dashboard</h2>
             <div id="dashboard-content">
                 <p>No active data.</p>
             </div>
