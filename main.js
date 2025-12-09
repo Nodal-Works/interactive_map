@@ -155,14 +155,14 @@ map.on('load', () => {
   map.addSource('table', { type: 'geojson', data: tableGeo });
 
   // polygon fill and outline
-  map.addLayer({ id: 'table-fill', type: 'fill', source: 'table', filter: ['==', ['geometry-type'], 'Polygon'], paint: { 'fill-color': '#ffb266', 'fill-opacity': 0.15 } });
-  map.addLayer({ id: 'table-line', type: 'line', source: 'table', filter: ['==', ['geometry-type'], 'Polygon'], paint: { 'line-color': '#ff7800', 'line-width': 2 } });
+  map.addLayer({ id: 'table-fill', type: 'fill', source: 'table', filter: ['==', ['geometry-type'], 'Polygon'], layout: { visibility: 'none' }, paint: { 'fill-color': '#ffb266', 'fill-opacity': 0.15 } });
+  map.addLayer({ id: 'table-line', type: 'line', source: 'table', filter: ['==', ['geometry-type'], 'Polygon'], layout: { visibility: 'none' }, paint: { 'line-color': '#ff7800', 'line-width': 2 } });
 
   // corner circles (filter points without center property)
-  map.addLayer({ id: 'table-corners', type: 'circle', source: 'table', filter: ['all', ['==', ['geometry-type'], 'Point'], ['has', 'corner']], paint: { 'circle-radius': 6, 'circle-color': '#ff7800', 'circle-stroke-color': '#fff', 'circle-stroke-width':1 } });
+  map.addLayer({ id: 'table-corners', type: 'circle', source: 'table', filter: ['all', ['==', ['geometry-type'], 'Point'], ['has', 'corner']], layout: { visibility: 'none' }, paint: { 'circle-radius': 6, 'circle-color': '#ff7800', 'circle-stroke-color': '#fff', 'circle-stroke-width':1 } });
 
   // center circle
-  map.addLayer({ id: 'table-center', type: 'circle', source: 'table', filter: ['has', 'center'], paint: { 'circle-radius': 6, 'circle-color': '#0078d4', 'circle-stroke-color': '#fff', 'circle-stroke-width':1 } });
+  map.addLayer({ id: 'table-center', type: 'circle', source: 'table', filter: ['has', 'center'], layout: { visibility: 'none' }, paint: { 'circle-radius': 6, 'circle-color': '#0078d4', 'circle-stroke-color': '#fff', 'circle-stroke-width':1 } });
 
   // click handlers to show popups for points
   map.on('click', 'table-corners', (e) => {
@@ -182,7 +182,8 @@ map.on('load', () => {
   
   // Toggle table markers visibility
   const toggleTableMarkersBtn = document.getElementById('toggle-table-markers-btn');
-  let tableMarkersVisible = true;
+  let tableMarkersVisible = false;
+  toggleTableMarkersBtn.classList.add('toggled-off');
 
   toggleTableMarkersBtn.addEventListener('click', () => {
     tableMarkersVisible = !tableMarkersVisible;
