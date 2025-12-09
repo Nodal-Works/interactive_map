@@ -49,7 +49,19 @@ class BirdSoundsLayer {
 
     this.activeSounds = []; // Stores currently playing sounds
     this.nextPlayTimeout = null;
+    this.masterVolume = 0.5;
     this.controllerChannel = new BroadcastChannel('map_controller_channel');
+    
+    this.controllerChannel.onmessage = (event) => {
+        if (event.data.type === 'bird_control') {
+            const { action, value } = event.data;
+            if (action === 'set_volume') {
+                this.setVolume(value);
+            } else if (action === 'stop_all') {
+                this.stopAll();
+            }
+        }
+    };
 
     // Bind methods
     this.animate = this.animate.bind(this);
@@ -91,6 +103,21 @@ class BirdSoundsLayer {
     document.addEventListener('click', unlockAudio);
     document.addEventListener('touchstart', unlockAudio);
     document.addEventListener('keydown', unlockAudio);
+  }
+
+  setVolume(value) {
+    const vol = parseFloat(value);
+    if (isNaN(vol)) return;
+    this.masterVolume = vol;
+    
+    this.activeSounds.forEach(sound => {
+        if (sound.gainNode) {
+            sound.gainNode.gain.setTargetAtTime(vol, this.audioContext.currentTime, 0.1);
+        } else if (sound.audio) {
+            // Fallback for HTML Audio element if Web Audio failed or wasn't fully set up
+            sound.audio.volume = vol;
+        }
+    });
   }
 
   resize() {
@@ -187,16 +214,22 @@ class BirdSoundsLayer {
     // audio.crossOrigin = "anonymous"; // Removed to avoid potential CORS issues with local files
     
     // Create Web Audio nodes
-    let source, analyser;
+    let source, analyser, gainNode;
     try {
         source = this.audioContext.createMediaElementSource(audio);
+        gainNode = this.audioContext.createGain();
         analyser = this.audioContext.createAnalyser();
+        
+        gainNode.gain.value = this.masterVolume;
         analyser.fftSize = 256;
-        source.connect(analyser);
+        
+        source.connect(gainNode);
+        gainNode.connect(analyser);
         analyser.connect(this.audioContext.destination);
     } catch (e) {
         console.warn('Web Audio API setup failed, falling back to simple playback:', e);
         // Fallback: just play audio without analysis
+        audio.volume = this.masterVolume;
         analyser = {
             frequencyBinCount: 128,
             getByteFrequencyData: (array) => { array.fill(0); } // No visual data
@@ -209,6 +242,7 @@ class BirdSoundsLayer {
       audio: audio,
       analyser: analyser,
       source: source,
+      gainNode: gainNode,
       dataArray: new Uint8Array(analyser.frequencyBinCount),
       startTime: Date.now(),
       lastWaveTime: 0,

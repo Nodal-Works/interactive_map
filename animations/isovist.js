@@ -258,6 +258,14 @@
       });
     }
 
+    // Remove building footprints overlay
+    if (map.getLayer('user-fill')) {
+      map.removeLayer('user-fill');
+    }
+    if (map.getSource('usergeo')) {
+      map.removeSource('usergeo');
+    }
+
     map.getCanvas().style.cursor = '';
   }
 
@@ -353,6 +361,8 @@
       }
       
       const geojson = await response.json();
+      
+      if (!isovistActive) return;
       
       // Add to map as user geo source
       if (map.getSource('usergeo')) {

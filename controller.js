@@ -566,6 +566,98 @@ function updateDashboard(targetId) {
             </div>
         `;
 
+    } else if (targetId === 'bird-sounds-btn') {
+        dashboardContent.innerHTML = `
+            <div class="dashboard-container">
+                <div class="dashboard-card">
+                    <div class="dashboard-section-title">
+                        <span class="material-icons" style="font-size: 18px;">volume_up</span>
+                        Audio Controls
+                    </div>
+                    
+                    <div class="control-row">
+                        <label class="control-label">Master Volume</label>
+                        <input type="range" id="bird-volume" class="modern-range" min="0" max="1" step="0.1" value="0.5">
+                    </div>
+
+                    <div class="action-grid">
+                        <button id="stop-sounds-btn" class="modern-btn">
+                            <span class="material-icons">stop</span> Stop All
+                        </button>
+                    </div>
+                </div>
+
+                <div class="dashboard-card">
+                    <div class="dashboard-section-title">
+                        <span class="material-icons" style="font-size: 18px;">school</span>
+                        Educational Context
+                    </div>
+                    <div class="info-box" style="margin-bottom: 1rem; border-left-color: #84cc16;">
+                        <div class="info-title">Methodology</div>
+                        <p class="info-text">
+                            Visualizes and spatializes bird calls based on <strong>simulated sensor data</strong>. 
+                            Different species are mapped to specific habitats within the district.
+                        </p>
+                    </div>
+                    <div class="info-box" style="border-left-color: #84cc16;">
+                        <div class="info-title">Application</div>
+                        <p class="info-text">
+                            Used for <strong>biodiversity monitoring</strong> and assessing the quality of urban green spaces. 
+                            Soundscapes are a key indicator of ecosystem health in cities.
+                        </p>
+                    </div>
+                </div>
+            </div>
+        `;
+        
+        legendContent.innerHTML = `
+            <div class="dashboard-card">
+                <div class="dashboard-section-title">Legend</div>
+                <div style="display: flex; flex-direction: column; gap: 0.5rem;">
+                    <div class="legend-item">
+                        <div class="legend-color" style="background: #FFD700; border-radius: 50%;"></div>
+                        <span class="legend-label">Thrush Nightingale</span>
+                    </div>
+                    <div class="legend-item">
+                        <div class="legend-color" style="background: #00BFFF; border-radius: 50%;"></div>
+                        <span class="legend-label">European Pied Flycatcher</span>
+                    </div>
+                    <div class="legend-item">
+                        <div class="legend-color" style="background: #FF4500; border-radius: 50%;"></div>
+                        <span class="legend-label">Black Redstart</span>
+                    </div>
+                     <div class="legend-item">
+                        <div class="legend-color" style="border: 2px solid #666; background: transparent; border-radius: 50%;"></div>
+                        <span class="legend-label">Audio Sensor</span>
+                    </div>
+                </div>
+            </div>
+        `;
+        
+        // Attach event listeners
+        const volumeInput = document.getElementById('bird-volume');
+        const stopBtn = document.getElementById('stop-sounds-btn');
+
+        const sendBirdControl = (action, value) => {
+            channel.postMessage({
+                type: 'bird_control',
+                action: action,
+                value: value
+            });
+        };
+
+        if (volumeInput) {
+            volumeInput.addEventListener('input', (e) => {
+                sendBirdControl('set_volume', e.target.value);
+            });
+        }
+
+        if (stopBtn) {
+            stopBtn.addEventListener('click', () => {
+                sendBirdControl('stop_all');
+            });
+        }
+
     } else {
         // Default or other tools
         dashboardContent.innerHTML = '<p>Select a simulation to view details.</p>';
