@@ -937,9 +937,9 @@ const tourSteps = [
     { selector: '[data-target="slideshow-btn"]', title: 'Slideshow', desc: 'Cycle through curated project views and visualizations.' },
     { selector: '[data-target="grid-animation-btn"]', title: 'Grid Animation', desc: 'Toggle the animated grid overlay for spatial reference.' },
     { selector: '[data-target="isovist-btn"]', title: 'Interactive Isovist', desc: 'Analyze visibility fields from specific vantage points.' },
+    { selector: '[data-target="bird-sounds-btn"]', title: 'Bird Sounds', desc: 'Listen to simulated bird sensors and view real-time activity.' },
     { selector: '#reset-view-btn', title: 'Reset View', desc: 'Return the map to the default starting position.' },
-    { selector: '#fullscreen-btn', title: 'Full Screen', desc: 'Toggle full screen mode for this controller.' },
-    { selector: '[data-target="bird-sounds-btn"]', title: 'Bird Sounds', desc: 'Listen to simulated bird sensors and view real-time activity.' }
+    { selector: '#fullscreen-btn', title: 'Full Screen', desc: 'Toggle full screen mode for this controller.' }
 ];
 
 let tourInterval;
@@ -1029,7 +1029,30 @@ function initParticles(effect) {
         return;
     }
 
-    const count = 100;
+    if (effect === 'grid') {
+        const gridSize = 40;
+        const cols = Math.ceil(canvas.width / gridSize) + 1;
+        const rows = Math.ceil(canvas.height / gridSize) + 1;
+        
+        for (let i = 0; i < cols; i++) {
+            particles.push({
+                type: 'vertical',
+                x: i * gridSize,
+                speed: 0.5
+            });
+        }
+        
+        for (let i = 0; i < rows; i++) {
+            particles.push({
+                type: 'horizontal',
+                y: i * gridSize,
+                speed: 0.5
+            });
+        }
+        return;
+    }
+
+    const count = effect === 'isovist' ? 5 : 100;
     for (let i = 0; i < count; i++) {
         particles.push(createParticle(effect));
     }
@@ -1062,10 +1085,13 @@ function createParticle(effect) {
         return {
             x: Math.random() * w,
             y: Math.random() * h,
-            vx: (Math.random() - 0.5) * 4,
-            vy: (Math.random() - 0.5) * 4,
-            radius: Math.random() * 3 + 1,
-            opacity: Math.random() * 0.5
+            vx: (Math.random() - 0.5) * 2,
+            vy: (Math.random() - 0.5) * 2,
+            radius: Math.random() * 5 + 5,
+            opacity: Math.random() * 0.5 + 0.3,
+            angle: Math.random() * Math.PI * 2,
+            angleSpeed: (Math.random() - 0.5) * 0.05,
+            trail: []
         };
     } else if (effect === 'grid') {
         // Grid lines
@@ -1123,20 +1149,27 @@ function updateParticles() {
             p.angle += p.speed;
             if (p.angle > 2 * Math.PI) p.angle = Math.PI; // Loop back to sunrise
         } else if (currentEffect === 'isovist') {
+            // Update trail
+            p.trail.push({x: p.x, y: p.y});
+            if (p.trail.length > 20) p.trail.shift();
+
             p.x += p.vx;
             p.y += p.vy;
+            
+            // Bounce off walls
             if (p.x < 0 || p.x > w) p.vx *= -1;
             if (p.y < 0 || p.y > h) p.vy *= -1;
+
+            // Look around
+            p.angle += p.angleSpeed;
         } else if (currentEffect === 'grid') {
-            p.life++;
-            if (p.life < 50) p.opacity += 0.01;
-            else if (p.life > 100) p.opacity -= 0.01;
-            
-            if (p.life > 150) {
-                p.life = 0;
-                p.x = Math.random() * w;
-                p.y = Math.random() * h;
-                p.opacity = 0;
+            const gridSize = 40;
+            if (p.type === 'vertical') {
+                p.x += p.speed;
+                if (p.x > canvas.width) p.x = -gridSize;
+            } else {
+                p.y += p.speed;
+                if (p.y > canvas.height) p.y = -gridSize;
             }
         } else if (currentEffect === 'slideshow') {
             p.x += p.vx;
@@ -1218,28 +1251,58 @@ function drawParticles() {
         ctx.shadowBlur = 0;
         
     } else if (currentEffect === 'isovist') {
-        ctx.fillStyle = 'rgba(255, 69, 0, 0.6)';
         particles.forEach(p => {
+            ctx.save();
+            
+            // Draw Trail
+            if (p.trail && p.trail.length > 1) {
+                ctx.beginPath();
+                ctx.moveTo(p.trail[0].x, p.trail[0].y);
+                for (let i = 1; i < p.trail.length; i++) {
+                    ctx.lineTo(p.trail[i].x, p.trail[i].y);
+                }
+                ctx.lineTo(p.x, p.y);
+                ctx.strokeStyle = `rgba(255, 69, 0, ${p.opacity * 0.3})`;
+                ctx.lineWidth = 2;
+                ctx.stroke();
+            }
+
+            ctx.globalAlpha = p.opacity;
+            
+            // Draw circle
+            ctx.fillStyle = 'rgba(255, 69, 0, 0.8)';
             ctx.beginPath();
             ctx.arc(p.x, p.y, p.radius, 0, Math.PI * 2);
-            ctx.globalAlpha = p.opacity;
             ctx.fill();
             
-            // "Vision" cone
-            ctx.fillStyle = 'rgba(255, 255, 0, 0.1)';
+            // Draw cone oriented to p.angle
+            ctx.translate(p.x, p.y);
+            ctx.rotate(p.angle);
+            
+            ctx.fillStyle = 'rgba(255, 200, 0, 0.2)';
             ctx.beginPath();
-            ctx.moveTo(p.x, p.y);
-            ctx.lineTo(p.x + 50, p.y - 20);
-            ctx.lineTo(p.x + 50, p.y + 20);
+            ctx.moveTo(0, 0);
+            ctx.lineTo(150, -40);
+            ctx.lineTo(150, 40);
             ctx.closePath();
             ctx.fill();
+            
+            ctx.restore();
         });
     } else if (currentEffect === 'grid') {
-        ctx.strokeStyle = 'rgba(0, 0, 0, 0.2)';
+        ctx.strokeStyle = 'rgba(0, 0, 0, 0.15)';
+        ctx.lineWidth = 1;
+        ctx.beginPath();
         particles.forEach(p => {
-            ctx.globalAlpha = p.opacity;
-            ctx.strokeRect(p.x, p.y, p.size, p.size);
+            if (p.type === 'vertical') {
+                ctx.moveTo(p.x, 0);
+                ctx.lineTo(p.x, canvas.height);
+            } else {
+                ctx.moveTo(0, p.y);
+                ctx.lineTo(canvas.width, p.y);
+            }
         });
+        ctx.stroke();
     } else if (currentEffect === 'slideshow') {
         ctx.fillStyle = 'rgba(70, 130, 180, 0.4)';
         particles.forEach(p => {
