@@ -5,6 +5,15 @@ const statusIndicator = document.getElementById('connection-status');
 const statusText = document.getElementById('connection-text');
 const welcomeScreen = document.getElementById('welcome-screen');
 
+// Slideshow state tracking (declared early as it's used by updateDashboard)
+let slideshowState = {
+    isActive: false,
+    currentIndex: 0,
+    totalSlides: 0,
+    metadata: null,
+    slideType: null
+};
+
 // Update connection status
 // Since BroadcastChannel doesn't have a direct "connected" event for peers, 
 // we'll assume connected if we can send, but we can implement a ping/pong if needed.
@@ -79,9 +88,6 @@ function updateDashboard(targetId) {
         }
 
         // Optimistically show loading state
-        const dashboardContent = document.getElementById('dashboard-content');
-        const legendContent = document.getElementById('legend-content');
-        
         dashboardContent.innerHTML = `
             <div class="dashboard-container">
                 <div class="dashboard-card">
@@ -918,15 +924,6 @@ document.getElementById('fullscreen-btn').addEventListener('click', () => {
         document.exitFullscreen();
     }
 });
-
-// Slideshow state tracking
-let slideshowState = {
-    isActive: false,
-    currentIndex: 0,
-    totalSlides: 0,
-    metadata: null,
-    slideType: null
-};
 
 // Listen for messages from main app
 channel.onmessage = (event) => {
