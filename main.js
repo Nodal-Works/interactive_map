@@ -1,6 +1,21 @@
 // MapLibre GL JS implementation for interactive_map
 // Native bearing/rotation support and raster basemap switching
 
+// Global function to compute overlay pixel size based on physical dimensions
+// Defaults match the controller values
+window.computeOverlayPixelSize = function() {
+  const SCREEN_WIDTH_CM = 111.93;
+  // const SCREEN_HEIGHT_CM = 62.96; // Not used for width-based scaling
+  const TABLE_WIDTH_CM = 100;
+  const TABLE_HEIGHT_CM = 60;
+  
+  const pxPerCm = window.innerWidth / SCREEN_WIDTH_CM;
+  const w = Math.round(TABLE_WIDTH_CM * pxPerCm);
+  const h = Math.round(TABLE_HEIGHT_CM * pxPerCm);
+  
+  return { w, h };
+};
+
 // Handle Start Overlay and Audio Context
 document.addEventListener('DOMContentLoaded', () => {
   const overlay = document.getElementById('start-overlay');

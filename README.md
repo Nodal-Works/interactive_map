@@ -2,7 +2,7 @@
 
 An interactive mixed-reality urban visualization platform built for the ACE MR Studio at Chalmers University of Technology. This application provides multiple data visualization layers for urban planning, environmental analysis, and stakeholder engagement.
 
-![Main Map View](./media/screenshots/default.png)
+![Main Map View](./media/screenshots/controller-main.png)
 
 ## Features
 
@@ -48,9 +48,17 @@ Spatial audio visualization showing simulated bird sound sensors. Plays audio sa
 
 A secondary controller screen provides a touch-friendly interface for operating the visualizations remotely. It communicates with the main display via the BroadcastChannel API.
 
-| Controller Main | Stormwater Dashboard | Sun Study Controls | Credits |
-|----------------|---------------------|-------------------|---------|
-| ![Controller Main](./media/screenshots/controller-main.png) | ![Stormwater](./media/screenshots/controller-stormwater.png) | ![Sun Study](./media/screenshots/controller-sun-study.png) | ![Credits](./media/screenshots/controller-credits.png) |
+### Controller Main
+![Controller Main](./media/screenshots/controller-main.png)
+
+### Stormwater Dashboard
+![Stormwater](./media/screenshots/controller-stormwater.png)
+
+### Sun Study Controls
+![Sun Study](./media/screenshots/controller-sun-study.png)
+
+### Credits
+![Credits](./media/screenshots/controller-credits.png)
 
 ## How to Run
 
@@ -101,12 +109,6 @@ Then open:
 - **GeoTIFF.js** - DEM raster processing in-browser
 - **BroadcastChannel API** - Cross-window communication
 - **Web Audio API** - Spatial audio for bird sounds
-
-## Python Dependencies (for data processing)
-
-```bash
-pip install numpy rasterio scipy Pillow playwright
-```
 
 ## Credits
 
