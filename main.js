@@ -363,11 +363,14 @@ document.addEventListener('mouseenter', () => {
 
 // --- Controller / Second Screen Logic ---
 
+// Debug mode for controller messages - set to false in production
+const CONTROLLER_DEBUG = false;
+
 const controllerChannel = new BroadcastChannel('map_controller_channel');
 
 controllerChannel.onmessage = (event) => {
     const data = event.data;
-    console.log('Main window received:', data);
+    if (CONTROLLER_DEBUG) console.log('Main window received:', data);
 
     if (data.type === 'control_action') {
         const targetId = data.target;

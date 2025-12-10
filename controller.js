@@ -1,4 +1,32 @@
 // Controller logic for the secondary screen
+// ============================================
+
+// Message type constants - keep in sync with main.js and animation modules
+const MSG_TYPES = {
+    // Outgoing (controller -> main)
+    CONTROL_ACTION: 'control_action',
+    RESET_VIEW: 'reset_view',
+    CALIBRATE_ACTION: 'calibrate_action',
+    SUN_CONTROL: 'sun_control',
+    CFD_CONTROL: 'cfd_control',
+    ISOVIST_CONTROL: 'isovist_control',
+    BIRD_CONTROL: 'bird_control',
+    SLIDESHOW_CONTROL: 'slideshow_control',
+    // Incoming (main -> controller)
+    STATE_UPDATE: 'state_update',
+    SLIDESHOW_UPDATE: 'slideshow_update',
+    SLIDESHOW_LEGEND_HIGHLIGHT: 'slideshow_legend_highlight',
+    BIRD_STATUS: 'bird_status',
+    SUN_POSITION: 'sun_position',
+    SUN_TIME_UPDATE: 'sun_time_update',
+    CALIBRATION_DATA: 'calibration_data'
+};
+
+// Debug mode - set to false in production
+const DEBUG_MODE = false;
+function debugLog(...args) {
+    if (DEBUG_MODE) console.log('[Controller]', ...args);
+}
 
 const channel = new BroadcastChannel('map_controller_channel');
 const statusIndicator = document.getElementById('connection-status');
@@ -46,7 +74,7 @@ document.querySelectorAll('.control-btn[data-target]').forEach(btn => {
         
         // Send message to main window
         channel.postMessage({
-            type: 'control_action',
+            type: MSG_TYPES.CONTROL_ACTION,
             target: targetId,
             action: action
         });
@@ -60,9 +88,9 @@ document.querySelectorAll('.control-btn[data-target]').forEach(btn => {
 
         // Request immediate status update for dynamic layers
         if (targetId === 'bird-sounds-btn') {
-            channel.postMessage({ type: 'bird_control', action: 'request_status' });
+            channel.postMessage({ type: MSG_TYPES.BIRD_CONTROL, action: 'request_status' });
         } else if (targetId === 'slideshow-btn') {
-            channel.postMessage({ type: 'slideshow_control', action: 'request_status' });
+            channel.postMessage({ type: MSG_TYPES.SLIDESHOW_CONTROL, action: 'request_status' });
         }
     });
 });
@@ -272,27 +300,27 @@ function updateDashboard(targetId) {
             const sh = document.getElementById('ctrl-screen-h').value;
             const tw = document.getElementById('ctrl-table-w').value;
             const th = document.getElementById('ctrl-table-h').value;
-            channel.postMessage({ type: 'calibrate_action', action: 'show_overlay', params: { sw, sh, tw, th } });
+            channel.postMessage({ type: MSG_TYPES.CALIBRATE_ACTION, action: 'show_overlay', params: { sw, sh, tw, th } });
         });
         
         document.getElementById('ctrl-hide-overlay').addEventListener('click', () => {
-            channel.postMessage({ type: 'calibrate_action', action: 'hide_overlay' });
+            channel.postMessage({ type: MSG_TYPES.CALIBRATE_ACTION, action: 'hide_overlay' });
         });
 
         document.getElementById('ctrl-calibrate-fit').addEventListener('click', () => {
-            channel.postMessage({ type: 'calibrate_action', action: 'copy_calibration' });
+            channel.postMessage({ type: MSG_TYPES.CALIBRATE_ACTION, action: 'copy_calibration' });
         });
 
-        document.getElementById('ctrl-zoom-in').addEventListener('click', () => channel.postMessage({ type: 'calibrate_action', action: 'zoom_in' }));
-        document.getElementById('ctrl-zoom-out').addEventListener('click', () => channel.postMessage({ type: 'calibrate_action', action: 'zoom_out' }));
-        document.getElementById('ctrl-rotate-left').addEventListener('click', () => channel.postMessage({ type: 'calibrate_action', action: 'rotate_left' }));
-        document.getElementById('ctrl-rotate-right').addEventListener('click', () => channel.postMessage({ type: 'calibrate_action', action: 'rotate_right' }));
-        document.getElementById('ctrl-reset-rotation').addEventListener('click', () => channel.postMessage({ type: 'calibrate_action', action: 'reset_rotation' }));
+        document.getElementById('ctrl-zoom-in').addEventListener('click', () => channel.postMessage({ type: MSG_TYPES.CALIBRATE_ACTION, action: 'zoom_in' }));
+        document.getElementById('ctrl-zoom-out').addEventListener('click', () => channel.postMessage({ type: MSG_TYPES.CALIBRATE_ACTION, action: 'zoom_out' }));
+        document.getElementById('ctrl-rotate-left').addEventListener('click', () => channel.postMessage({ type: MSG_TYPES.CALIBRATE_ACTION, action: 'rotate_left' }));
+        document.getElementById('ctrl-rotate-right').addEventListener('click', () => channel.postMessage({ type: MSG_TYPES.CALIBRATE_ACTION, action: 'rotate_right' }));
+        document.getElementById('ctrl-reset-rotation').addEventListener('click', () => channel.postMessage({ type: MSG_TYPES.CALIBRATE_ACTION, action: 'reset_rotation' }));
         
         const lockBtn = document.getElementById('ctrl-lock-center');
         lockBtn.addEventListener('click', () => {
             lockBtn.classList.toggle('active');
-            channel.postMessage({ type: 'calibrate_action', action: 'lock_center', value: lockBtn.classList.contains('active') });
+            channel.postMessage({ type: MSG_TYPES.CALIBRATE_ACTION, action: 'lock_center', value: lockBtn.classList.contains('active') });
         });
 
         return;
@@ -447,7 +475,7 @@ function updateDashboard(targetId) {
 
         const sendControl = (action, value) => {
             channel.postMessage({
-                type: 'sun_control',
+                type: MSG_TYPES.SUN_CONTROL,
                 action: action,
                 value: value
             });
@@ -616,7 +644,7 @@ function updateDashboard(targetId) {
 
         const sendCfdControl = (action, value) => {
             channel.postMessage({
-                type: 'cfd_control',
+                type: MSG_TYPES.CFD_CONTROL,
                 action: action,
                 value: value
             });
@@ -733,7 +761,7 @@ function updateDashboard(targetId) {
 
         const sendIsovistControl = (action, value) => {
             channel.postMessage({
-                type: 'isovist_control',
+                type: MSG_TYPES.ISOVIST_CONTROL,
                 action: action,
                 value: value
             });
@@ -882,7 +910,7 @@ function updateDashboard(targetId) {
 
         const sendBirdControl = (action, value) => {
             channel.postMessage({
-                type: 'bird_control',
+                type: MSG_TYPES.BIRD_CONTROL,
                 action: action,
                 value: value
             });
@@ -910,7 +938,7 @@ function updateDashboard(targetId) {
 document.getElementById('reset-view-btn').addEventListener('click', () => {
     stopTour();
     channel.postMessage({
-        type: 'reset_view'
+        type: MSG_TYPES.RESET_VIEW
     });
 });
 
@@ -928,11 +956,10 @@ document.getElementById('fullscreen-btn').addEventListener('click', () => {
 // Listen for messages from main app
 channel.onmessage = (event) => {
     const data = event.data;
-    console.log('Controller received message:', data.type, data);
+    debugLog('Received:', data.type, data);
     
-    if (data.type === 'state_update') {
+    if (data.type === MSG_TYPES.STATE_UPDATE) {
         // Update controller UI based on main window state
-        console.log('Received state update:', data);
         if (data.activeLayer) {
              document.querySelectorAll('.control-btn').forEach(b => {
                  if (b.dataset.target === data.activeLayer) {
@@ -944,7 +971,7 @@ channel.onmessage = (event) => {
                  }
              });
         }
-    } else if (data.type === 'slideshow_update') {
+    } else if (data.type === MSG_TYPES.SLIDESHOW_UPDATE) {
         // Update slideshow state and display
         slideshowState = {
             isActive: data.isActive,
@@ -958,18 +985,18 @@ channel.onmessage = (event) => {
         if (slideshowBtn && slideshowBtn.classList.contains('active')) {
             updateSlideshowDashboard();
         }
-    } else if (data.type === 'slideshow_legend_highlight') {
+    } else if (data.type === MSG_TYPES.SLIDESHOW_LEGEND_HIGHLIGHT) {
         // Highlight legend item in controller to match main window animation
         highlightControllerLegendItem(data.highlightValue);
-    } else if (data.type === 'bird_status') {
+    } else if (data.type === MSG_TYPES.BIRD_STATUS) {
         updateBirdDashboard(data.activeBirds);
-    } else if (data.type === 'sun_position') {
+    } else if (data.type === MSG_TYPES.SUN_POSITION) {
         const altDisplay = document.getElementById('altitude-display');
         const azDisplay = document.getElementById('azimuth-display');
         // Only update if elements exist (i.e., Sun Study dashboard is active)
         if (altDisplay) altDisplay.textContent = data.altitude.toFixed(1);
         if (azDisplay) azDisplay.textContent = data.azimuth.toFixed(1);
-    } else if (data.type === 'sun_time_update') {
+    } else if (data.type === MSG_TYPES.SUN_TIME_UPDATE) {
         const timeSlider = document.getElementById('sun-time');
         const timeDisplay = document.getElementById('time-display');
         if (timeSlider && timeDisplay) {
@@ -978,7 +1005,7 @@ channel.onmessage = (event) => {
             const m = Math.floor((data.time - h) * 60);
             timeDisplay.textContent = `${h.toString().padStart(2, '0')}:${m.toString().padStart(2, '0')}`;
         }
-    } else if (data.type === 'calibration_data') {
+    } else if (data.type === MSG_TYPES.CALIBRATION_DATA) {
         const calibrationText = data.text;
         navigator.clipboard.writeText(calibrationText).then(() => {
             alert('Calibration copied to clipboard!');
@@ -987,6 +1014,9 @@ channel.onmessage = (event) => {
             alert('Failed to copy to clipboard. Check console for data.');
             console.log(calibrationText);
         });
+    } else {
+        // Log unknown message types for debugging new features
+        debugLog('Unknown message type:', data.type);
     }
 };
 
@@ -1141,7 +1171,7 @@ function updateSlideshowDashboard() {
                 startBtn.addEventListener('click', () => {
                     // Send toggle command
                     channel.postMessage({
-                        type: 'control_action',
+                        type: MSG_TYPES.CONTROL_ACTION,
                         target: 'slideshow-btn'
                     });
                     // Show loading state locally
@@ -1254,17 +1284,17 @@ function updateSlideshowDashboard() {
     
     if (prevBtn) {
         prevBtn.addEventListener('click', () => {
-            channel.postMessage({ type: 'slideshow_control', action: 'previous' });
+            channel.postMessage({ type: MSG_TYPES.SLIDESHOW_CONTROL, action: 'previous' });
         });
     }
     if (nextBtn) {
         nextBtn.addEventListener('click', () => {
-            channel.postMessage({ type: 'slideshow_control', action: 'next' });
+            channel.postMessage({ type: MSG_TYPES.SLIDESHOW_CONTROL, action: 'next' });
         });
     }
     if (stopBtn) {
         stopBtn.addEventListener('click', () => {
-            channel.postMessage({ type: 'slideshow_control', action: 'stop' });
+            channel.postMessage({ type: MSG_TYPES.SLIDESHOW_CONTROL, action: 'stop' });
         });
     }
 }
@@ -1829,13 +1859,13 @@ document.addEventListener('keydown', (e) => {
     
     if (e.key === 'ArrowRight' || e.key === ' ') {
         e.preventDefault();
-        channel.postMessage({ type: 'slideshow_control', action: 'next' });
+        channel.postMessage({ type: MSG_TYPES.SLIDESHOW_CONTROL, action: 'next' });
     } else if (e.key === 'ArrowLeft') {
         e.preventDefault();
-        channel.postMessage({ type: 'slideshow_control', action: 'previous' });
+        channel.postMessage({ type: MSG_TYPES.SLIDESHOW_CONTROL, action: 'previous' });
     } else if (e.key === 'Escape') {
         e.preventDefault();
-        channel.postMessage({ type: 'slideshow_control', action: 'stop' });
+        channel.postMessage({ type: MSG_TYPES.SLIDESHOW_CONTROL, action: 'stop' });
     }
 });
 
