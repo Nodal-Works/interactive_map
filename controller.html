@@ -8,8 +8,8 @@
     <link href="https://fonts.googleapis.com/icon?family=Material+Icons" rel="stylesheet">
     <style>
         body {
-            background: #ffffff;
-            color: #333;
+            background: #1a1a1a;
+            color: #e0e0e0;
             display: grid;
             grid-template-columns: 80px 1fr;
             grid-template-rows: auto 1fr;
@@ -20,19 +20,19 @@
 
         header {
             grid-column: 1 / -1;
-            background: #fff;
+            background: #242424;
             padding: 1rem;
-            border-bottom: 1px solid #ccc;
+            border-bottom: 1px solid #3a3a3a;
             display: flex;
             justify-content: space-between;
             align-items: center;
         }
 
-        h1 { margin: 0; font-size: 1.2rem; }
+        h1 { margin: 0; font-size: 1.2rem; color: #f0f0f0; }
 
         #controls-panel {
-            background: #fff;
-            border-right: 1px solid #ccc;
+            background: #242424;
+            border-right: 1px solid #3a3a3a;
             padding: 1rem 0.5rem;
             overflow-y: auto;
             display: flex;
@@ -48,13 +48,15 @@
             grid-template-columns: 1fr 1fr;
             grid-template-rows: 1fr 1fr;
             gap: 1rem;
+            background: #1a1a1a;
         }
 
         .panel-section {
-            background: #fff;
+            background: #2a2a2a;
             padding: 1rem;
             border-radius: 8px;
-            box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+            box-shadow: 0 2px 4px rgba(0,0,0,0.3);
+            border: 1px solid #3a3a3a;
         }
 
         .control-group {
@@ -73,32 +75,33 @@
             width: 50px;
             height: 50px;
             padding: 0;
-            border: 1px solid #ddd;
-            background: #f8f8f8;
+            border: 1px solid #4a4a4a;
+            background: #333;
             border-radius: 8px;
             cursor: pointer;
             display: flex;
             align-items: center;
             justify-content: center;
             transition: all 0.2s;
+            color: #e0e0e0;
         }
 
         button.control-btn:hover {
-            background: #eee;
-            border-color: #ccc;
+            background: #444;
+            border-color: #5a5a5a;
         }
 
         button.control-btn.active {
-            background: #e6f7ff;
-            border-color: #1890ff;
-            color: #0050b3;
+            background: #1e3a5f;
+            border-color: #3b82f6;
+            color: #60a5fa;
         }
 
         .status-indicator {
             width: 10px;
             height: 10px;
             border-radius: 50%;
-            background: #ccc;
+            background: #666;
             display: inline-block;
             margin-right: 5px;
         }
@@ -111,7 +114,7 @@
             height: 100%;
         }
         
-        h2 { margin-top: 0; font-size: 1rem; border-bottom: 1px solid #eee; padding-bottom: 0.5rem; }
+        h2 { margin-top: 0; font-size: 1rem; border-bottom: 1px solid #3a3a3a; padding-bottom: 0.5rem; color: #f0f0f0; }
 
         .metadata-item {
             margin-bottom: 0.5rem;
@@ -119,10 +122,11 @@
         .metadata-label {
             font-weight: bold;
             font-size: 0.8rem;
-            color: #666;
+            color: #888;
         }
         .metadata-value {
             font-size: 0.9rem;
+            color: #d0d0d0;
         }
 
         #welcome-screen {
@@ -132,7 +136,7 @@
             flex-direction: column;
             align-items: center;
             justify-content: center;
-            background: #fff;
+            background: #1a1a1a;
             border-radius: 8px;
             z-index: 10;
             position: relative;
@@ -143,12 +147,13 @@
             height: 60px;
             width: auto;
             object-fit: contain;
+            filter: brightness(0.9);
         }
 
         .welcome-title {
             font-size: 5rem;
             font-weight: 800;
-            color: #1a1a1a;
+            color: #f0f0f0;
             margin: 0;
             text-align: center;
             line-height: 1.1;
@@ -180,7 +185,7 @@
             height: 100%;
             z-index: 1;
             pointer-events: none;
-            opacity: 0.6;
+            opacity: 0.4;
         }
 
         @keyframes titleEntrance {
@@ -225,21 +230,21 @@
         .tour-title {
             font-size: 1.5rem;
             font-weight: 600;
-            color: #1890ff;
+            color: #60a5fa;
             margin-bottom: 0.5rem;
         }
 
         .tour-desc {
             font-size: 1.2rem;
-            color: #666;
+            color: #aaa;
             line-height: 1.4;
         }
 
         /* Highlight style for buttons during tour */
         button.control-btn.tour-highlight {
-            background: #e6f7ff;
-            border-color: #1890ff;
-            box-shadow: 0 0 15px rgba(24, 144, 255, 0.6);
+            background: #1e3a5f;
+            border-color: #3b82f6;
+            box-shadow: 0 0 15px rgba(59, 130, 246, 0.6);
             transform: scale(1.15);
             z-index: 100;
         }
@@ -257,8 +262,8 @@
         }
 
         .dashboard-card {
-            background: #f9fafb;
-            border: 1px solid #e5e7eb;
+            background: #333;
+            border: 1px solid #444;
             border-radius: 12px;
             padding: 1.25rem;
         }
@@ -267,7 +272,7 @@
             font-size: 0.85rem;
             text-transform: uppercase;
             letter-spacing: 0.05em;
-            color: #6b7280;
+            color: #888;
             font-weight: 600;
             margin-bottom: 1rem;
             display: flex;
@@ -286,24 +291,24 @@
         .control-label {
             font-size: 0.9rem;
             font-weight: 500;
-            color: #374151;
+            color: #d0d0d0;
             flex: 1;
         }
 
         .control-value {
             font-family: monospace;
-            background: #e5e7eb;
+            background: #444;
             padding: 0.2rem 0.5rem;
             border-radius: 4px;
             font-size: 0.85rem;
-            color: #1f2937;
+            color: #f0f0f0;
         }
 
         .modern-range {
             flex: 2;
             -webkit-appearance: none;
             height: 6px;
-            background: #d1d5db;
+            background: #444;
             border-radius: 3px;
             outline: none;
         }
@@ -315,23 +320,23 @@
             background: #3b82f6;
             border-radius: 50%;
             cursor: pointer;
-            border: 2px solid #fff;
-            box-shadow: 0 1px 3px rgba(0,0,0,0.2);
+            border: 2px solid #1a1a1a;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.4);
             transition: transform 0.1s;
         }
 
         .modern-range::-webkit-slider-thumb:hover {
             transform: scale(1.1);
-            background: #2563eb;
+            background: #60a5fa;
         }
 
         .modern-date {
             padding: 0.5rem;
-            border: 1px solid #d1d5db;
+            border: 1px solid #444;
             border-radius: 6px;
             font-family: inherit;
-            color: #374151;
-            background: #fff;
+            color: #e0e0e0;
+            background: #333;
         }
 
         .action-grid {
@@ -353,15 +358,15 @@
             font-size: 0.9rem;
             cursor: pointer;
             transition: all 0.2s;
-            background: #fff;
-            border: 1px solid #d1d5db;
-            color: #374151;
-            box-shadow: 0 1px 2px rgba(0,0,0,0.05);
+            background: #333;
+            border: 1px solid #444;
+            color: #d0d0d0;
+            box-shadow: 0 1px 2px rgba(0,0,0,0.2);
         }
 
         .modern-btn:hover {
-            background: #f3f4f6;
-            border-color: #9ca3af;
+            background: #444;
+            border-color: #555;
         }
 
         .modern-btn.primary {
@@ -375,22 +380,22 @@
         }
 
         .modern-btn.active {
-            background: #eff6ff;
+            background: #1e3a5f;
             border-color: #3b82f6;
-            color: #1d4ed8;
+            color: #60a5fa;
         }
 
         .info-box {
-            background: #fff;
+            background: #333;
             border-left: 4px solid #3b82f6;
             padding: 1rem;
             border-radius: 0 8px 8px 0;
-            box-shadow: 0 1px 3px rgba(0,0,0,0.05);
+            box-shadow: 0 1px 3px rgba(0,0,0,0.2);
         }
 
         .info-title {
             font-weight: 600;
-            color: #111827;
+            color: #f0f0f0;
             margin-bottom: 0.5rem;
             display: flex;
             align-items: center;
@@ -400,7 +405,7 @@
         .info-text {
             font-size: 0.9rem;
             line-height: 1.6;
-            color: #4b5563;
+            color: #aaa;
             margin: 0;
         }
         
@@ -409,21 +414,21 @@
             align-items: center;
             gap: 0.75rem;
             padding: 0.5rem;
-            background: #fff;
+            background: #333;
             border-radius: 6px;
-            border: 1px solid #f3f4f6;
+            border: 1px solid #444;
         }
         
         .legend-color {
             width: 24px;
             height: 24px;
             border-radius: 4px;
-            box-shadow: inset 0 0 0 1px rgba(0,0,0,0.1);
+            box-shadow: inset 0 0 0 1px rgba(255,255,255,0.1);
         }
         
         .legend-label {
             font-size: 0.9rem;
-            color: #374151;
+            color: #d0d0d0;
             font-weight: 500;
         }
 
@@ -434,8 +439,8 @@
         }
 
         .credit-item {
-            background: #fff;
-            border: 1px solid #e5e7eb;
+            background: #333;
+            border: 1px solid #444;
             border-radius: 8px;
             padding: 1rem;
             display: flex;
@@ -446,7 +451,7 @@
         .credit-role {
             font-size: 0.75rem;
             text-transform: uppercase;
-            color: #6b7280;
+            color: #888;
             font-weight: 600;
             letter-spacing: 0.05em;
         }
@@ -454,12 +459,12 @@
         .credit-name {
             font-size: 1rem;
             font-weight: 600;
-            color: #111827;
+            color: #f0f0f0;
         }
 
         .credit-contribution {
             font-size: 0.85rem;
-            color: #4b5563;
+            color: #aaa;
             margin-top: 0.25rem;
             font-style: italic;
         }
