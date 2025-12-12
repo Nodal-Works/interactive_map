@@ -276,6 +276,9 @@ function updateDashboard(targetId) {
                     <div style="margin-top: 1rem;">
                         <button id="ctrl-lock-center" class="modern-btn" style="width: 100%;">Lock Center</button>
                     </div>
+                    <div style="margin-top: 0.5rem;">
+                        <button id="ctrl-toggle-table-markers" class="modern-btn" style="width: 100%;">Toggle Table Markers</button>
+                    </div>
                 </div>
             </div>
         `;
@@ -321,6 +324,12 @@ function updateDashboard(targetId) {
         lockBtn.addEventListener('click', () => {
             lockBtn.classList.toggle('active');
             channel.postMessage({ type: MSG_TYPES.CALIBRATE_ACTION, action: 'lock_center', value: lockBtn.classList.contains('active') });
+        });
+
+        const toggleTableMarkersBtn = document.getElementById('ctrl-toggle-table-markers');
+        toggleTableMarkersBtn.addEventListener('click', () => {
+            toggleTableMarkersBtn.classList.toggle('active');
+            channel.postMessage({ type: MSG_TYPES.CALIBRATE_ACTION, action: 'toggle_table_markers', value: toggleTableMarkersBtn.classList.contains('active') });
         });
 
         return;
@@ -1568,34 +1577,36 @@ function createParticle(effect) {
     const h = canvas.height;
     
     if (effect === 'wind') {
+        const speed = Math.random() * 15 + 5;
         return {
             x: Math.random() * w,
             y: Math.random() * h,
-            speed: Math.random() * 15 + 5, // Faster
-            length: Math.random() * 100 + 50, // Longer
-            width: Math.random() * 2 + 1, // Thicker
-            opacity: Math.random() * 0.6 + 0.2
+            speed: speed,
+            length: Math.random() * 120 + 60, // Even longer streamlines
+            width: Math.random() * 3 + 2, // Thicker
+            opacity: Math.random() * 0.4 + 0.6, // Higher opacity
+            speedRatio: speed / 20 // Normalized 0-1 for color
         };
     } else if (effect === 'rain') {
         return {
             x: Math.random() * w,
             y: Math.random() * h,
-            speed: Math.random() * 15 + 10, // Faster
-            length: Math.random() * 30 + 15, // Longer
-            width: Math.random() * 2 + 1, // Thicker
-            opacity: Math.random() * 0.6 + 0.2
+            speed: Math.random() * 15 + 10,
+            length: Math.random() * 35 + 20, // Longer
+            width: Math.random() * 3 + 1.5, // Thicker
+            opacity: Math.random() * 0.3 + 0.7 // Much higher opacity
         };
     } else if (effect === 'isovist') {
         // Points moving around
         return {
             x: Math.random() * w,
             y: Math.random() * h,
-            vx: (Math.random() - 0.5) * 2,
-            vy: (Math.random() - 0.5) * 2,
-            radius: Math.random() * 5 + 5,
-            opacity: Math.random() * 0.5 + 0.3,
+            vx: (Math.random() - 0.5) * 3,
+            vy: (Math.random() - 0.5) * 3,
+            radius: Math.random() * 8 + 8, // Larger circles
+            opacity: Math.random() * 0.3 + 0.7, // Much higher opacity
             angle: Math.random() * Math.PI * 2,
-            angleSpeed: (Math.random() - 0.5) * 0.05,
+            angleSpeed: (Math.random() - 0.5) * 0.08,
             trail: []
         };
     } else if (effect === 'grid') {
@@ -1613,22 +1624,23 @@ function createParticle(effect) {
         return {
             x: Math.random() * w,
             y: Math.random() * h,
-            size: Math.random() * 40 + 10,
-            vx: (Math.random() - 0.5) * 1,
-            vy: (Math.random() - 0.5) * 1,
-            opacity: Math.random() * 0.3
+            size: Math.random() * 50 + 15,
+            vx: (Math.random() - 0.5) * 1.5,
+            vy: (Math.random() - 0.5) * 1.5,
+            opacity: Math.random() * 0.4 + 0.5 // Much higher opacity
         };
     } else if (effect === 'soundwaves') {
         // Floating sine waves
         return {
             x: Math.random() * w,
             y: Math.random() * h,
-            width: Math.random() * 100 + 50,
-            amplitude: Math.random() * 20 + 5,
+            width: Math.random() * 150 + 80, // Wider waves
+            amplitude: Math.random() * 30 + 10, // Bigger amplitude
             frequency: Math.random() * 0.1 + 0.02,
             speed: Math.random() * 2 + 0.5,
             phase: Math.random() * Math.PI * 2,
-            opacity: Math.random() * 0.5 + 0.2
+            opacity: Math.random() * 0.3 + 0.7, // Much higher opacity
+            lineWidth: Math.random() * 4 + 3 // Thicker lines
         };
     }
     
@@ -1693,9 +1705,30 @@ function drawParticles() {
     ctx.clearRect(0, 0, canvas.width, canvas.height);
     
     if (currentEffect === 'wind') {
-        ctx.strokeStyle = 'rgba(30, 144, 255, 0.8)'; // Brighter blue
+        // CFD-style streamlines with speed-based colors (blue=slow, cyan, green, yellow, red=fast)
         particles.forEach(p => {
+            const t = p.speedRatio;
+            let r, g, b;
+            if (t < 0.25) {
+                // Blue to Cyan
+                const s = t / 0.25;
+                r = 0; g = Math.floor(150 + 105 * s); b = 255;
+            } else if (t < 0.5) {
+                // Cyan to Green
+                const s = (t - 0.25) / 0.25;
+                r = 0; g = 255; b = Math.floor(255 * (1 - s));
+            } else if (t < 0.75) {
+                // Green to Yellow
+                const s = (t - 0.5) / 0.25;
+                r = Math.floor(255 * s); g = 255; b = 0;
+            } else {
+                // Yellow to Red
+                const s = (t - 0.75) / 0.25;
+                r = 255; g = Math.floor(255 * (1 - s)); b = 0;
+            }
+            ctx.strokeStyle = `rgb(${r}, ${g}, ${b})`;
             ctx.lineWidth = p.width;
+            ctx.lineCap = 'round';
             ctx.beginPath();
             ctx.moveTo(p.x, p.y);
             ctx.lineTo(p.x + p.length, p.y);
@@ -1703,7 +1736,8 @@ function drawParticles() {
             ctx.stroke();
         });
     } else if (currentEffect === 'rain') {
-        ctx.strokeStyle = 'rgba(0, 0, 200, 0.8)'; // Darker, visible blue
+        ctx.strokeStyle = 'rgba(120, 200, 255, 1)'; // Very bright cyan-blue
+        ctx.lineCap = 'round';
         particles.forEach(p => {
             ctx.lineWidth = p.width;
             ctx.beginPath();
@@ -1715,43 +1749,43 @@ function drawParticles() {
     } else if (currentEffect === 'sun') {
         const sun = particles[0];
         const cx = canvas.width / 2;
-        const cy = canvas.height * 0.8; // Horizon line lower down
-        const radius = Math.min(canvas.width, canvas.height) * 0.4; // Path radius
+        const cy = canvas.height * 0.8;
+        const radius = Math.min(canvas.width, canvas.height) * 0.4;
         
-        // Calculate sun position
         const sunX = cx + Math.cos(sun.angle) * radius;
         const sunY = cy + Math.sin(sun.angle) * radius;
         
-        // Sky gradient based on sun height (angle)
-        // Angle goes from PI (left) to 2PI (right)
-        // Noon is at 1.5 PI
-        const progress = (sun.angle - Math.PI) / Math.PI; // 0 to 1
-        let skyColor1, skyColor2;
+        const progress = (sun.angle - Math.PI) / Math.PI;
+        let skyColor1;
         
         if (progress < 0.5) {
-            // Sunrise to Noon
-            // Orange/Red -> Blue
             const t = progress * 2;
-            skyColor1 = `rgba(${255 * (1-t)}, ${100 + 155 * t}, ${255 * t}, 0.3)`;
+            skyColor1 = `rgba(${255 * (1-t)}, ${100 + 155 * t}, ${255 * t}, 0.7)`; // Much higher opacity
         } else {
-            // Noon to Sunset
-            // Blue -> Orange/Red
             const t = (progress - 0.5) * 2;
-            skyColor1 = `rgba(${255 * t}, ${255 * (1-t)}, ${255 * (1-t)}, 0.3)`;
+            skyColor1 = `rgba(${255 * t}, ${255 * (1-t)}, ${255 * (1-t)}, 0.7)`; // Much higher opacity
         }
         
         const gradient = ctx.createLinearGradient(0, 0, 0, canvas.height);
         gradient.addColorStop(0, skyColor1);
-        gradient.addColorStop(1, 'rgba(255, 255, 255, 0)');
+        gradient.addColorStop(1, 'rgba(255, 150, 50, 0.2)');
         ctx.fillStyle = gradient;
         ctx.fillRect(0, 0, canvas.width, canvas.height);
         
-        // Draw Sun
-        ctx.fillStyle = 'rgba(255, 200, 0, 0.9)';
-        ctx.shadowBlur = 20;
-        ctx.shadowColor = 'orange';
+        // Draw Sun with intense glow
+        ctx.shadowBlur = 60;
+        ctx.shadowColor = 'rgba(255, 150, 0, 1)';
+        ctx.fillStyle = 'rgba(255, 220, 50, 1)';
         ctx.beginPath();
         ctx.arc(sunX, sunY, sun.radius, 0, Math.PI * 2);
+        ctx.fill();
+        
+        // Inner bright core
+        ctx.shadowBlur = 30;
+        ctx.shadowColor = 'rgba(255, 255, 200, 1)';
+        ctx.fillStyle = 'rgba(255, 255, 200, 1)';
+        ctx.beginPath();
+        ctx.arc(sunX, sunY, sun.radius * 0.5, 0, Math.PI * 2);
         ctx.fill();
         ctx.shadowBlur = 0;
         
@@ -1759,7 +1793,7 @@ function drawParticles() {
         particles.forEach(p => {
             ctx.save();
             
-            // Draw Trail
+            // Draw Trail with glow
             if (p.trail && p.trail.length > 1) {
                 ctx.beginPath();
                 ctx.moveTo(p.trail[0].x, p.trail[0].y);
@@ -1767,36 +1801,40 @@ function drawParticles() {
                     ctx.lineTo(p.trail[i].x, p.trail[i].y);
                 }
                 ctx.lineTo(p.x, p.y);
-                ctx.strokeStyle = `rgba(255, 69, 0, ${p.opacity * 0.3})`;
-                ctx.lineWidth = 2;
+                ctx.strokeStyle = `rgba(255, 100, 50, ${p.opacity * 0.8})`;
+                ctx.lineWidth = 4;
+                ctx.lineCap = 'round';
                 ctx.stroke();
             }
 
             ctx.globalAlpha = p.opacity;
             
-            // Draw circle
-            ctx.fillStyle = 'rgba(255, 69, 0, 0.8)';
+            // Draw circle with glow
+            ctx.shadowBlur = 20;
+            ctx.shadowColor = 'rgba(255, 100, 0, 0.8)';
+            ctx.fillStyle = 'rgba(255, 120, 50, 1)';
             ctx.beginPath();
             ctx.arc(p.x, p.y, p.radius, 0, Math.PI * 2);
             ctx.fill();
+            ctx.shadowBlur = 0;
             
-            // Draw cone oriented to p.angle
+            // Draw cone oriented to p.angle - brighter
             ctx.translate(p.x, p.y);
             ctx.rotate(p.angle);
             
-            ctx.fillStyle = 'rgba(255, 200, 0, 0.2)';
+            ctx.fillStyle = 'rgba(255, 220, 100, 0.5)';
             ctx.beginPath();
             ctx.moveTo(0, 0);
-            ctx.lineTo(150, -40);
-            ctx.lineTo(150, 40);
+            ctx.lineTo(180, -50);
+            ctx.lineTo(180, 50);
             ctx.closePath();
             ctx.fill();
             
             ctx.restore();
         });
     } else if (currentEffect === 'grid') {
-        ctx.strokeStyle = 'rgba(0, 0, 0, 0.15)';
-        ctx.lineWidth = 1;
+        ctx.strokeStyle = 'rgba(255, 255, 255, 0.5)'; // Brighter white lines
+        ctx.lineWidth = 1.5;
         ctx.beginPath();
         particles.forEach(p => {
             if (p.type === 'vertical') {
@@ -1809,14 +1847,19 @@ function drawParticles() {
         });
         ctx.stroke();
     } else if (currentEffect === 'slideshow') {
-        ctx.fillStyle = 'rgba(70, 130, 180, 0.4)';
+        ctx.fillStyle = 'rgba(167, 139, 250, 0.9)'; // Very bright violet/purple
         particles.forEach(p => {
             ctx.globalAlpha = p.opacity;
-            ctx.fillRect(p.x, p.y, p.size, p.size * 0.6); // Aspect ratio like a slide
+            ctx.shadowBlur = 10;
+            ctx.shadowColor = 'rgba(139, 92, 246, 0.5)';
+            ctx.fillRect(p.x, p.y, p.size, p.size * 0.6);
         });
+        ctx.shadowBlur = 0;
     } else if (currentEffect === 'soundwaves') {
-        ctx.strokeStyle = 'rgba(255, 20, 147, 0.6)'; // Deep pink
         particles.forEach(p => {
+            ctx.strokeStyle = 'rgba(244, 114, 182, 1)'; // Very bright pink
+            ctx.lineWidth = p.lineWidth || 4; // Use particle's line width
+            ctx.lineCap = 'round';
             ctx.beginPath();
             ctx.globalAlpha = p.opacity;
             for (let i = 0; i < p.width; i++) {

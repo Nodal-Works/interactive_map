@@ -195,29 +195,7 @@ map.on('load', () => {
   
   // Bearing is set via initialBearing in map constructor
   
-  // Toggle table markers visibility
-  const toggleTableMarkersBtn = document.getElementById('toggle-table-markers-btn');
-  let tableMarkersVisible = false;
-  toggleTableMarkersBtn.classList.add('toggled-off');
-
-  toggleTableMarkersBtn.addEventListener('click', () => {
-    tableMarkersVisible = !tableMarkersVisible;
-    const visibility = tableMarkersVisible ? 'visible' : 'none';
-    
-    // Toggle all table layers
-    ['table-fill', 'table-line', 'table-corners', 'table-center'].forEach(layerId => {
-      if (map.getLayer(layerId)) {
-        map.setLayoutProperty(layerId, 'visibility', visibility);
-      }
-    });
-    
-    // Update button appearance
-    if (tableMarkersVisible) {
-      toggleTableMarkersBtn.classList.remove('toggled-off');
-    } else {
-      toggleTableMarkersBtn.classList.add('toggled-off');
-    }
-  });
+  // Table markers visibility is now controlled via controller
 });
 
 // Simple basemap switcher (call setBasemap('cartoDark') etc.)
@@ -447,6 +425,13 @@ ${JSON.stringify(calibration, null, 2)}`;
             map.rotateTo(0);
         } else if (action === 'lock_center') {
             setInteractionLock(data.value);
+        } else if (action === 'toggle_table_markers') {
+            const visibility = data.value ? 'visible' : 'none';
+            ['table-fill', 'table-line', 'table-corners', 'table-center'].forEach(layerId => {
+                if (map.getLayer(layerId)) {
+                    map.setLayoutProperty(layerId, 'visibility', visibility);
+                }
+            });
         }
     }
 };
