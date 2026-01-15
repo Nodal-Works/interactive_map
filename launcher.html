@@ -478,6 +478,42 @@
                 </button>
             </div>
         </div>
+
+        <div class="card">
+            <div class="card-title">
+                <span class="material-icons">camera</span>
+                Auto-Calibration
+            </div>
+            <div class="selector-row">
+                <span class="selector-label">
+                    <span class="material-icons">videocam</span>
+                    Camera
+                </span>
+                <select id="calibrate-camera-select">
+                    <option value="">Select camera...</option>
+                </select>
+            </div>
+            <div id="calibrate-preview-container" style="width: 100%; aspect-ratio: 16/9; background: #1a1a1a; border-radius: 8px; margin: 0.75rem 0; overflow: hidden; position: relative;">
+                <canvas id="calibrate-preview" style="width: 100%; height: 100%; object-fit: contain;"></canvas>
+                <div id="calibrate-status" style="position: absolute; bottom: 8px; left: 8px; background: rgba(0,0,0,0.7); color: #888; padding: 4px 8px; border-radius: 4px; font-size: 0.75rem;">No camera</div>
+            </div>
+            <div class="secondary-btns" style="grid-template-columns: 1fr 1fr;">
+                <button class="btn-secondary" onclick="startAutoCalibrate()" id="start-calibrate-btn" style="background: linear-gradient(135deg, #10b981 0%, #059669 100%); border-color: #10b981;">
+                    <span class="material-icons">auto_fix_high</span>
+                    Auto-Calibrate
+                </button>
+                <button class="btn-secondary" onclick="stopAutoCalibrate()" id="stop-calibrate-btn" disabled>
+                    <span class="material-icons">stop</span>
+                    Stop
+                </button>
+            </div>
+            <div style="margin-top: 0.75rem;">
+                <a href="calibration/aruco-markers.html" target="_blank" class="btn-secondary" style="text-decoration: none; display: flex;">
+                    <span class="material-icons">print</span>
+                    Print Markers
+                </a>
+            </div>
+        </div>
     </div>
 
     <footer>
@@ -808,6 +844,169 @@
 
         // Periodically check window status
         setInterval(updateWindowStatus, 2000);
+
+        // ===========================================
+        // Auto-Calibration from Launcher
+        // ===========================================
+        
+        let launcherCalibrator = null;
+        const calibrateChannel = new BroadcastChannel('map_controller_channel');
+        
+        async function initCalibratorFromLauncher() {
+            // Load the auto-calibrate script
+            return new Promise((resolve, reject) => {
+                if (window.AutoCalibrator) {
+                    resolve(true);
+                    return;
+                }
+                const script = document.createElement('script');
+                script.src = 'calibration/auto-calibrate.js';
+                script.onload = () => {
+                    console.log('[Launcher] AutoCalibrator loaded');
+                    resolve(true);
+                };
+                script.onerror = () => reject(new Error('Failed to load auto-calibrate.js'));
+                document.head.appendChild(script);
+            });
+        }
+        
+        async function populateCameraList() {
+            const select = document.getElementById('calibrate-camera-select');
+            try {
+                // Request permission first
+                await navigator.mediaDevices.getUserMedia({ video: true })
+                    .then(stream => stream.getTracks().forEach(t => t.stop()))
+                    .catch(() => {});
+                    
+                const devices = await navigator.mediaDevices.enumerateDevices();
+                const cameras = devices.filter(d => d.kind === 'videoinput');
+                
+                select.innerHTML = '<option value="">Select camera...</option>';
+                cameras.forEach((cam, i) => {
+                    const option = document.createElement('option');
+                    option.value = cam.deviceId;
+                    option.textContent = cam.label || `Camera ${i + 1}`;
+                    select.appendChild(option);
+                });
+                
+                if (cameras.length > 0) {
+                    select.value = cameras[0].deviceId;
+                    startCameraPreviewLauncher(cameras[0].deviceId);
+                }
+            } catch (err) {
+                console.error('Camera enumeration error:', err);
+            }
+        }
+        
+        async function startCameraPreviewLauncher(deviceId) {
+            const statusEl = document.getElementById('calibrate-status');
+            const canvas = document.getElementById('calibrate-preview');
+            
+            try {
+                await initCalibratorFromLauncher();
+                
+                launcherCalibrator = new window.AutoCalibrator({ debug: true });
+                
+                launcherCalibrator.onDebugFrame = (debugCanvas) => {
+                    const ctx = canvas.getContext('2d');
+                    canvas.width = debugCanvas.width;
+                    canvas.height = debugCanvas.height;
+                    ctx.drawImage(debugCanvas, 0, 0);
+                };
+                
+                launcherCalibrator.onStatusUpdate = (msg) => {
+                    statusEl.textContent = msg;
+                };
+                
+                await launcherCalibrator.startPreview(deviceId);
+                statusEl.textContent = 'Camera ready';
+            } catch (err) {
+                statusEl.textContent = 'Error: ' + err.message;
+            }
+        }
+        
+        async function startAutoCalibrate() {
+            const startBtn = document.getElementById('start-calibrate-btn');
+            const stopBtn = document.getElementById('stop-calibrate-btn');
+            const statusEl = document.getElementById('calibrate-status');
+            const cameraId = document.getElementById('calibrate-camera-select').value;
+            
+            if (!mainWin || mainWin.closed) {
+                showStatus('Launch Main Display first!', 'error');
+                return;
+            }
+            
+            startBtn.disabled = true;
+            stopBtn.disabled = false;
+            
+            try {
+                await initCalibratorFromLauncher();
+                
+                if (!launcherCalibrator) {
+                    launcherCalibrator = new window.AutoCalibrator({ debug: true });
+                }
+                
+                const canvas = document.getElementById('calibrate-preview');
+                launcherCalibrator.onDebugFrame = (debugCanvas) => {
+                    const ctx = canvas.getContext('2d');
+                    canvas.width = debugCanvas.width;
+                    canvas.height = debugCanvas.height;
+                    ctx.drawImage(debugCanvas, 0, 0);
+                };
+                
+                launcherCalibrator.onStatusUpdate = (msg) => {
+                    statusEl.textContent = msg;
+                    showStatus(msg, 'info');
+                };
+                
+                // Get current calibration
+                const currentCal = {
+                    center: { lng: 11.977770568930168, lat: 57.68839377903814 },
+                    zoom: 15.806953679037164,
+                    bearing: -92.58546386659737
+                };
+                
+                const result = await launcherCalibrator.calibrate(calibrateChannel, currentCal, cameraId);
+                
+                statusEl.textContent = `Done! Zoom: ${result.zoom.toFixed(3)}`;
+                showStatus('Calibration complete!', 'success');
+                
+                // Restart preview
+                if (cameraId) {
+                    setTimeout(() => startCameraPreviewLauncher(cameraId), 500);
+                }
+            } catch (err) {
+                statusEl.textContent = 'Error: ' + err.message;
+                showStatus('Calibration error: ' + err.message, 'error');
+            } finally {
+                startBtn.disabled = false;
+                stopBtn.disabled = true;
+            }
+        }
+        
+        function stopAutoCalibrate() {
+            if (launcherCalibrator) {
+                launcherCalibrator.cancel();
+            }
+            document.getElementById('start-calibrate-btn').disabled = false;
+            document.getElementById('stop-calibrate-btn').disabled = true;
+            
+            // Hide markers on main
+            calibrateChannel.postMessage({
+                type: 'calibrate_action',
+                action: 'hide_calibration_markers'
+            });
+        }
+        
+        // Camera select change handler
+        document.getElementById('calibrate-camera-select').addEventListener('change', (e) => {
+            if (e.target.value) {
+                startCameraPreviewLauncher(e.target.value);
+            }
+        });
+        
+        // Init camera list
+        populateCameraList();
     </script>
 </body>
 </html>

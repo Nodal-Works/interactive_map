@@ -432,9 +432,330 @@ ${JSON.stringify(calibration, null, 2)}`;
                     map.setLayoutProperty(layerId, 'visibility', visibility);
                 }
             });
+        } else if (action === 'show_calibration_markers') {
+            // Show bright calibration markers at table corners for camera detection
+            showCalibrationMarkers(data.params || {});
+        } else if (action === 'hide_calibration_markers') {
+            hideCalibrationMarkers();
+        } else if (action === 'get_overlay_positions') {
+            // Return current calibration marker positions in screen coordinates
+            const positions = getCalibrationMarkerPositions();
+            controllerChannel.postMessage({
+                type: 'calibration_overlay_positions',
+                positions: positions
+            });
+        } else if (action === 'show_calibration_tile') {
+            // Show a single calibration tile (20x20cm) in top-left for camera detection
+            showCalibrationTile(data.params || {});
+        } else if (action === 'hide_calibration_tile') {
+            hideCalibrationTile();
+        } else if (action === 'get_tile_position') {
+            // Return expected tile position in screen coordinates
+            const tile = getCalibrationTilePosition();
+            controllerChannel.postMessage({
+                type: 'calibration_tile_position',
+                tile: tile
+            });
+        } else if (action === 'apply_calibration') {
+            // Apply new calibration values from auto-calibrator
+            const cal = data.calibration;
+            if (cal) {
+                map.jumpTo({
+                    zoom: cal.zoom,
+                    bearing: cal.bearing,
+                    center: cal.center ? [cal.center.lng, cal.center.lat] : undefined
+                });
+                showToast(`Calibration updated: zoom=${cal.zoom.toFixed(3)}, bearing=${cal.bearing.toFixed(2)}°`);
+            }
         }
     }
 };
+
+// ===========================================
+// Calibration Markers for Auto-Calibration
+// ===========================================
+
+let calibrationMarkersContainer = null;
+
+function showCalibrationMarkers(params = {}) {
+    // Remove existing markers
+    hideCalibrationMarkers();
+    
+    // Get table overlay dimensions
+    const { sw = 111.93, sh = 62.96, tw = 100, th = 60 } = params;
+    const px = window.innerWidth / parseFloat(sw);
+    const tableW = Math.round(parseFloat(tw) * px);
+    const tableH = Math.round(parseFloat(th) * px);
+    
+    // Calculate table overlay position (centered on screen)
+    const offsetX = (window.innerWidth - tableW) / 2;
+    const offsetY = (window.innerHeight - tableH) / 2;
+    
+    // Create markers container
+    calibrationMarkersContainer = document.createElement('div');
+    calibrationMarkersContainer.id = 'calibration-markers';
+    calibrationMarkersContainer.style.cssText = `
+        position: fixed;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+        pointer-events: none;
+        z-index: 9000;
+    `;
+    
+    // Marker positions relative to table (corners with margin)
+    const markerPositions = [
+        { id: 0, x: 0.08, y: 0.08 },   // Top-left
+        { id: 1, x: 0.92, y: 0.08 },   // Top-right
+        { id: 2, x: 0.92, y: 0.92 },   // Bottom-right
+        { id: 3, x: 0.08, y: 0.92 }    // Bottom-left
+    ];
+    
+    const markerColors = ['#ff0000', '#00ff00', '#0088ff', '#ffff00'];
+    const markerSize = 60;
+    
+    markerPositions.forEach((pos, i) => {
+        const marker = document.createElement('div');
+        marker.className = 'calibration-marker';
+        marker.dataset.markerId = pos.id;
+        
+        const x = offsetX + tableW * pos.x - markerSize / 2;
+        const y = offsetY + tableH * pos.y - markerSize / 2;
+        
+        marker.style.cssText = `
+            position: absolute;
+            left: ${x}px;
+            top: ${y}px;
+            width: ${markerSize}px;
+            height: ${markerSize}px;
+            background: ${markerColors[i]};
+            border: 4px solid white;
+            border-radius: 50%;
+            box-shadow: 0 0 20px ${markerColors[i]}, 0 0 40px ${markerColors[i]};
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 24px;
+            font-weight: bold;
+            color: white;
+            text-shadow: 0 0 5px black;
+        `;
+        marker.textContent = pos.id;
+        
+        calibrationMarkersContainer.appendChild(marker);
+    });
+    
+    // Add center crosshair
+    const crosshair = document.createElement('div');
+    crosshair.style.cssText = `
+        position: absolute;
+        left: ${window.innerWidth / 2 - 30}px;
+        top: ${window.innerHeight / 2 - 30}px;
+        width: 60px;
+        height: 60px;
+        border: 3px solid rgba(255,255,255,0.8);
+        border-radius: 50%;
+    `;
+    
+    const crossH = document.createElement('div');
+    crossH.style.cssText = `
+        position: absolute;
+        left: ${window.innerWidth / 2 - 40}px;
+        top: ${window.innerHeight / 2}px;
+        width: 80px;
+        height: 2px;
+        background: rgba(255,255,255,0.8);
+    `;
+    
+    const crossV = document.createElement('div');
+    crossV.style.cssText = `
+        position: absolute;
+        left: ${window.innerWidth / 2}px;
+        top: ${window.innerHeight / 2 - 40}px;
+        width: 2px;
+        height: 80px;
+        background: rgba(255,255,255,0.8);
+    `;
+    
+    calibrationMarkersContainer.appendChild(crosshair);
+    calibrationMarkersContainer.appendChild(crossH);
+    calibrationMarkersContainer.appendChild(crossV);
+    
+    document.body.appendChild(calibrationMarkersContainer);
+    showToast('Calibration markers shown');
+}
+
+function hideCalibrationMarkers() {
+    if (calibrationMarkersContainer) {
+        calibrationMarkersContainer.remove();
+        calibrationMarkersContainer = null;
+    }
+}
+
+function getCalibrationMarkerPositions() {
+    const positions = {};
+    
+    if (calibrationMarkersContainer) {
+        calibrationMarkersContainer.querySelectorAll('.calibration-marker').forEach(marker => {
+            const id = marker.dataset.markerId;
+            const rect = marker.getBoundingClientRect();
+            positions[id] = {
+                x: rect.left + rect.width / 2,
+                y: rect.top + rect.height / 2
+            };
+        });
+    }
+    
+    return positions;
+}
+
+// ===========================================
+// Single Tile Calibration (20x20cm reference)
+// ===========================================
+
+let calibrationTileContainer = null;
+let calibrationTileParams = { tileSize: 20, offsetX: 5, offsetY: 5 };
+
+function showCalibrationTile(params = {}) {
+    // Remove existing tile
+    hideCalibrationTile();
+    
+    // Store params for position calculation
+    calibrationTileParams = {
+        tileSize: params.tileSize || 20,
+        offsetX: params.offsetX || 5,
+        offsetY: params.offsetY || 5,
+        sw: params.sw || 111.93,
+        sh: params.sh || 62.96,
+        tw: params.tw || 100,
+        th: params.th || 60
+    };
+    
+    const { tileSize, offsetX, offsetY, sw, tw, th } = calibrationTileParams;
+    
+    // Calculate pixel dimensions
+    const pxPerCm = window.innerWidth / parseFloat(sw);
+    const tableW = Math.round(parseFloat(tw) * pxPerCm);
+    const tableH = Math.round(parseFloat(th) * pxPerCm);
+    const tilePx = Math.round(tileSize * pxPerCm);
+    
+    // Table overlay position (centered on screen)
+    const tableOffsetX = (window.innerWidth - tableW) / 2;
+    const tableOffsetY = (window.innerHeight - tableH) / 2;
+    
+    // Tile position within table
+    const tileX = tableOffsetX + offsetX * pxPerCm;
+    const tileY = tableOffsetY + offsetY * pxPerCm;
+    
+    // Create tile container
+    calibrationTileContainer = document.createElement('div');
+    calibrationTileContainer.id = 'calibration-tile';
+    calibrationTileContainer.style.cssText = `
+        position: fixed;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+        pointer-events: none;
+        z-index: 9000;
+    `;
+    
+    // Create the tile (bright white square)
+    const tile = document.createElement('div');
+    tile.className = 'calibration-tile-marker';
+    tile.style.cssText = `
+        position: absolute;
+        left: ${tileX}px;
+        top: ${tileY}px;
+        width: ${tilePx}px;
+        height: ${tilePx}px;
+        background: white;
+        border: 4px solid #00ff00;
+        box-shadow: 0 0 30px white, 0 0 60px white;
+    `;
+    
+    // Add corner markers for better detection
+    const corners = [
+        { x: 0, y: 0, color: '#ff0000' },          // TL - red
+        { x: tilePx - 10, y: 0, color: '#00ff00' }, // TR - green  
+        { x: tilePx - 10, y: tilePx - 10, color: '#0088ff' }, // BR - blue
+        { x: 0, y: tilePx - 10, color: '#ffff00' }  // BL - yellow
+    ];
+    
+    corners.forEach(c => {
+        const corner = document.createElement('div');
+        corner.style.cssText = `
+            position: absolute;
+            left: ${c.x}px;
+            top: ${c.y}px;
+            width: 10px;
+            height: 10px;
+            background: ${c.color};
+        `;
+        tile.appendChild(corner);
+    });
+    
+    // Add label
+    const label = document.createElement('div');
+    label.style.cssText = `
+        position: absolute;
+        left: ${tileX}px;
+        top: ${tileY + tilePx + 10}px;
+        color: white;
+        font-size: 14px;
+        font-weight: bold;
+        text-shadow: 0 0 5px black;
+    `;
+    label.textContent = `Calibration Tile (${tileSize}×${tileSize}cm)`;
+    
+    calibrationTileContainer.appendChild(tile);
+    calibrationTileContainer.appendChild(label);
+    document.body.appendChild(calibrationTileContainer);
+    
+    showToast('Calibration tile shown');
+}
+
+function hideCalibrationTile() {
+    if (calibrationTileContainer) {
+        calibrationTileContainer.remove();
+        calibrationTileContainer = null;
+    }
+}
+
+function getCalibrationTilePosition() {
+    const { tileSize, offsetX, offsetY, sw = 111.93, tw = 100, th = 60 } = calibrationTileParams;
+    
+    // Calculate pixel dimensions (same as showCalibrationTile)
+    const pxPerCm = window.innerWidth / parseFloat(sw);
+    const tableW = Math.round(parseFloat(tw) * pxPerCm);
+    const tableH = Math.round(parseFloat(th) * pxPerCm);
+    const tilePx = Math.round(tileSize * pxPerCm);
+    
+    // Table overlay position
+    const tableOffsetX = (window.innerWidth - tableW) / 2;
+    const tableOffsetY = (window.innerHeight - tableH) / 2;
+    
+    // Tile position
+    const tileX = tableOffsetX + offsetX * pxPerCm;
+    const tileY = tableOffsetY + offsetY * pxPerCm;
+    
+    // Return corners and center
+    return {
+        corners: [
+            { x: tileX, y: tileY },                      // TL
+            { x: tileX + tilePx, y: tileY },             // TR
+            { x: tileX + tilePx, y: tileY + tilePx },    // BR
+            { x: tileX, y: tileY + tilePx }              // BL
+        ],
+        center: {
+            x: tileX + tilePx / 2,
+            y: tileY + tilePx / 2
+        },
+        width: tilePx,
+        height: tilePx
+    };
+}
 
 // Broadcast state changes to controller
 function broadcastState(activeLayerId) {
