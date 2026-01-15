@@ -184,5 +184,52 @@
     <script src="animations/slideshow.js"></script>
     <script src="animations/bird-sounds.js"></script>
     <script type="module" src="animations/sun-study.js"></script>
+    
+    <!-- Auto-fullscreen when launched from launcher -->
+    <script>
+    (function() {
+        const params = new URLSearchParams(window.location.search);
+        if (params.get('autofullscreen') === '1') {
+            // Show a brief overlay prompting user to click for fullscreen
+            const overlay = document.createElement('div');
+            overlay.id = 'fullscreen-overlay';
+            overlay.innerHTML = `
+                <div style="
+                    position: fixed;
+                    top: 0; left: 0; right: 0; bottom: 0;
+                    background: rgba(0,0,0,0.9);
+                    display: flex;
+                    align-items: center;
+                    justify-content: center;
+                    z-index: 99999;
+                    cursor: pointer;
+                    flex-direction: column;
+                    gap: 1rem;
+                ">
+                    <div style="font-size: 3rem;">🖥️</div>
+                    <div style="color: white; font-size: 1.5rem; font-weight: bold;">Click anywhere for fullscreen</div>
+                    <div style="color: #888; font-size: 1rem;">Main Display</div>
+                </div>
+            `;
+            document.body.appendChild(overlay);
+            
+            overlay.addEventListener('click', function() {
+                document.documentElement.requestFullscreen().then(() => {
+                    overlay.remove();
+                }).catch(err => {
+                    console.log('Fullscreen error:', err);
+                    overlay.remove();
+                });
+            });
+            
+            // Auto-remove after 10 seconds if not clicked
+            setTimeout(() => {
+                if (document.getElementById('fullscreen-overlay')) {
+                    overlay.remove();
+                }
+            }, 10000);
+        }
+    })();
+    </script>
   </body>
 </html>
