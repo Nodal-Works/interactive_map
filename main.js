@@ -368,6 +368,12 @@ controllerChannel.onmessage = (event) => {
             bearing: initialBearing,
             pitch: 0
         });
+        // Also restart street life animation when resetting to default view
+        if (window.streetLifeAnimation) {
+            setTimeout(() => {
+                window.streetLifeAnimation.updateVisibility();
+            }, 500);
+        }
     } else if (data.type === 'calibrate_action') {
         const action = data.action;
         
