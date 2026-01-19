@@ -222,6 +222,15 @@ function updateDashboard(targetId) {
                     <img src="media/dtcc_logo.png" style="height: 70px; opacity: 0.8;">
                 </div>
             </div>
+            <div class="dashboard-card">
+                <div class="dashboard-section-title">Take Our Survey</div>
+                <p class="info-text" style="margin-bottom: 1rem;">
+                    Help us improve! Scan the QR code to share your feedback.
+                </p>
+                <div style="display: flex; justify-content: center; align-items: center;">
+                    <img src="media/survey_qr.png" style="width: 150px; height: 150px; border-radius: 8px;">
+                </div>
+            </div>
         `;
         return;
     }
