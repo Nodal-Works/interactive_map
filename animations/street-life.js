@@ -29,6 +29,7 @@ let streetLifeDataLoaded = false;
 // Entity collections
 let vehicles = [];
 let pedestrians = [];
+let streetlights = []; // Static infrastructure lights
 let streetPaths = []; // Full paths for navigation
 
 // Configuration
@@ -37,15 +38,20 @@ const CONFIG = {
   maxBuses: 12,
   maxBicycles: 30,
   maxTaxis: 15,
-  maxPedestrians: 400,   // High density crowds
+  maxPedestrians: 1500,   // High density crowds
   carSpeed: 0.002,       // Progress per frame along path
   busSpeed: 0.0012,      // Buses are slower
   bicycleSpeed: 0.0015,  // Cyclists between cars and pedestrians
   pedestrianSpeed: 0.0003, // Realistic walking speed (~5km/h vs car 50km/h)
   spawnInterval: 200,    // Faster spawning for density
   
+  // Streetlight Configuration (Warm Sodium Vapor look)
+  streetlightColor: 'rgba(255, 210, 150, 0.12)', // Visible warm glow
+  streetlightRadius: 50,   // Size of the light pool in pixels
+  streetlightSpacing: 0.0008, // Moderate spacing between lights
+  
   // Trail effect control
-  trailFade: 0.92,       // High = long trails, Low = short trails
+  trailFade: 0.96,       // High = long trails, Low = short trails
   
   // Visual sizes (in pixels)
   carLength: 12,
@@ -112,6 +118,10 @@ function loadStreetLifeData() {
     .then(geojson => {
       streetLifeData = geojson;
       parseStreetPaths(geojson);
+      
+      // Generate static streetlights along paths
+      generateStreetlights();
+      
       streetLifeDataLoaded = true;
       console.log(`✓ Street Life: Loaded ${streetPaths.length} paths for animation`);
     })
@@ -230,14 +240,23 @@ function getPointAlongPath(path, progress) {
   };
 }
 
-// Spawn a new car
+// Spawn a new car - with smart spawning based on road hierarchy
 function spawnCar() {
   if (vehicles.filter(v => v.type === 'car').length >= CONFIG.maxCars) return;
   
   const eligiblePaths = streetPaths.filter(p => p.isVehicleRoad && p.totalLength > 0.001);
   if (eligiblePaths.length === 0) return;
   
-  const path = eligiblePaths[Math.floor(Math.random() * eligiblePaths.length)];
+  // SMART SPAWNING: Filter for major roads first
+  const majorRoads = streetPaths.filter(p => 
+    (p.type === 'motorway' || p.type === 'primary' || p.type === 'trunk' || p.type === 'secondary') && 
+    p.totalLength > 0.001
+  );
+  
+  // 70% chance to pick a major road, 30% chance for random street
+  let pool = (Math.random() < 0.7 && majorRoads.length > 0) ? majorRoads : eligiblePaths;
+  
+  const path = pool[Math.floor(Math.random() * pool.length)];
   const colorScheme = CONFIG.carColors[Math.floor(Math.random() * CONFIG.carColors.length)];
   const reverse = Math.random() > 0.5;
   
@@ -246,6 +265,7 @@ function spawnCar() {
     path: path,
     progress: reverse ? 1 : 0,
     speed: CONFIG.carSpeed * (0.8 + Math.random() * 0.4),
+    speedVar: 0.9 + Math.random() * 0.2, // Natural speed variance
     direction: reverse ? -1 : 1,
     colors: colorScheme,
     headlightsOn: true,
@@ -269,6 +289,7 @@ function spawnBus() {
     path: path,
     progress: reverse ? 1 : 0,
     speed: CONFIG.busSpeed * (0.9 + Math.random() * 0.2),
+    speedVar: 0.9 + Math.random() * 0.2, // Natural speed variance
     direction: reverse ? -1 : 1,
     colors: colorScheme,
     stopTimer: 0,
@@ -276,14 +297,22 @@ function spawnBus() {
   });
 }
 
-// Spawn a taxi
+// Spawn a taxi - prefers major roads where fares are
 function spawnTaxi() {
   if (vehicles.filter(v => v.type === 'taxi').length >= CONFIG.maxTaxis) return;
   
   const eligiblePaths = streetPaths.filter(p => p.isVehicleRoad && p.totalLength > 0.001);
   if (eligiblePaths.length === 0) return;
   
-  const path = eligiblePaths[Math.floor(Math.random() * eligiblePaths.length)];
+  // Taxis prefer commercial/major roads
+  const majorRoads = streetPaths.filter(p => 
+    (p.type === 'primary' || p.type === 'secondary' || p.type === 'tertiary') && 
+    p.totalLength > 0.001
+  );
+  
+  let pool = (Math.random() < 0.8 && majorRoads.length > 0) ? majorRoads : eligiblePaths;
+  
+  const path = pool[Math.floor(Math.random() * pool.length)];
   const colorScheme = CONFIG.taxiColors[Math.floor(Math.random() * CONFIG.taxiColors.length)];
   const reverse = Math.random() > 0.5;
   
@@ -291,11 +320,12 @@ function spawnTaxi() {
     type: 'taxi',
     path: path,
     progress: reverse ? 1 : 0,
-    speed: CONFIG.carSpeed * (0.7 + Math.random() * 0.3), // Taxis are slightly slower (looking for fares)
+    speed: CONFIG.carSpeed * (0.7 + Math.random() * 0.3),
+    speedVar: 0.9 + Math.random() * 0.2, // Natural speed variance
     direction: reverse ? -1 : 1,
     colors: colorScheme,
     headlightsOn: true,
-    isAvailable: Math.random() > 0.3 // 70% are available
+    isAvailable: Math.random() > 0.3
   });
 }
 
@@ -315,6 +345,7 @@ function spawnBicycle() {
     path: path,
     progress: reverse ? 1 : 0,
     speed: CONFIG.bicycleSpeed * (0.7 + Math.random() * 0.6),
+    speedVar: 0.9 + Math.random() * 0.2, // Natural speed variance
     direction: reverse ? -1 : 1,
     colors: colorScheme,
     pedalPhase: Math.random() * Math.PI * 2
@@ -343,9 +374,9 @@ function spawnPedestrian() {
   });
 }
 
-// Update all entities with organic movement
+// Update all entities with smooth organic movement
 function updateStreetLifeEntities() {
-  // Update vehicles (simplified for performance)
+  // Update vehicles - smooth movement using speedVar
   vehicles = vehicles.filter(v => {
     // Bus stop logic
     if (v.type === 'bus' && v.isAtStop) {
@@ -364,7 +395,10 @@ function updateStreetLifeEntities() {
     // Bicycle pedal animation
     if (v.type === 'bicycle') v.pedalPhase += 0.2;
     
-    v.progress += v.speed * v.direction;
+    // SMOOTH MOVEMENT: Multiply by unique speedVar so vehicles don't move in lockstep
+    const variance = v.speedVar || 1.0;
+    v.progress += v.speed * variance * v.direction;
+    
     return v.progress >= 0 && v.progress <= 1;
   });
   
@@ -694,67 +728,69 @@ function drawDataComet(ctx, pos, angle, color, direction = 1) {
   ctx.restore();
 }
 
-// Main draw function - Fixed trails using destination-out (no rectangle!)
+// FIXED: Main draw function with Correct Rotation
 function drawStreetLife() {
   const width = streetLifeCanvas.width;
   const height = streetLifeCanvas.height;
   
-  // --- FIX 1: THE TRAIL CLEARING METHOD ---
-  // Instead of drawing a black rectangle (which looks like a box),
-  // we use 'destination-out' to FADE whatever is already there to transparent.
-  streetLifeCtx.globalCompositeOperation = 'destination-out';
-  streetLifeCtx.fillStyle = `rgba(0, 0, 0, ${1 - CONFIG.trailFade})`;
-  streetLifeCtx.fillRect(0, 0, width, height);
+  // 1. CLEAR CANVAS (No motion blur)
+  streetLifeCtx.clearRect(0, 0, width, height);
   
-  // --- FIX 2: DRAWING MODE ---
-  // Switch back to normal drawing
+  // 2. PREPARE FOR DRAWING
   streetLifeCtx.globalCompositeOperation = 'source-over';
   
-  // --- DRAW VEHICLES (Bright & Fast) ---
-  // Add "lighter" blend mode for cars so headlights blend beautifully
-  streetLifeCtx.globalCompositeOperation = 'lighter';
+  // GET MAP BEARING (Critical for Headlight Alignment)
+  // Convert map bearing from degrees to radians
+  const mapBearing = (map.getBearing() || 0) * (Math.PI / 180);
   
+  // --- DRAW STREETLIGHTS FIRST (Background layer of light) ---
+  streetLifeCtx.globalCompositeOperation = 'lighter';
+  drawStreetlights(streetLifeCtx, width, height);
+  
+  // --- DRAW VEHICLES ---
+  // Keep lighter mode for neon glow
   vehicles.forEach(v => {
     const point = getPointAlongPath(v.path, v.progress);
     if (!point) return;
     const pos = projectToStreetLifeCanvas(point.lng, point.lat);
     
-    // Optimization: Don't draw if off screen
+    // Optimization: Skip off-screen
     if (!isOnScreen(pos, width, height)) return;
     
+    // --- THE ANGLE FIX ---
+    // 1. point.angle is Math (Counter-Clockwise from East).
+    // 2. Screen Y is flipped vs Geo Y (Lat), so we negate (-point.angle).
+    // 3. We add the Map Bearing to rotate with the camera.
+    const screenAngle = -point.angle + mapBearing;
+    
     if (v.type === 'car') {
-      drawFastLight(streetLifeCtx, pos, point.angle, v.colors.body, 25, 8, v.direction);
+      drawFastLight(streetLifeCtx, pos, screenAngle, v.colors.body, 25, 8, v.direction);
     } else if (v.type === 'taxi') {
-      drawFastLight(streetLifeCtx, pos, point.angle, v.colors.body, 25, 8, v.direction);
+      drawFastLight(streetLifeCtx, pos, screenAngle, v.colors.body, 25, 8, v.direction);
     } else if (v.type === 'bus') {
-      drawFastLight(streetLifeCtx, pos, point.angle, v.colors.body, 35, 12, v.direction);
+      drawFastLight(streetLifeCtx, pos, screenAngle, v.colors.body, 35, 12, v.direction);
     } else if (v.type === 'bicycle') {
-      // Bicycles get a smaller, colored light
-      drawFastLight(streetLifeCtx, pos, point.angle, v.colors.frame, 10, 4, v.direction);
+      drawFastLight(streetLifeCtx, pos, screenAngle, v.colors.frame, 10, 4, v.direction);
     }
   });
   
-  // --- DRAW PEDESTRIANS (Organic & Dense) ---
-  // Switch to normal blending for people (so they don't look like lasers)
-  streetLifeCtx.globalCompositeOperation = 'source-over';
+  // --- DRAW PEDESTRIANS ---
+  streetLifeCtx.globalCompositeOperation = 'source-over'; // Solid dots
   
   pedestrians.forEach(p => {
     const point = getPointAlongPath(p.path, p.progress);
     if (!point) return;
     
-    // Calculate Organic Offset (The "Wobble")
-    // Use the perpendicular angle to shift them left/right slightly
-    const offsetMag = Math.sin(p.wobblePhase) * 1.5; // 1.5 pixels wiggle
-    const perpAngle = point.angle + Math.PI / 2;
+    // Organic Offset - rotate wobble with map bearing too
+    const offsetMag = Math.sin(p.wobblePhase) * 1.5;
+    const perpAngle = -point.angle + mapBearing + Math.PI / 2;
     const offsetX = Math.cos(perpAngle) * offsetMag;
     const offsetY = Math.sin(perpAngle) * offsetMag;
     
     const pos = projectToStreetLifeCanvas(point.lng, point.lat);
     
-    // Skip if off screen
     if (!isOnScreen(pos, width, height)) return;
     
-    // Draw simple dot (Faster than complex shapes)
     streetLifeCtx.fillStyle = p.color;
     streetLifeCtx.beginPath();
     streetLifeCtx.arc(pos.x + offsetX, pos.y + offsetY, 1.5, 0, Math.PI * 2);
@@ -765,36 +801,138 @@ function drawStreetLife() {
   streetLifeCtx.globalCompositeOperation = 'source-over';
 }
 
-// --- HIGH-PERFORMANCE DRAW HELPER ---
-// Replaces complex gradients/shadows with simple shapes for speed
+// Generate static streetlights along paths (called once on load)
+function generateStreetlights() {
+  streetlights = [];
+  if (streetPaths.length === 0) return;
+  
+  console.time('Generating Streetlights');
+  
+  streetPaths.forEach(path => {
+    // Only put lights on MAJOR roads (not residential/service/footways)
+    const majorRoads = ['motorway', 'trunk', 'primary', 'secondary', 'tertiary'];
+    if (!majorRoads.includes(path.type)) return;
+    // Skip very short segments
+    if (path.totalLength < CONFIG.streetlightSpacing * 2) return;
+    
+    // Calculate how many lights fit on this path segment
+    const numLights = Math.floor(path.totalLength / CONFIG.streetlightSpacing);
+    
+    // Place them evenly along the path
+    for (let i = 1; i <= numLights; i++) {
+      const progress = i / (numLights + 1);
+      const point = getPointAlongPath(path, progress);
+      if (point) {
+        streetlights.push({ lng: point.lng, lat: point.lat });
+      }
+    }
+  });
+  
+  console.timeEnd('Generating Streetlights');
+  console.log(`✓ Generated ${streetlights.length} static streetlights`);
+}
+
+// Draw static streetlights efficiently
+function drawStreetlights(ctx, width, height) {
+  const radius = CONFIG.streetlightRadius;
+  
+  streetlights.forEach(light => {
+    const pos = projectToStreetLifeCanvas(light.lng, light.lat);
+    
+    // Strict bounds check with padding for radius
+    if (pos.x < -radius || pos.x > width + radius ||
+        pos.y < -radius || pos.y > height + radius) {
+      return;
+    }
+    
+    // Create Radial Gradient with gradual spread
+    const grad = ctx.createRadialGradient(
+      pos.x, pos.y, 0,      // Inner circle (center point)
+      pos.x, pos.y, radius  // Outer circle
+    );
+    grad.addColorStop(0, CONFIG.streetlightColor);   // Warm center
+    grad.addColorStop(0.3, 'rgba(255, 210, 150, 0.06)'); // Gradual falloff
+    grad.addColorStop(0.7, 'rgba(255, 210, 150, 0.02)'); // Soft spread
+    grad.addColorStop(1, 'rgba(0,0,0,0)');           // Fade to nothing
+    
+    ctx.fillStyle = grad;
+    ctx.beginPath();
+    ctx.arc(pos.x, pos.y, radius, 0, Math.PI * 2);
+    ctx.fill();
+  });
+}
+
+// FIXED: Robust Drawing Function (Always draws facing Right/East)
 function drawFastLight(ctx, pos, angle, color, length, width, direction = 1) {
   ctx.save();
   ctx.translate(pos.x, pos.y);
-  const rotationOffset = direction < 0 ? Math.PI : 0;
-  ctx.rotate(-angle + Math.PI + rotationOffset);
   
-  // The Core (Vehicle Body) - bright center
-  ctx.fillStyle = color;
+  // 1. ROTATION
+  // Add Math.PI to rotate headlights 180 degrees (flip front/back)
+  // If direction is -1 (Reverse), we flip it another 180 degrees.
+  const finalAngle = direction === 1 ? angle + Math.PI : angle;
+  ctx.rotate(finalAngle);
+  
+  // 2. DRAW FACING RIGHT (0 Radians)
+  
+  // Headlight Glow Halo (Large soft radial glow)
+  const glowRadius = length * 0.6;
+  const headlightGlow = ctx.createRadialGradient(length * 0.3, 0, 0, length * 0.3, 0, glowRadius);
+  headlightGlow.addColorStop(0, 'rgba(255, 255, 220, 0.5)');
+  headlightGlow.addColorStop(0.3, 'rgba(255, 255, 200, 0.2)');
+  headlightGlow.addColorStop(1, 'rgba(255, 255, 200, 0)');
+  ctx.fillStyle = headlightGlow;
   ctx.beginPath();
-  ctx.arc(0, 0, 2.5, 0, Math.PI * 2);
+  ctx.arc(length * 0.3, 0, glowRadius, 0, Math.PI * 2);
   ctx.fill();
   
-  // The Beam (Headlight) - Simple triangle, low opacity
-  ctx.globalAlpha = 0.25;
+  // Headlight Beam (Facing Right ->) - Brighter volumetric cone
+  const beamGrad = ctx.createLinearGradient(1, 0, length, 0);
+  beamGrad.addColorStop(0, 'rgba(255, 255, 220, 0.6)');
+  beamGrad.addColorStop(0.5, 'rgba(255, 255, 200, 0.3)');
+  beamGrad.addColorStop(1, 'rgba(255, 255, 200, 0)');
+  ctx.fillStyle = beamGrad;
   ctx.beginPath();
-  ctx.moveTo(-1, 0);
-  ctx.lineTo(-width/2, -length); // Forward beam
-  ctx.lineTo(width/2, -length);
+  ctx.moveTo(1, 0); // Nose of car
+  ctx.lineTo(length, -width/2); // Top right flare
+  ctx.lineTo(length, width/2);  // Bottom right flare
   ctx.lineTo(1, 0);
   ctx.closePath();
   ctx.fill();
   
-  // Taillight glow (red, behind)
-  ctx.fillStyle = '#ff2244';
-  ctx.globalAlpha = 0.4;
+  // Body (Core) - Bright center point, scales with vehicle size
+  const coreSize = Math.max(2.5, width / 3);
+  ctx.fillStyle = '#ffffff';
+  ctx.shadowColor = color;
+  ctx.shadowBlur = coreSize * 3;
   ctx.beginPath();
-  ctx.arc(0, 3, 1.5, 0, Math.PI * 2);
+  ctx.arc(0, 0, coreSize, 0, Math.PI * 2);
   ctx.fill();
+  ctx.shadowBlur = 0;
+  
+  // Taillight (Facing Left <-) - smaller, longer trail
+  const tailLen = 18;
+  const tailGrad = ctx.createLinearGradient(-2, 0, -2 - tailLen, 0);
+  tailGrad.addColorStop(0, 'rgba(255, 60, 60, 0.6)');
+  tailGrad.addColorStop(0.4, 'rgba(255, 0, 0, 0.25)');
+  tailGrad.addColorStop(1, 'rgba(255, 0, 0, 0)');
+  ctx.fillStyle = tailGrad;
+  ctx.beginPath();
+  ctx.moveTo(-2, -1.5);
+  ctx.lineTo(-2 - tailLen, -0.5);
+  ctx.lineTo(-2 - tailLen, 0.5);
+  ctx.lineTo(-2, 1.5);
+  ctx.closePath();
+  ctx.fill();
+  
+  // Taillight core (small)
+  ctx.fillStyle = '#ff4444';
+  ctx.shadowColor = '#ff0000';
+  ctx.shadowBlur = 6;
+  ctx.beginPath();
+  ctx.arc(-2, 0, 1.5, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.shadowBlur = 0;
   
   ctx.restore();
 }
