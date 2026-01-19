@@ -31,6 +31,10 @@ let vehicles = [];
 let pedestrians = [];
 let streetlights = []; // Static infrastructure lights
 let streetPaths = []; // Full paths for navigation
+let buildings = []; // Building footprints for glow effect
+let buildingFlickerStates = []; // Track which buildings are flickering
+let emergencyVehicle = null; // Single active emergency vehicle
+let emergencySpawnTimer = null;
 
 // Configuration
 const CONFIG = {
@@ -42,13 +46,29 @@ const CONFIG = {
   carSpeed: 0.002,       // Progress per frame along path
   busSpeed: 0.0012,      // Buses are slower
   bicycleSpeed: 0.0015,  // Cyclists between cars and pedestrians
-  pedestrianSpeed: 0.0003, // Realistic walking speed (~5km/h vs car 50km/h)
+  pedestrianSpeed: 0.0005, // Faster walking speed
   spawnInterval: 200,    // Faster spawning for density
   
   // Streetlight Configuration (Warm Sodium Vapor look)
-  streetlightColor: 'rgba(255, 210, 150, 0.12)', // Visible warm glow
-  streetlightRadius: 50,   // Size of the light pool in pixels
+  streetlightColor: 'rgba(255, 210, 150, 0.4)', // Brighter warm glow
+  streetlightRadius: 60,   // Size of the light pool in pixels
   streetlightSpacing: 0.0008, // Moderate spacing between lights
+  
+  // Building Window Lights Configuration
+  buildingGlowColor: 'rgba(255, 220, 150, 0.15)',  // Subtle warm glow
+  buildingDashLength: 8,    // Length of lit "window" dashes
+  buildingGapLength: 12,    // Gap between dashes
+  buildingGlowWidth: 3,     // Width of the glow stroke
+  
+  // Emergency Vehicle Configuration (Narrative Events)
+  emergencySpawnMin: 10000,   // Min time between spawns (10 sec)
+  emergencySpawnMax: 20000,   // Max time between spawns (20 sec)
+  emergencySpeedMultiplier: 1.5, // Faster than normal cars
+  emergencyLightRadius: 60,   // Size of spinning light beam (small)
+  emergencyFlashRate: 20,     // Flashes per second (VERY fast)
+  
+  // Building flicker configuration
+  buildingFlickerChance: 0.0003, // Chance per frame for a building to flicker (very rare)
   
   // Trail effect control
   trailFade: 0.96,       // High = long trails, Low = short trails
@@ -121,6 +141,9 @@ function loadStreetLifeData() {
       
       // Generate static streetlights along paths
       generateStreetlights();
+      
+      // Load building footprints
+      loadBuildingFootprints();
       
       streetLifeDataLoaded = true;
       console.log(`✓ Street Life: Loaded ${streetPaths.length} paths for animation`);
@@ -374,6 +397,172 @@ function spawnPedestrian() {
   });
 }
 
+// Spawn an emergency vehicle (ambulance or police)
+function spawnEmergencyVehicle() {
+  // Only one at a time
+  if (emergencyVehicle) return;
+  
+  // Use any road that cars can use for emergency vehicles
+  const eligiblePaths = streetPaths.filter(p => 
+    ['primary', 'secondary', 'tertiary', 'trunk', 'motorway', 'residential', 'unclassified'].includes(p.highway) && 
+    p.totalLength > 0.001
+  );
+  
+  // Fallback to ANY path if no eligible ones found
+  const pathsToUse = eligiblePaths.length > 0 ? eligiblePaths : streetPaths.filter(p => p.totalLength > 0.001);
+  if (pathsToUse.length === 0) {
+    console.log('🚨 No paths available for emergency vehicle!');
+    return;
+  }
+  
+  const path = pathsToUse[Math.floor(Math.random() * pathsToUse.length)];
+  const reverse = Math.random() > 0.5;
+  const isPolice = Math.random() > 0.5;
+  
+  emergencyVehicle = {
+    path: path,
+    progress: reverse ? 1 : 0,
+    speed: CONFIG.carSpeed * CONFIG.emergencySpeedMultiplier,
+    direction: reverse ? -1 : 1,
+    vehicleType: isPolice ? 'police' : 'ambulance',
+    flashPhase: 0,
+    spinPhase: 0
+  };
+  
+  console.log(`🚨 Emergency ${emergencyVehicle.vehicleType} dispatched!`);
+}
+
+// Schedule next emergency vehicle spawn
+function scheduleEmergencySpawn() {
+  const delay = CONFIG.emergencySpawnMin + 
+    Math.random() * (CONFIG.emergencySpawnMax - CONFIG.emergencySpawnMin);
+  
+  emergencySpawnTimer = setTimeout(() => {
+    if (isStreetLifeAnimating) {
+      spawnEmergencyVehicle();
+      scheduleEmergencySpawn(); // Schedule next one
+    }
+  }, delay);
+}
+
+// Draw emergency vehicle with flashing lights and spinning beam
+function drawEmergencyVehicle(ctx, pos, angle, vehicle) {
+  ctx.save();
+  ctx.translate(pos.x, pos.y);
+  
+  const finalAngle = vehicle.direction === 1 ? angle + Math.PI : angle;
+  ctx.rotate(finalAngle);
+  
+  // Determine which light is on (alternating red/blue)
+  const flashState = Math.floor(vehicle.flashPhase) % 2;
+  const primaryColor = flashState === 0 ? '#ff0000' : '#0055ff';
+  const secondaryColor = flashState === 0 ? '#0055ff' : '#ff0000';
+  
+  // 1. SPINNING LIGHT BEAM (large sweeping effect)
+  ctx.globalCompositeOperation = 'lighter';
+  const beamAngle = vehicle.spinPhase;
+  const beamLength = CONFIG.emergencyLightRadius;
+  
+  // Red beam - subtle
+  ctx.save();
+  ctx.rotate(beamAngle);
+  const redGrad = ctx.createLinearGradient(0, 0, beamLength, 0);
+  redGrad.addColorStop(0, 'rgba(255, 80, 80, 0.6)');
+  redGrad.addColorStop(0.3, 'rgba(255, 0, 0, 0.3)');
+  redGrad.addColorStop(1, 'rgba(255, 0, 0, 0)');
+  ctx.fillStyle = redGrad;
+  ctx.beginPath();
+  ctx.moveTo(0, 0);
+  ctx.lineTo(beamLength, -beamLength * 0.5);
+  ctx.lineTo(beamLength, beamLength * 0.5);
+  ctx.closePath();
+  ctx.fill();
+  ctx.restore();
+  
+  // Blue beam (opposite direction) - subtle
+  ctx.save();
+  ctx.rotate(beamAngle + Math.PI);
+  const blueGrad = ctx.createLinearGradient(0, 0, beamLength, 0);
+  blueGrad.addColorStop(0, 'rgba(80, 120, 255, 0.6)');
+  blueGrad.addColorStop(0.3, 'rgba(0, 80, 255, 0.3)');
+  blueGrad.addColorStop(1, 'rgba(0, 80, 255, 0)');
+  ctx.fillStyle = blueGrad;
+  ctx.beginPath();
+  ctx.moveTo(0, 0);
+  ctx.lineTo(beamLength, -beamLength * 0.5);
+  ctx.lineTo(beamLength, beamLength * 0.5);
+  ctx.closePath();
+  ctx.fill();
+  ctx.restore();
+  
+  // 2. FLASHING LIGHT HALO (subtle pulsing glow around vehicle)
+  const pulseIntensity = 0.3 + Math.abs(Math.sin(vehicle.flashPhase * 2)) * 0.2;
+  
+  // Red halo - small
+  const redHalo = ctx.createRadialGradient(0, 0, 0, 0, 0, 20);
+  redHalo.addColorStop(0, `rgba(255, 50, 50, ${pulseIntensity * (flashState === 0 ? 0.6 : 0.15)})`);
+  redHalo.addColorStop(0.5, `rgba(255, 0, 0, ${pulseIntensity * (flashState === 0 ? 0.2 : 0.03)})`);
+  redHalo.addColorStop(1, 'rgba(255, 0, 0, 0)');
+  ctx.fillStyle = redHalo;
+  ctx.beginPath();
+  ctx.arc(0, 0, 20, 0, Math.PI * 2);
+  ctx.fill();
+  
+  // Blue halo - small
+  const blueHalo = ctx.createRadialGradient(0, 0, 0, 0, 0, 20);
+  blueHalo.addColorStop(0, `rgba(50, 100, 255, ${pulseIntensity * (flashState === 1 ? 0.6 : 0.15)})`);
+  blueHalo.addColorStop(0.5, `rgba(0, 100, 255, ${pulseIntensity * (flashState === 1 ? 0.2 : 0.03)})`);
+  blueHalo.addColorStop(1, 'rgba(0, 100, 255, 0)');
+  ctx.fillStyle = blueHalo;
+  ctx.beginPath();
+  ctx.arc(0, 0, 20, 0, Math.PI * 2);
+  ctx.fill();
+  
+  // 3. VEHICLE BODY (white core)
+  ctx.globalCompositeOperation = 'source-over';
+  ctx.fillStyle = '#ffffff';
+  ctx.beginPath();
+  ctx.arc(0, 0, 3, 0, Math.PI * 2);
+  ctx.fill();
+  
+  // 4. FLASHING LIGHT BARS (small with glow)
+  ctx.globalCompositeOperation = 'lighter';
+  
+  // Red light bar with glow
+  const redBarGlow = ctx.createRadialGradient(-5, 0, 0, -5, 0, 12);
+  redBarGlow.addColorStop(0, flashState === 0 ? 'rgba(255, 50, 50, 0.8)' : 'rgba(255, 50, 50, 0.3)');
+  redBarGlow.addColorStop(0.5, flashState === 0 ? 'rgba(255, 0, 0, 0.4)' : 'rgba(255, 0, 0, 0.1)');
+  redBarGlow.addColorStop(1, 'rgba(255, 0, 0, 0)');
+  ctx.fillStyle = redBarGlow;
+  ctx.beginPath();
+  ctx.arc(-5, 0, 12, 0, Math.PI * 2);
+  ctx.fill();
+  
+  // Blue light bar with glow
+  const blueBarGlow = ctx.createRadialGradient(5, 0, 0, 5, 0, 12);
+  blueBarGlow.addColorStop(0, flashState === 1 ? 'rgba(50, 100, 255, 0.8)' : 'rgba(50, 100, 255, 0.3)');
+  blueBarGlow.addColorStop(0.5, flashState === 1 ? 'rgba(0, 80, 255, 0.4)' : 'rgba(0, 80, 255, 0.1)');
+  blueBarGlow.addColorStop(1, 'rgba(0, 80, 255, 0)');
+  ctx.fillStyle = blueBarGlow;
+  ctx.beginPath();
+  ctx.arc(5, 0, 12, 0, Math.PI * 2);
+  ctx.fill();
+  
+  // Solid light bar cores
+  ctx.globalCompositeOperation = 'source-over';
+  ctx.fillStyle = flashState === 0 ? '#ff3333' : '#ff6666';
+  ctx.beginPath();
+  ctx.arc(-5, 0, 4, 0, Math.PI * 2);
+  ctx.fill();
+  
+  ctx.fillStyle = flashState === 1 ? '#3366ff' : '#6699ff';
+  ctx.beginPath();
+  ctx.arc(5, 0, 4, 0, Math.PI * 2);
+  ctx.fill();
+
+  ctx.restore();
+}
+
 // Update all entities with smooth organic movement
 function updateStreetLifeEntities() {
   // Update vehicles - smooth movement using speedVar
@@ -416,6 +605,19 @@ function updateStreetLifeEntities() {
   while (vehicles.filter(v => v.type === 'bus').length < CONFIG.maxBuses) spawnBus();
   while (vehicles.filter(v => v.type === 'bicycle').length < CONFIG.maxBicycles) spawnBicycle();
   while (pedestrians.length < CONFIG.maxPedestrians) spawnPedestrian();
+  
+  // Update emergency vehicle
+  if (emergencyVehicle) {
+    emergencyVehicle.progress += emergencyVehicle.speed * emergencyVehicle.direction;
+    emergencyVehicle.flashPhase += CONFIG.emergencyFlashRate * 0.1;
+    emergencyVehicle.spinPhase += 0.15;
+    
+    // Remove when off path
+    if (emergencyVehicle.progress < 0 || emergencyVehicle.progress > 1) {
+      console.log(`🚨 Emergency ${emergencyVehicle.vehicleType} has left the area`);
+      emergencyVehicle = null;
+    }
+  }
   
   // Connect to Calibration Grid - trigger pulses when vehicles pass near nodes
   if (window.triggerGridNodePulse && window.calibrationNodes) {
@@ -747,6 +949,9 @@ function drawStreetLife() {
   streetLifeCtx.globalCompositeOperation = 'lighter';
   drawStreetlights(streetLifeCtx, width, height);
   
+  // --- DRAW BUILDINGS (Subtle ambient glow) ---
+  drawBuildings(streetLifeCtx, width, height);
+  
   // --- DRAW VEHICLES ---
   // Keep lighter mode for neon glow
   vehicles.forEach(v => {
@@ -773,6 +978,18 @@ function drawStreetLife() {
       drawFastLight(streetLifeCtx, pos, screenAngle, v.colors.frame, 10, 4, v.direction);
     }
   });
+  
+  // --- DRAW EMERGENCY VEHICLE (if active) ---
+  if (emergencyVehicle) {
+    const ePoint = getPointAlongPath(emergencyVehicle.path, emergencyVehicle.progress);
+    if (ePoint) {
+      const ePos = projectToStreetLifeCanvas(ePoint.lng, ePoint.lat);
+      if (isOnScreen(ePos, width, height)) {
+        const eAngle = -ePoint.angle + mapBearing;
+        drawEmergencyVehicle(streetLifeCtx, ePos, eAngle, emergencyVehicle);
+      }
+    }
+  }
   
   // --- DRAW PEDESTRIANS ---
   streetLifeCtx.globalCompositeOperation = 'source-over'; // Solid dots
@@ -860,6 +1077,111 @@ function drawStreetlights(ctx, width, height) {
     ctx.arc(pos.x, pos.y, radius, 0, Math.PI * 2);
     ctx.fill();
   });
+}
+
+// Load building footprints for ambient glow
+function loadBuildingFootprints() {
+  fetch('media/building-footprints.geojson')
+    .then(response => {
+      if (!response.ok) throw new Error(`HTTP ${response.status}`);
+      return response.json();
+    })
+    .then(geojson => {
+      buildings = [];
+      if (!geojson || !geojson.features) return;
+      
+      geojson.features.forEach(feature => {
+        if (feature.geometry.type === 'MultiPolygon') {
+          feature.geometry.coordinates.forEach(polygon => {
+            // Get outer ring (first element)
+            if (polygon[0] && polygon[0].length >= 3) {
+              buildings.push({
+                coords: polygon[0],
+                type: feature.properties?.objekttyp || 'building'
+              });
+            }
+          });
+        } else if (feature.geometry.type === 'Polygon') {
+          if (feature.geometry.coordinates[0] && feature.geometry.coordinates[0].length >= 3) {
+            buildings.push({
+              coords: feature.geometry.coordinates[0],
+              type: feature.properties?.objekttyp || 'building'
+            });
+          }
+        }
+      });
+      
+      console.log(`✓ Loaded ${buildings.length} building footprints for glow effect`);
+    })
+    .catch(err => {
+      console.warn('Street Life: Could not load building footprints:', err);
+    });
+}
+
+// Draw building outlines with dashed warm glow (like lit windows) + random flicker
+function drawBuildings(ctx, width, height) {
+  if (buildings.length === 0) return;
+  
+  // Initialize flicker states if needed
+  if (buildingFlickerStates.length !== buildings.length) {
+    buildingFlickerStates = buildings.map(() => ({ isOff: false, offTimer: 0 }));
+  }
+  
+  // Update flicker states
+  buildingFlickerStates.forEach((state, i) => {
+    if (state.isOff) {
+      state.offTimer--;
+      if (state.offTimer <= 0) {
+        state.isOff = false;
+      }
+    } else if (Math.random() < CONFIG.buildingFlickerChance) {
+      // Random building turns off briefly
+      state.isOff = true;
+      state.offTimer = 5 + Math.floor(Math.random() * 20); // Off for 5-25 frames
+    }
+  });
+  
+  ctx.save();
+  ctx.globalCompositeOperation = 'lighter';
+  ctx.lineWidth = CONFIG.buildingGlowWidth;
+  ctx.setLineDash([CONFIG.buildingDashLength, CONFIG.buildingGapLength]);
+  ctx.lineCap = 'round';
+  
+  buildings.forEach((building, index) => {
+    // Skip if this building is flickered off
+    if (buildingFlickerStates[index]?.isOff) return;
+    
+    // Project all coordinates
+    const screenCoords = building.coords.map(coord => 
+      projectToStreetLifeCanvas(coord[0], coord[1])
+    );
+    
+    // Quick bounds check - skip if all points off screen
+    const anyOnScreen = screenCoords.some(p => 
+      p.x >= -50 && p.x <= width + 50 && p.y >= -50 && p.y <= height + 50
+    );
+    if (!anyOnScreen) return;
+    
+    // Some buildings are white, others are warm - seeded by index
+    const isWhite = ((index * 7) % 5) === 0; // ~20% of buildings are white
+    const brightness = 0.08 + (((index * 7) % 13) / 13) * 0.15;
+    if (isWhite) {
+      ctx.strokeStyle = `rgba(255, 255, 255, ${brightness + 0.05})`; // Pure white, slightly brighter
+    } else {
+      ctx.strokeStyle = `rgba(255, 220, 150, ${brightness})`; // Warm glow
+    }
+    ctx.beginPath();
+    ctx.moveTo(screenCoords[0].x, screenCoords[0].y);
+    for (let i = 1; i < screenCoords.length; i++) {
+      ctx.lineTo(screenCoords[i].x, screenCoords[i].y);
+    }
+    ctx.closePath();
+    ctx.stroke();
+  });
+  
+  // Reset line dash
+  ctx.setLineDash([]);
+  ctx.restore();
 }
 
 // FIXED: Robust Drawing Function (Always draws facing Right/East)
@@ -1011,8 +1333,20 @@ function startStreetLifeAnimation() {
     // Clear any existing entities
     vehicles = [];
     pedestrians = [];
+    emergencyVehicle = null;
+    buildingFlickerStates = [];
     
     startSpawning();
+    
+    // Spawn first emergency vehicle after 1 second, then continue regular schedule
+    setTimeout(() => {
+      if (isStreetLifeAnimating) {
+        console.log('🚨 Attempting to spawn first emergency vehicle...');
+        spawnEmergencyVehicle();
+        scheduleEmergencySpawn();
+      }
+    }, 1000);
+    
     animateStreetLife();
     
     console.log('Street Life animation started');
@@ -1033,6 +1367,11 @@ function stopStreetLifeAnimation() {
   streetLifeCtx.clearRect(0, 0, streetLifeCanvas.width, streetLifeCanvas.height);
   vehicles = [];
   pedestrians = [];
+  emergencyVehicle = null;
+  if (emergencySpawnTimer) {
+    clearTimeout(emergencySpawnTimer);
+    emergencySpawnTimer = null;
+  }
   
   console.log('Street Life animation stopped');
 }
