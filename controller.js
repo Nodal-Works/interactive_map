@@ -870,6 +870,9 @@ function updateDashboard(targetId) {
             </div>
         `;
 
+        // Clear history when switching to isovist
+        isovistHistory.data = [];
+
         // Attach event listeners
         const radiusInput = document.getElementById('isovist-radius');
         const radiusDisplay = document.getElementById('radius-display');
@@ -1169,6 +1172,21 @@ channel.onmessage = (event) => {
     }
 };
 
+// Historical data for isovist stacked area chart
+const isovistHistory = {
+    maxPoints: 100,
+    data: [],
+    colors: {
+        'Open Sky': '#87CEEB',
+        'Bostad': '#4CAF50',
+        'Verksamhet': '#2196F3',
+        'Samhällsfunktion': '#9C27B0',
+        'Komplementbyggnad': '#FF9800',
+        'Unknown': '#888888'
+    },
+    order: ['Unknown', 'Komplementbyggnad', 'Samhällsfunktion', 'Verksamhet', 'Bostad', 'Open Sky']
+};
+
 function updateIsovistChart(stats) {
     const container = document.getElementById('isovist-stats-container');
     if (!container) return;
@@ -1195,6 +1213,19 @@ function updateIsovistChart(stats) {
     const activeTypes = Object.entries(buildingTypes).filter(([type, data]) => 
         type === 'Open Sky' || data.rays > 0
     );
+    
+    // Add to history
+    isovistHistory.data.push({
+        'Open Sky': parseFloat(buildingTypes['Open Sky'].percent),
+        'Bostad': parseFloat(buildingTypes['Bostad'].percent),
+        'Verksamhet': parseFloat(buildingTypes['Verksamhet'].percent),
+        'Samhällsfunktion': parseFloat(buildingTypes['Samhällsfunktion'].percent),
+        'Komplementbyggnad': parseFloat(buildingTypes['Komplementbyggnad'].percent),
+        'Unknown': parseFloat(buildingTypes['Unknown'].percent)
+    });
+    if (isovistHistory.data.length > isovistHistory.maxPoints) {
+        isovistHistory.data.shift();
+    }
     
     // Build conic-gradient for pie chart
     let gradientParts = [];
@@ -1303,6 +1334,24 @@ function updateIsovistChart(stats) {
                 border-radius: 2px;
                 flex-shrink: 0;
             }
+            .history-chart-container {
+                margin-top: 12px;
+                padding-top: 10px;
+                border-top: 1px solid rgba(255,255,255,0.1);
+            }
+            .history-chart-title {
+                font-size: 10px;
+                color: #666;
+                text-transform: uppercase;
+                letter-spacing: 0.5px;
+                margin-bottom: 8px;
+            }
+            .history-canvas {
+                width: 100%;
+                height: 80px;
+                border-radius: 4px;
+                background: rgba(0,0,0,0.2);
+            }
         </style>
         <div class="isovist-pie-container">
             <div class="pie-chart"></div>
@@ -1357,9 +1406,76 @@ function updateIsovistChart(stats) {
                 <span>Outbuilding</span>
             </div>
         </div>
+        <div class="history-chart-container">
+            <div class="history-chart-title">Visibility History</div>
+            <canvas id="isovist-history-canvas" class="history-canvas"></canvas>
+        </div>
     `;
     
     container.innerHTML = html;
+    
+    // Draw the stacked area chart
+    drawIsovistHistoryChart();
+}
+
+function drawIsovistHistoryChart() {
+    const canvas = document.getElementById('isovist-history-canvas');
+    if (!canvas || isovistHistory.data.length < 2) return;
+    
+    const ctx = canvas.getContext('2d');
+    const rect = canvas.getBoundingClientRect();
+    canvas.width = rect.width * 2;  // Higher resolution
+    canvas.height = rect.height * 2;
+    ctx.scale(2, 2);
+    
+    const width = rect.width;
+    const height = rect.height;
+    const data = isovistHistory.data;
+    const numPoints = data.length;
+    const xStep = width / (isovistHistory.maxPoints - 1);
+    const xOffset = (isovistHistory.maxPoints - numPoints) * xStep;
+    
+    // Draw stacked areas from TOP to BOTTOM (reverse order so layers don't cover each other)
+    const reversedOrder = [...isovistHistory.order].reverse();
+    
+    reversedOrder.forEach(type => {
+        ctx.beginPath();
+        
+        // Start at bottom-left
+        ctx.moveTo(xOffset, height);
+        
+        // Draw top edge (cumulative up to and including this type)
+        for (let i = 0; i < numPoints; i++) {
+            const x = xOffset + i * xStep;
+            let cumulative = 0;
+            
+            // Sum from bottom of stack up to and including this type
+            for (let j = 0; j <= isovistHistory.order.indexOf(type); j++) {
+                cumulative += data[i][isovistHistory.order[j]] || 0;
+            }
+            
+            const y = height - (cumulative / 100 * height);
+            ctx.lineTo(x, y);
+        }
+        
+        // Close back to bottom-right then bottom-left
+        ctx.lineTo(xOffset + (numPoints - 1) * xStep, height);
+        ctx.closePath();
+        
+        ctx.fillStyle = isovistHistory.colors[type];
+        ctx.fill();
+    });
+    
+    // Draw subtle grid lines
+    ctx.strokeStyle = 'rgba(255,255,255,0.1)';
+    ctx.lineWidth = 0.5;
+    [25, 50, 75].forEach(pct => {
+        const y = height - (pct / 100 * height);
+        ctx.beginPath();
+        ctx.moveTo(0, y);
+        ctx.lineTo(width, y);
+        ctx.stroke();
+    });
 }
 
 function updateBirdDashboard(activeBirds) {

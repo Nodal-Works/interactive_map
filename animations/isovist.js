@@ -22,6 +22,11 @@
   let FOLLOW_CURSOR = true; // viewer follows cursor when it moves far enough
   const FOLLOW_THRESHOLD = 50; // distance in meters before viewer starts following
   const FOLLOW_SPEED = 0.15; // how fast viewer follows (0-1, higher = faster)
+  
+  // Path history for trace
+  let pathHistory = [];
+  const MAX_PATH_POINTS = 500;
+  const MIN_PATH_DISTANCE = 2; // minimum meters between path points
 
   // Listen for remote control messages
   const channel = new BroadcastChannel('map_controller_channel');
@@ -199,6 +204,48 @@
       });
     }
 
+    // Add path trace source and layer
+    if (!map.getSource('isovist-path-trace')) {
+      map.addSource('isovist-path-trace', {
+        type: 'geojson',
+        data: {
+          type: 'Feature',
+          geometry: {
+            type: 'LineString',
+            coordinates: []
+          }
+        }
+      });
+
+      map.addLayer({
+        id: 'isovist-path-trace-line',
+        type: 'line',
+        source: 'isovist-path-trace',
+        paint: {
+          'line-color': '#ff6b6b',
+          'line-width': 2,
+          'line-opacity': 0.4,
+          'line-blur': 1
+        },
+        layout: {
+          'line-cap': 'round',
+          'line-join': 'round'
+        }
+      });
+      
+      // Add dots along the path
+      map.addLayer({
+        id: 'isovist-path-trace-dots',
+        type: 'circle',
+        source: 'isovist-path-trace',
+        paint: {
+          'circle-radius': 2,
+          'circle-color': '#ff6b6b',
+          'circle-opacity': 0.3
+        }
+      });
+    }
+
     // Add source and layer for highlighted (viewed) buildings
     if (!map.getSource('isovist-viewed-buildings')) {
       map.addSource('isovist-viewed-buildings', {
@@ -249,6 +296,8 @@
 
     // Enforce Z-order to ensure outline is visible on top of gradients
     const layerOrder = [
+      'isovist-path-trace-line',
+      'isovist-path-trace-dots',
       'isovist-fill',
       'isovist-gradient-0',
       'isovist-gradient-1',
@@ -296,6 +345,7 @@
     viewerPosition = null;
     cursorPosition = null;
     isDragging = false;
+    pathHistory = [];  // Clear path history
 
     // Clear layers
     if (map.getSource('isovist-polygon')) {
@@ -320,6 +370,15 @@
       map.getSource('isovist-viewed-buildings').setData({
         type: 'FeatureCollection',
         features: []
+      });
+    }
+    if (map.getSource('isovist-path-trace')) {
+      map.getSource('isovist-path-trace').setData({
+        type: 'Feature',
+        geometry: {
+          type: 'LineString',
+          coordinates: []
+        }
       });
     }
 
@@ -510,6 +569,26 @@
 
   function performUpdate() {
     if (!viewerPosition) return;
+
+    // Update path history
+    if (pathHistory.length === 0 || 
+        distance(pathHistory[pathHistory.length - 1], viewerPosition) > MIN_PATH_DISTANCE) {
+      pathHistory.push([...viewerPosition]);
+      if (pathHistory.length > MAX_PATH_POINTS) {
+        pathHistory.shift();
+      }
+      
+      // Update path trace on map
+      if (map.getSource('isovist-path-trace') && pathHistory.length > 1) {
+        map.getSource('isovist-path-trace').setData({
+          type: 'Feature',
+          geometry: {
+            type: 'LineString',
+            coordinates: pathHistory
+          }
+        });
+      }
+    }
 
     // Update viewer point and direction line
     const viewerFeatures = {
