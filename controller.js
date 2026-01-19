@@ -477,6 +477,9 @@ function updateDashboard(targetId) {
                         <button id="false-color-btn" class="modern-btn">
                             <span class="material-icons">palette</span> False Color
                         </button>
+                        <button id="toggle-trees-btn" class="modern-btn" style="grid-column: span 2;">
+                            <span class="material-icons">park</span> Toggle Trees
+                        </button>
                     </div>
                 </div>
 
@@ -492,6 +495,10 @@ function updateDashboard(targetId) {
                     <div class="control-row">
                         <span class="control-label">Sun Azimuth</span>
                         <span id="azimuth-display" class="control-value">--</span>
+                    </div>
+                    <div class="control-row">
+                        <span class="control-label">Trees Layer</span>
+                        <span id="trees-status-display" class="control-value">Off</span>
                     </div>
                 </div>
 
@@ -527,8 +534,20 @@ function updateDashboard(targetId) {
                         <span class="legend-label">Shadow Cast</span>
                     </div>
                     <div class="legend-item">
-                        <div class="legend-color" style="background: linear-gradient(to right, blue, green, yellow, red);"></div>
-                        <span class="legend-label">Solar Exposure (False Color)</span>
+                        <div class="legend-color" style="background: linear-gradient(to right, #f5d866, #ff6626, #f23319);"></div>
+                        <span class="legend-label">Sun Exposure (False Color)</span>
+                    </div>
+                    <div class="legend-item">
+                        <div class="legend-color" style="background: #26409a;"></div>
+                        <span class="legend-label">Building/Terrain Shadow</span>
+                    </div>
+                    <div class="legend-item">
+                        <div class="legend-color" style="background: #268040;"></div>
+                        <span class="legend-label">Tree Shadow Only</span>
+                    </div>
+                    <div class="legend-item">
+                        <div class="legend-color" style="background: #8c268c;"></div>
+                        <span class="legend-label">Combined Shadow</span>
                     </div>
                 </div>
             </div>
@@ -582,6 +601,14 @@ function updateDashboard(targetId) {
             falseColorBtn.classList.toggle('active');
             sendControl('toggle_false_color');
         });
+
+        const toggleTreesBtn = document.getElementById('toggle-trees-btn');
+        if (toggleTreesBtn) {
+            toggleTreesBtn.addEventListener('click', () => {
+                toggleTreesBtn.classList.toggle('active');
+                sendControl('toggle_trees');
+            });
+        }
 
     } else if (targetId === 'cfd-simulation-btn') {
         dashboardContent.innerHTML = `
@@ -1075,6 +1102,34 @@ channel.onmessage = (event) => {
             const h = Math.floor(data.time);
             const m = Math.floor((data.time - h) * 60);
             timeDisplay.textContent = `${h.toString().padStart(2, '0')}:${m.toString().padStart(2, '0')}`;
+        }
+    } else if (data.type === 'trees_state') {
+        // Update trees toggle button and status display
+        const toggleTreesBtn = document.getElementById('toggle-trees-btn');
+        const treesStatusDisplay = document.getElementById('trees-status-display');
+        
+        if (toggleTreesBtn) {
+            if (data.visible) {
+                toggleTreesBtn.classList.add('active');
+            } else {
+                toggleTreesBtn.classList.remove('active');
+            }
+        }
+        
+        if (treesStatusDisplay) {
+            if (data.error) {
+                treesStatusDisplay.textContent = 'Error';
+                treesStatusDisplay.style.color = '#ef4444';
+            } else if (data.loaded && data.visible) {
+                treesStatusDisplay.textContent = 'On';
+                treesStatusDisplay.style.color = '#22c55e';
+            } else if (data.loaded) {
+                treesStatusDisplay.textContent = 'Off';
+                treesStatusDisplay.style.color = '#9ca3af';
+            } else {
+                treesStatusDisplay.textContent = 'Loading...';
+                treesStatusDisplay.style.color = '#f59e0b';
+            }
         }
     } else if (data.type === MSG_TYPES.CALIBRATION_DATA) {
         const calibrationText = data.text;

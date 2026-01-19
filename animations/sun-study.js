@@ -1,6 +1,7 @@
 // Sun Study Module - Three.js shadow overlay on map
 // Renders shadows from STL model as transparent overlay on the web map
 // Uses Sweden location (Gothenburg area) for accurate sun positioning
+// Supports dual model system (buildings + trees) with multi-source shadow discrimination
 
 let THREE, STLLoader, EffectComposer, RenderPass, SSAOPass, SMAAPass, OutputPass;
 
@@ -9,7 +10,6 @@ async function loadDependencies() {
   const stlModule = await import('three/addons/loaders/STLLoader.js');
   STLLoader = stlModule.STLLoader;
   
-  // Post-processing for ambient occlusion and antialiasing
   const composerModule = await import('three/addons/postprocessing/EffectComposer.js');
   EffectComposer = composerModule.EffectComposer;
   const renderPassModule = await import('three/addons/postprocessing/RenderPass.js');
@@ -37,8 +37,26 @@ class SunStudy {
     this.isActive = false;
     this.animationId = null;
     
+    // Dual model system
+    this.meshBuildings = null;  // Model 1: terrain/buildings (mesh.stl)
+    this.meshTrees = null;      // Model 2: trees (trees.stl)
+    this.treesVisible = false;  // Toggle state for trees
+    this.treesLoaded = false;   // Whether tree model has been loaded
+    this.buildingsCenter = null; // Stored center for aligning trees
+    
+    // Performance: Dirty flags (kept for future use)
+    this.shadowMapsDirty = true;
+    this.lastSunPosition = { x: 0, y: 0, z: 0 };
+    this.frameCount = 0;
+    this.shadowUpdateInterval = 2;
+    
+    // Cached matrices (for future dual shadow system)
+    this.cachedShadowMatrixBuildings = null;
+    this.cachedShadowMatrixTrees = null;
+    
     // Materials
     this.standardMaterial = null;
+    this.standardMaterialTrees = null;
     this.falseColorMaterial = null;
     this.isFalseColorMode = false;
     
@@ -116,14 +134,16 @@ class SunStudy {
             case 'set_date':
                 this.date = new Date(data.value);
                 this.updateSunPosition();
+                this.shadowMapsDirty = true;
                 break;
             case 'set_time':
                 this.timeOfDay = parseFloat(data.value);
                 this.updateSunPosition();
+                this.shadowMapsDirty = true;
                 break;
             case 'set_opacity':
                 this.shadowOpacity = parseFloat(data.value);
-                if (this.mesh) this.mesh.material.opacity = this.shadowOpacity;
+                if (this.shadowMaterial) this.shadowMaterial.opacity = this.shadowOpacity;
                 break;
             case 'toggle_animation':
                 this.toggleAnimation();
@@ -133,6 +153,9 @@ class SunStudy {
                 break;
             case 'toggle_false_color':
                 this.toggleFalseColor();
+                break;
+            case 'toggle_trees':
+                this.toggleTrees();
                 break;
         }
     }
@@ -149,6 +172,7 @@ class SunStudy {
     this.setupScene();
     this.setupCamera();
     this.setupLights();
+    this.setupDualShadowSystem();
     this.setupPostProcessing();
     this.loadSTLModel();
   }
@@ -167,6 +191,35 @@ class SunStudy {
     this.toggleFalseColorMode();
   }
   
+  toggleTrees() {
+    if (!this.treesLoaded) {
+      // Load trees for the first time
+      this.loadTreesSTL();
+      return;
+    }
+    
+    this.treesVisible = !this.treesVisible;
+    
+    if (this.meshTrees) {
+      this.meshTrees.visible = this.treesVisible && !this.isFalseColorMode;
+      this.meshTrees.castShadow = this.treesVisible;
+    }
+    
+    // Mark shadow maps as needing update
+    this.shadowMapsDirty = true;
+    
+    // Notify controller of state change
+    if (this.channel) {
+      this.channel.postMessage({
+        type: 'trees_state',
+        visible: this.treesVisible,
+        loaded: this.treesLoaded
+      });
+    }
+    
+    console.log('Trees visibility:', this.treesVisible);
+  }
+  
   updateTimeDisplay() {
     if (this.channel) {
         this.channel.postMessage({
@@ -182,10 +235,72 @@ class SunStudy {
   }
   */
   
+  setupDualShadowSystem() {
+    // Two-pass shadow system for multi-source shadow discrimination
+    // We render the scene twice to separate render targets:
+    // 1) Buildings-only shadows → shadowTargetBuildings
+    // 2) Combined shadows (buildings + trees) → shadowTargetCombined
+    // The false color shader then samples both to determine shadow source
+    
+    const width = window.innerWidth - 120;
+    const height = window.innerHeight;
+    // Account for pixel ratio to match actual framebuffer size
+    const pixelRatio = this.renderer ? this.renderer.getPixelRatio() : window.devicePixelRatio || 1;
+    const targetWidth = Math.floor(width * pixelRatio);
+    const targetHeight = Math.floor(height * pixelRatio);
+    
+    // Render targets for shadow passes (store shadow result as color)
+    this.shadowTargetBuildings = new THREE.WebGLRenderTarget(targetWidth, targetHeight, {
+      minFilter: THREE.LinearFilter,
+      magFilter: THREE.LinearFilter,
+      format: THREE.RGBAFormat,
+      type: THREE.UnsignedByteType
+    });
+    
+    this.shadowTargetCombined = new THREE.WebGLRenderTarget(targetWidth, targetHeight, {
+      minFilter: THREE.LinearFilter,
+      magFilter: THREE.LinearFilter,
+      format: THREE.RGBAFormat,
+      type: THREE.UnsignedByteType
+    });
+    
+    // Simple material that outputs shadow value as grayscale
+    this.shadowCaptureMaterial = new THREE.MeshStandardMaterial({
+      color: 0xffffff,
+      roughness: 1.0,
+      metalness: 0.0,
+      side: THREE.DoubleSide
+    });
+    
+    this.shadowCaptureMaterial.onBeforeCompile = (shader) => {
+      shader.fragmentShader = shader.fragmentShader.replace(
+        '#include <shadowmap_pars_fragment>',
+        `
+        #include <shadowmap_pars_fragment>
+        #include <shadowmask_pars_fragment>
+        `
+      );
+      
+      // Output shadow mask as grayscale color
+      shader.fragmentShader = shader.fragmentShader.replace(
+        '#include <dithering_fragment>',
+        `
+        #include <dithering_fragment>
+        float shadowVal = 1.0;
+        #ifdef USE_SHADOWMAP
+          shadowVal = getShadowMask();
+        #endif
+        gl_FragColor = vec4(shadowVal, shadowVal, shadowVal, 1.0);
+        `
+      );
+    };
+  }
+  
   createFalseColorMaterial() {
-    // Custom shader for false color sun exposure visualization
-    // Shows surface orientation relative to sun direction AND shadows
-    // Uses onBeforeCompile to leverage existing shadow map logic from MeshStandardMaterial
+    // False color shader for multi-source shadow visualization
+    // Samples two shadow textures to determine shadow source:
+    // - tShadowBuildings: shadow with buildings only
+    // - tShadowCombined: shadow with buildings + trees
     
     this.falseColorMaterial = new THREE.MeshStandardMaterial({
       color: 0xffffff,
@@ -199,38 +314,35 @@ class SunStudy {
     
     this.falseColorMaterial.onBeforeCompile = (shader) => {
       shader.uniforms.sunDirection = { value: new THREE.Vector3(0, 1, 0) };
+      shader.uniforms.treesEnabled = { value: false };
+      shader.uniforms.tShadowBuildings = { value: null };
+      shader.uniforms.tShadowCombined = { value: null };
+      shader.uniforms.resolution = { value: new THREE.Vector2(window.innerWidth - 120, window.innerHeight) };
       
       // Store shader reference to update uniforms later
       this.falseColorMaterial.userData.shader = shader;
       
-      // Inject uniform definition safely by replacing common chunk
+      // Inject uniforms and varyings
       shader.fragmentShader = shader.fragmentShader.replace(
         '#include <common>',
         `
         #include <common>
         uniform vec3 sunDirection;
-        `
-      );
-      
-      // Inject shadowmask_pars_fragment after shadowmap_pars_fragment to ensure dependencies are met
-      shader.fragmentShader = shader.fragmentShader.replace(
-        '#include <shadowmap_pars_fragment>',
-        `
-        #include <shadowmap_pars_fragment>
-        #include <shadowmask_pars_fragment>
+        uniform bool treesEnabled;
+        uniform sampler2D tShadowBuildings;
+        uniform sampler2D tShadowCombined;
+        uniform vec2 resolution;
         `
       );
       
       // Inject false color logic at the end of the fragment shader
-      // We replace the dithering chunk which is at the very end
       shader.fragmentShader = shader.fragmentShader.replace(
         '#include <dithering_fragment>',
         `
         #include <dithering_fragment>
         
         // Custom False Color Logic
-        // vNormal is the varying from vertex shader (view space)
-        vec3 myNormal = normalize( vNormal );
+        vec3 myNormal = normalize(vNormal);
         if (!gl_FrontFacing) myNormal = -myNormal;
         
         vec3 myLightDir = normalize(sunDirection);
@@ -239,40 +351,67 @@ class SunStudy {
         float myNdotL = dot(myNormal, myLightDir);
         float mySunFacing = max(0.0, myNdotL);
         
-        // Get shadow factor (1.0 = lit, 0.0 = shadow)
-        float myShadow = 1.0;
-        #ifdef USE_SHADOWMAP
-          myShadow = getShadowMask();
-        #endif
+        // Sample shadow textures using screen coordinates
+        vec2 screenUV = gl_FragCoord.xy / resolution;
         
-        // Combine: Exposure is high only if facing sun AND not in shadow
-        float exposure = mySunFacing * myShadow;
+        float shadowBuildings = texture2D(tShadowBuildings, screenUV).r;
+        float shadowCombined = texture2D(tShadowCombined, screenUV).r;
         
-        // Smooth color gradient using continuous interpolation to avoid banding
-        // Define color stops
-        vec3 color0 = vec3(0.15, 0.1, 0.35);   // Deep shadow - dark purple
-        vec3 color1 = vec3(0.1, 0.25, 0.6);    // Shadow - blue
-        vec3 color2 = vec3(0.1, 0.6, 0.8);     // Partial shadow - cyan
-        vec3 color3 = vec3(0.3, 0.75, 0.3);    // Neutral - green
-        vec3 color4 = vec3(1.0, 0.9, 0.2);     // Partial sun - yellow
-        vec3 color5 = vec3(1.0, 0.5, 0.1);     // Good sun - orange
-        vec3 color6 = vec3(0.95, 0.2, 0.1);    // Direct sun - red
+        // Shadow detection thresholds (PCF shadows - fairly sharp but with some filtering)
+        float shadowThreshold = 0.7;  // Mid-range threshold for PCFShadowMap
+        float treeDifferenceThreshold = 0.08; // Trees must add at least this much shadow
         
-        // Use smoothstep for continuous gradient without hard edges
+        bool inBuildingShadow = shadowBuildings < shadowThreshold;
+        bool inCombinedShadow = shadowCombined < shadowThreshold;
+        
+        // Tree-only shadow: No building shadow, but combined has shadow
+        bool inTreeOnlyShadow = !inBuildingShadow && inCombinedShadow && treesEnabled;
+        
+        // Combined shadow: Building shadow exists, AND trees make it even darker
+        // Compare intensities - if combined is noticeably darker than buildings-only,
+        // trees are contributing additional shadow
+        float treesContribution = shadowBuildings - shadowCombined; // positive = trees adding shadow
+        bool treesAddingShadow = treesContribution > treeDifferenceThreshold;
+        bool inCombinedBothShadow = inBuildingShadow && treesAddingShadow && treesEnabled;
+        
+        // Building-only shadow: Building shadow, but trees don't add anything
+        bool inBuildingOnlyShadow = inBuildingShadow && !treesAddingShadow;
+        
+        // Exposure is high only if facing sun AND not in any shadow
+        float exposure = mySunFacing * shadowCombined;
+        
         vec3 myColor;
-        float e = exposure;
         
-        // Continuous blend across all color stops
-        myColor = color0;
-        myColor = mix(myColor, color1, smoothstep(0.0, 0.15, e));
-        myColor = mix(myColor, color2, smoothstep(0.15, 0.30, e));
-        myColor = mix(myColor, color3, smoothstep(0.30, 0.45, e));
-        myColor = mix(myColor, color4, smoothstep(0.45, 0.60, e));
-        myColor = mix(myColor, color5, smoothstep(0.60, 0.80, e));
-        myColor = mix(myColor, color6, smoothstep(0.80, 1.0, e));
+        if (inTreeOnlyShadow) {
+          // Tree-only shadow - GREEN tint
+          float shadowIntensity = 1.0 - shadowCombined;
+          myColor = mix(vec3(0.25, 0.5, 0.3), vec3(0.1, 0.4, 0.15), shadowIntensity);
+          myColor = mix(myColor, vec3(0.2, 0.55, 0.25), mySunFacing * 0.3);
+        } else if (inCombinedBothShadow) {
+          // Both building AND trees shadow this area - PURPLE tint
+          float shadowIntensity = 1.0 - shadowCombined;
+          myColor = mix(vec3(0.45, 0.25, 0.5), vec3(0.3, 0.1, 0.4), shadowIntensity);
+          myColor = mix(myColor, vec3(0.4, 0.2, 0.55), mySunFacing * 0.3);
+        } else if (inBuildingOnlyShadow) {
+          // Building shadow only - BLUE tint
+          float shadowIntensity = 1.0 - shadowBuildings;
+          myColor = mix(vec3(0.3, 0.35, 0.55), vec3(0.1, 0.15, 0.45), shadowIntensity);
+          myColor = mix(myColor, vec3(0.15, 0.25, 0.6), mySunFacing * 0.3);
+        } else {
+          // Lit area - use sun exposure gradient (YELLOW to RED)
+          vec3 color0 = vec3(0.95, 0.85, 0.4);   // Low exposure - pale yellow
+          vec3 color1 = vec3(1.0, 0.7, 0.2);     // Medium exposure - orange
+          vec3 color2 = vec3(1.0, 0.4, 0.15);    // High exposure - red-orange
+          vec3 color3 = vec3(0.95, 0.2, 0.1);    // Direct sun - red
+          
+          myColor = color0;
+          myColor = mix(myColor, color1, smoothstep(0.0, 0.35, exposure));
+          myColor = mix(myColor, color2, smoothstep(0.35, 0.7, exposure));
+          myColor = mix(myColor, color3, smoothstep(0.7, 1.0, exposure));
+        }
         
-        // Add subtle dithering to break up any remaining banding
-        float dither = (fract(sin(dot(gl_FragCoord.xy, vec2(12.9898, 78.233))) * 43758.5453) - 0.5) * 0.02;
+        // Add subtle dithering to break up banding
+        float dither = (fract(sin(dot(gl_FragCoord.xy, vec2(12.9898, 78.233))) * 43758.5453) - 0.5) * 0.015;
         myColor += dither;
         
         gl_FragColor = vec4(myColor, 1.0);
@@ -285,35 +424,163 @@ class SunStudy {
     if (!this.mesh) return;
     
     this.isFalseColorMode = !this.isFalseColorMode;
+    this.shadowMapsDirty = true; // Force shadow map update on mode change
     
     if (this.isFalseColorMode) {
       if (!this.falseColorMaterial) {
         this.createFalseColorMaterial();
       }
-      // Update shader uniforms
-      this.updateFalseColorUniforms();
       this.mesh.material = this.falseColorMaterial;
+      
+      // Also apply false color to trees so they show consistent visualization
+      if (this.meshTrees) {
+        this.meshTrees.material = this.falseColorMaterial;
+      }
     } else {
       this.mesh.material = this.standardMaterial;
+      
+      // Restore trees material
+      if (this.meshTrees && this.standardMaterialTrees) {
+        this.meshTrees.material = this.standardMaterialTrees;
+      }
     }
   }
   
   updateFalseColorUniforms() {
     if (!this.falseColorMaterial || !this.sunLight) return;
     
+    const shader = this.falseColorMaterial.userData.shader;
+    if (!shader || !shader.uniforms) return;
+    
     // Update sun direction
     const sunDir = this.sunLight.position.clone().normalize();
-    
-    // Ensure we have a valid direction
     if (sunDir.lengthSq() === 0) {
       sunDir.set(0, 1, 0);
     }
     
-    // Update uniform in the compiled shader if it exists
-    if (this.falseColorMaterial.userData.shader && 
-        this.falseColorMaterial.userData.shader.uniforms && 
-        this.falseColorMaterial.userData.shader.uniforms.sunDirection) {
-      this.falseColorMaterial.userData.shader.uniforms.sunDirection.value.copy(sunDir);
+    if (shader.uniforms.sunDirection) {
+      shader.uniforms.sunDirection.value.copy(sunDir);
+    }
+    if (shader.uniforms.treesEnabled) {
+      shader.uniforms.treesEnabled.value = this.treesVisible && this.treesLoaded;
+    }
+    if (shader.uniforms.tShadowBuildings && this.shadowTargetBuildings) {
+      shader.uniforms.tShadowBuildings.value = this.shadowTargetBuildings.texture;
+    }
+    if (shader.uniforms.tShadowCombined && this.shadowTargetCombined) {
+      shader.uniforms.tShadowCombined.value = this.shadowTargetCombined.texture;
+    }
+    if (shader.uniforms.resolution) {
+      const pixelRatio = this.renderer ? this.renderer.getPixelRatio() : 1;
+      shader.uniforms.resolution.value.set(
+        (window.innerWidth - 120) * pixelRatio,
+        window.innerHeight * pixelRatio
+      );
+    }
+  }
+  
+  renderShadowMaps() {
+    // Two-pass shadow rendering for multi-source shadow discrimination
+    // This method is called before the main render in false color mode
+    
+    if (!this.meshBuildings || !this.sunLight || !this.renderer) return;
+    if (!this.shadowTargetBuildings || !this.shadowTargetCombined) return;
+    if (!this.shadowCaptureMaterial) return;
+    
+    const treesActive = this.treesVisible && this.treesLoaded && this.meshTrees;
+    
+    // Store original state
+    const originalBuildingsMaterial = this.meshBuildings.material;
+    const originalTreesMaterial = treesActive ? this.meshTrees.material : null;
+    const originalClearColor = this.renderer.getClearColor(new THREE.Color());
+    const originalClearAlpha = this.renderer.getClearAlpha();
+    const originalShadowType = this.renderer.shadowMap.type;
+    const originalBias = this.sunLight.shadow.bias;
+    const originalNormalBias = this.sunLight.shadow.normalBias;
+    
+    // Use PCF shadows for shadow capture passes (cleaner than Basic, sharper than VSM)
+    this.renderer.shadowMap.type = THREE.PCFShadowMap;
+    
+    // Adjust bias to prevent shadow acne artifacts
+    this.sunLight.shadow.bias = -0.001;
+    this.sunLight.shadow.normalBias = 0.02;
+    
+    // Set clear color to white (1.0 = no shadow) so areas without geometry 
+    // are treated as fully lit, not in shadow
+    this.renderer.setClearColor(0xffffff, 1.0);
+    
+    // Use shadow capture material for both passes
+    this.meshBuildings.material = this.shadowCaptureMaterial;
+    if (treesActive) {
+      this.meshTrees.material = this.shadowCaptureMaterial;
+    }
+    
+    // ========== PASS 1: Buildings only ==========
+    this.meshBuildings.castShadow = true;
+    if (treesActive) {
+      this.meshTrees.castShadow = false;  // Disable tree shadows for this pass
+      this.meshTrees.visible = false;      // Hide trees entirely
+    }
+    
+    // Force shadow map rebuild with new shadow type
+    if (this.sunLight.shadow.map) {
+      this.sunLight.shadow.map.dispose();
+      this.sunLight.shadow.map = null;
+    }
+    this.sunLight.shadow.needsUpdate = true;
+    
+    // Render to buildings shadow target
+    this.renderer.setRenderTarget(this.shadowTargetBuildings);
+    this.renderer.clear();
+    this.renderer.render(this.scene, this.camera);
+    
+    // ========== PASS 2: Combined (buildings + trees) ==========
+    if (treesActive) {
+      this.meshTrees.castShadow = true;   // Enable tree shadows
+      this.meshTrees.visible = true;      // Show trees
+      
+      // Force shadow map rebuild for combined pass
+      if (this.sunLight.shadow.map) {
+        this.sunLight.shadow.map.dispose();
+        this.sunLight.shadow.map = null;
+      }
+      this.sunLight.shadow.needsUpdate = true;
+      
+      // Render to combined shadow target
+      this.renderer.setRenderTarget(this.shadowTargetCombined);
+      this.renderer.clear();
+      this.renderer.render(this.scene, this.camera);
+    } else {
+      // No trees - combined is same as buildings
+      this.renderer.setRenderTarget(this.shadowTargetCombined);
+      this.renderer.clear();
+      this.renderer.render(this.scene, this.camera);
+    }
+    
+    // Reset render target and restore original state
+    this.renderer.setRenderTarget(null);
+    this.renderer.setClearColor(originalClearColor, originalClearAlpha);
+    this.renderer.shadowMap.type = originalShadowType;
+    this.sunLight.shadow.bias = originalBias;
+    this.sunLight.shadow.normalBias = originalNormalBias;
+    
+    // Force shadow map rebuild with original shadow type for final render
+    if (this.sunLight.shadow.map) {
+      this.sunLight.shadow.map.dispose();
+      this.sunLight.shadow.map = null;
+    }
+    
+    // Restore original materials
+    this.meshBuildings.material = originalBuildingsMaterial;
+    if (treesActive) {
+      this.meshTrees.material = originalTreesMaterial;
+    }
+    
+    // Ensure both meshes are visible and casting shadows for final render
+    this.meshBuildings.castShadow = true;
+    if (treesActive) {
+      this.meshTrees.castShadow = true;
+      this.meshTrees.visible = true;
     }
   }
   
@@ -330,6 +597,14 @@ class SunStudy {
     // Apply position offset
     this.mesh.position.x = this.offsetX;
     this.mesh.position.z = this.offsetZ;
+    
+    // Apply same transforms to trees
+    if (this.meshTrees) {
+      this.meshTrees.scale.set(scale, scale, -scale);
+      this.meshTrees.rotation.y = this.baseRotation + (this.rotationOffset * Math.PI / 180);
+      this.meshTrees.position.x = this.offsetX;
+      this.meshTrees.position.z = this.offsetZ;
+    }
   }
   
 
@@ -342,9 +617,10 @@ class SunStudy {
       canvas: this.canvas,
       antialias: true,
       alpha: true,
-      premultipliedAlpha: false
+      premultipliedAlpha: false,
+      powerPreference: 'high-performance' // Request high-performance GPU
     });
-    this.renderer.setPixelRatio(window.devicePixelRatio);
+    this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2)); // Cap pixel ratio for performance
     this.renderer.setSize(width, height);
     this.renderer.setClearColor(0x000000, 0);
     this.renderer.shadowMap.enabled = true;
@@ -354,7 +630,9 @@ class SunStudy {
   
   setupScene() {
     this.scene = new THREE.Scene();
-    this.scene.background = null; // Transparent
+    // Use a light neutral background in false color mode, transparent otherwise
+    // The background will be updated when toggling false color mode
+    this.scene.background = null; // Transparent by default
     
     // Ground plane to receive shadows (invisible except for shadows)
     // Make it very large to catch all shadows regardless of sun angle
@@ -552,6 +830,15 @@ class SunStudy {
     const sunY = distance * Math.sin(altRad);
     const sunZ = distance * Math.cos(altRad) * Math.cos(azRad);
     
+    // Check if sun actually moved (for dirty flag)
+    const threshold = 0.1;
+    if (Math.abs(sunX - this.lastSunPosition.x) > threshold ||
+        Math.abs(sunY - this.lastSunPosition.y) > threshold ||
+        Math.abs(sunZ - this.lastSunPosition.z) > threshold) {
+      this.shadowMapsDirty = true;
+      this.lastSunPosition = { x: sunX, y: sunY, z: sunZ };
+    }
+    
     this.sunLight.position.set(sunX, sunY, sunZ);
     this.sunLight.target.position.set(0, 50, 0); // Target the center of the model (raised)
     this.sunLight.target.updateMatrixWorld();
@@ -559,11 +846,29 @@ class SunStudy {
     // Update shadow camera to follow the light and cover the scene properly
     this.sunLight.shadow.camera.updateProjectionMatrix();
     this.sunLight.updateMatrixWorld();
+    
+    // Update shadow cameras for false color mode
+    if (this.shadowCameraBuildings) {
+      const shadowSize = 800;
+      this.shadowCameraBuildings.left = -shadowSize;
+      this.shadowCameraBuildings.right = shadowSize;
+      this.shadowCameraBuildings.top = shadowSize;
+      this.shadowCameraBuildings.bottom = -shadowSize;
+      this.shadowCameraBuildings.updateProjectionMatrix();
+    }
+    if (this.shadowCameraTrees) {
+      const shadowSize = 800;
+      this.shadowCameraTrees.left = -shadowSize;
+      this.shadowCameraTrees.right = shadowSize;
+      this.shadowCameraTrees.top = shadowSize;
+      this.shadowCameraTrees.bottom = -shadowSize;
+      this.shadowCameraTrees.updateProjectionMatrix();
+    }
   }
   
   loadSTLModel() {
     const loader = new STLLoader();
-    console.log('Loading STL model...');
+    console.log('Loading STL model (buildings/terrain)...');
     
     loader.load(
       './media/mesh.stl',
@@ -579,7 +884,7 @@ class SunStudy {
           positions[i + 2] = y;  // New Z = old Y
         }
         geometry.attributes.position.needsUpdate = true;
-        geometry.computeVertexNormals(); // Recompute normals after swapping
+        geometry.computeVertexNormals();
         
         geometry.computeBoundingBox();
         const size = new THREE.Vector3();
@@ -589,15 +894,18 @@ class SunStudy {
         
         console.log('STL size:', size);
         
+        // Store center for aligning trees later
+        this.buildingsCenter = center.clone();
+        
         // Center geometry
         geometry.translate(-center.x, -center.y, -center.z);
         geometry.computeBoundingBox();
+        geometry.computeBoundingSphere();
         
-        // Material - semi-transparent model with shadows
-        // Matte white for better projection contrast
+        // Material - matte white for better projection contrast
         this.standardMaterial = new THREE.MeshStandardMaterial({
           color: 0xffffff,
-          roughness: 1.0, // Fully matte
+          roughness: 1.0,
           metalness: 0.0,
           side: THREE.DoubleSide,
           transparent: true,
@@ -605,10 +913,14 @@ class SunStudy {
           depthWrite: true
         });
         
-        this.mesh = new THREE.Mesh(geometry, this.standardMaterial);
-        this.mesh.castShadow = true;
-        this.mesh.receiveShadow = true;
-        this.mesh.renderOrder = 1; // Render after other objects
+        this.meshBuildings = new THREE.Mesh(geometry, this.standardMaterial);
+        this.meshBuildings.castShadow = true;
+        this.meshBuildings.receiveShadow = true;
+        this.meshBuildings.renderOrder = 1;
+        this.meshBuildings.frustumCulled = true;
+        
+        // Keep reference as this.mesh for compatibility
+        this.mesh = this.meshBuildings;
         
         // Store model size for fitting
         this.modelSize = size;
@@ -616,23 +928,127 @@ class SunStudy {
         
         // Initial setup
         this.baseRotation = -Math.PI/2; 
-        this.mesh.rotation.y = this.baseRotation;
+        this.meshBuildings.rotation.y = this.baseRotation;
         
         // Apply initial position offset
-        this.mesh.position.x = this.offsetX;
-        this.mesh.position.y = 50; // Raise model above ground plane to avoid clipping
-        this.mesh.position.z = this.offsetZ;
+        this.meshBuildings.position.x = this.offsetX;
+        this.meshBuildings.position.y = 50;
+        this.meshBuildings.position.z = this.offsetZ;
         
-        this.scene.add(this.mesh);
+        this.scene.add(this.meshBuildings);
         this.fitCameraToModel();
         
-        console.log('STL added - size:', size);
+        console.log('Buildings STL added - size:', size);
       },
       (progress) => {
         console.log('Loading STL...', progress.loaded, 'bytes');
       },
       (error) => {
         console.error('Error loading STL:', error);
+      }
+    );
+  }
+  
+  loadTreesSTL() {
+    if (this.treesLoaded) return;
+    
+    const loader = new STLLoader();
+    console.log('Loading trees STL model...');
+    
+    loader.load(
+      './media/trees.stl',
+      (geometry) => {
+        console.log('Trees STL loaded, vertices:', geometry.attributes.position.count);
+        
+        // Apply same coordinate swap as buildings
+        const positions = geometry.attributes.position.array;
+        for (let i = 0; i < positions.length; i += 3) {
+          const y = positions[i + 1];
+          const z = positions[i + 2];
+          positions[i + 1] = z;
+          positions[i + 2] = y;
+        }
+        geometry.attributes.position.needsUpdate = true;
+        geometry.computeVertexNormals();
+        
+        // Use the SAME center as buildings for alignment
+        // This ensures trees align with the terrain/buildings
+        if (this.buildingsCenter) {
+          geometry.translate(-this.buildingsCenter.x, -this.buildingsCenter.y, -this.buildingsCenter.z);
+          console.log('Trees aligned using buildings center:', this.buildingsCenter);
+        } else {
+          // Fallback: use own center if buildings not loaded yet
+          geometry.computeBoundingBox();
+          const center = new THREE.Vector3();
+          geometry.boundingBox.getCenter(center);
+          geometry.translate(-center.x, -center.y, -center.z);
+          console.warn('Trees loaded before buildings - using own center');
+        }
+        geometry.computeBoundingBox();
+        geometry.computeBoundingSphere();
+        
+        // Tree material - green tint to distinguish
+        this.standardMaterialTrees = new THREE.MeshStandardMaterial({
+          color: 0x4a7c4e,
+          roughness: 0.9,
+          metalness: 0.0,
+          side: THREE.DoubleSide,
+          transparent: true,
+          opacity: 0.9,
+          depthWrite: true
+        });
+        
+        this.meshTrees = new THREE.Mesh(geometry, this.standardMaterialTrees);
+        this.meshTrees.castShadow = true;
+        this.meshTrees.receiveShadow = true;
+        this.meshTrees.renderOrder = 2;
+        this.meshTrees.frustumCulled = true;
+        
+        // Apply same transforms as buildings
+        if (this.baseScale) {
+          const scale = this.baseScale * this.scaleMultiplier;
+          this.meshTrees.scale.set(scale, scale, -scale);
+        }
+        this.meshTrees.rotation.y = this.baseRotation + (this.rotationOffset * Math.PI / 180);
+        this.meshTrees.position.x = this.offsetX;
+        this.meshTrees.position.y = 50;
+        this.meshTrees.position.z = this.offsetZ;
+        
+        this.scene.add(this.meshTrees);
+        
+        this.treesLoaded = true;
+        this.treesVisible = true;
+        this.shadowMapsDirty = true;
+        
+        // Hide trees if in false color mode
+        if (this.isFalseColorMode) {
+          this.meshTrees.visible = false;
+        }
+        
+        // Notify controller
+        if (this.channel) {
+          this.channel.postMessage({
+            type: 'trees_state',
+            visible: this.treesVisible,
+            loaded: this.treesLoaded
+          });
+        }
+        
+        console.log('Trees STL added');
+      },
+      (progress) => {
+        console.log('Loading trees STL...', progress.loaded, 'bytes');
+      },
+      (error) => {
+        console.error('Error loading trees STL:', error);
+        if (this.channel) {
+          this.channel.postMessage({
+            type: 'trees_state',
+            visible: false,
+            loaded: false,
+            error: 'Failed to load trees.stl'
+          });
+        }
       }
     );
   }
@@ -655,6 +1071,10 @@ class SunStudy {
     // Apply scale with multiplier (preserving the Z flip)
     this.mesh.scale.set(scale * this.scaleMultiplier, scale * this.scaleMultiplier, -scale * this.scaleMultiplier);
     
+    // Apply to trees if loaded
+    if (this.meshTrees) {
+      this.meshTrees.scale.set(scale * this.scaleMultiplier, scale * this.scaleMultiplier, -scale * this.scaleMultiplier);
+    }
 
     this.baseScale = scale;
     
@@ -667,9 +1087,6 @@ class SunStudy {
     
     // Update shadow camera to cover the model
     const worldSize = maxDim * scale;
-    // Calculate shadow frustum - balance coverage vs resolution
-    // Too large = aliasing/banding, too small = clipping
-    // Use the scaled model size as the primary reference
     const shadowSize = Math.max(worldSize * 1.5, 800); 
     
     this.sunLight.shadow.camera.left = -shadowSize;
@@ -685,6 +1102,8 @@ class SunStudy {
       this.sunLight.shadow.map.dispose();
       this.sunLight.shadow.map = null;
     }
+    
+    this.shadowMapsDirty = true;
   }
   
   onResize() {
@@ -704,9 +1123,22 @@ class SunStudy {
     if (this.smaaPass) {
       this.smaaPass.setSize(width * pixelRatio, height * pixelRatio);
     }
+    
+    // Resize shadow targets (account for pixel ratio)
+    const targetWidth = Math.floor(width * pixelRatio);
+    const targetHeight = Math.floor(height * pixelRatio);
+    if (this.shadowTargetBuildings) {
+      this.shadowTargetBuildings.setSize(targetWidth, targetHeight);
+    }
+    if (this.shadowTargetCombined) {
+      this.shadowTargetCombined.setSize(targetWidth, targetHeight);
+    }
+    
     if (this.mesh) {
       this.fitCameraToModel();
     }
+    
+    this.shadowMapsDirty = true;
   }
   
   animate() {
@@ -721,8 +1153,9 @@ class SunStudy {
       this.updateSunPosition();
     }
     
-    // Update false color uniforms if in that mode
+    // Render shadow maps for false color mode (with throttling)
     if (this.isFalseColorMode) {
+      this.renderShadowMaps();
       this.updateFalseColorUniforms();
     }
     
@@ -753,7 +1186,7 @@ class SunStudy {
     }
     
     this.canvas.style.display = 'block';
-    // this.controlPanel.style.display = 'block'; // Panel moved to controller
+    this.shadowMapsDirty = true; // Force update on show
     
     setTimeout(() => {
       this.onResize();
