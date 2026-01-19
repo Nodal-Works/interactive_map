@@ -358,8 +358,8 @@ class SunStudy {
         float shadowCombined = texture2D(tShadowCombined, screenUV).r;
         
         // Shadow detection thresholds (PCF shadows - fairly sharp but with some filtering)
-        float shadowThreshold = 0.7;  // Mid-range threshold for PCFShadowMap
-        float treeDifferenceThreshold = 0.08; // Trees must add at least this much shadow
+        float shadowThreshold = 0.65;  // Threshold for detecting shadow
+        float treeDifferenceThreshold = 0.02; // Very sensitive - trees add even small shadow
         
         bool inBuildingShadow = shadowBuildings < shadowThreshold;
         bool inCombinedShadow = shadowCombined < shadowThreshold;
@@ -383,20 +383,17 @@ class SunStudy {
         vec3 myColor;
         
         if (inTreeOnlyShadow) {
-          // Tree-only shadow - GREEN tint
+          // Tree-only shadow - BRIGHT GREEN (very distinct)
           float shadowIntensity = 1.0 - shadowCombined;
-          myColor = mix(vec3(0.25, 0.5, 0.3), vec3(0.1, 0.4, 0.15), shadowIntensity);
-          myColor = mix(myColor, vec3(0.2, 0.55, 0.25), mySunFacing * 0.3);
+          myColor = mix(vec3(0.2, 0.65, 0.25), vec3(0.1, 0.5, 0.15), shadowIntensity);
         } else if (inCombinedBothShadow) {
-          // Both building AND trees shadow this area - PURPLE tint
+          // Both building AND trees shadow this area - MAGENTA/PURPLE (very distinct)
           float shadowIntensity = 1.0 - shadowCombined;
-          myColor = mix(vec3(0.45, 0.25, 0.5), vec3(0.3, 0.1, 0.4), shadowIntensity);
-          myColor = mix(myColor, vec3(0.4, 0.2, 0.55), mySunFacing * 0.3);
+          myColor = mix(vec3(0.6, 0.2, 0.55), vec3(0.45, 0.1, 0.45), shadowIntensity);
         } else if (inBuildingOnlyShadow) {
           // Building shadow only - BLUE tint
           float shadowIntensity = 1.0 - shadowBuildings;
-          myColor = mix(vec3(0.3, 0.35, 0.55), vec3(0.1, 0.15, 0.45), shadowIntensity);
-          myColor = mix(myColor, vec3(0.15, 0.25, 0.6), mySunFacing * 0.3);
+          myColor = mix(vec3(0.3, 0.35, 0.6), vec3(0.15, 0.2, 0.5), shadowIntensity);
         } else {
           // Lit area - use sun exposure gradient (YELLOW to RED)
           vec3 color0 = vec3(0.95, 0.85, 0.4);   // Low exposure - pale yellow
