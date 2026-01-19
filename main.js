@@ -467,9 +467,44 @@ ${JSON.stringify(calibration, null, 2)}`;
                 });
                 showToast(`Calibration updated: zoom=${cal.zoom.toFixed(3)}, bearing=${cal.bearing.toFixed(2)}°`);
             }
+        } else if (action === 'show_white_screen') {
+            // Project white screen to illuminate markers during calibration
+            showWhiteScreen();
+        } else if (action === 'hide_white_screen') {
+            hideWhiteScreen();
         }
     }
 };
+
+// ===========================================
+// White Screen for Calibration
+// ===========================================
+
+let whiteScreenOverlay = null;
+
+function showWhiteScreen() {
+    hideWhiteScreen();
+    
+    whiteScreenOverlay = document.createElement('div');
+    whiteScreenOverlay.id = 'white-screen-overlay';
+    whiteScreenOverlay.style.cssText = `
+        position: fixed;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+        background: white;
+        z-index: 10000;
+    `;
+    document.body.appendChild(whiteScreenOverlay);
+}
+
+function hideWhiteScreen() {
+    if (whiteScreenOverlay) {
+        whiteScreenOverlay.remove();
+        whiteScreenOverlay = null;
+    }
+}
 
 // ===========================================
 // Calibration Markers for Auto-Calibration

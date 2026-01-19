@@ -609,13 +609,13 @@
 
             displayList.innerHTML = listHtml;
 
-            // Auto-select: Main on first external, Controller on second external (or primary)
+            // Auto-select: Main on second external, Controller on first external (or primary)
             const externals = apiScreens.map((s, i) => ({ s, i })).filter(x => !x.s.isPrimary);
             const primaryIdx = apiScreens.findIndex(s => s.isPrimary);
             
             if (externals.length >= 2) {
-                mainSelect.value = externals[0].i;
-                ctrlSelect.value = externals[1].i;
+                mainSelect.value = externals[1].i;
+                ctrlSelect.value = externals[0].i;
             } else if (externals.length === 1) {
                 mainSelect.value = externals[0].i;
                 ctrlSelect.value = primaryIdx >= 0 ? primaryIdx : 0;
@@ -889,9 +889,23 @@
                     select.appendChild(option);
                 });
                 
+                // Auto-select first non-built-in camera if available (prefer external cameras)
                 if (cameras.length > 0) {
-                    select.value = cameras[0].deviceId;
-                    startCameraPreviewLauncher(cameras[0].deviceId);
+                    const builtInKeywords = ['facetime', 'macbook', 'built-in', 'isight', 'internal', 'iphone'];
+                    const externalCamera = cameras.find(cam => {
+                        const label = (cam.label || '').toLowerCase();
+                        return !builtInKeywords.some(keyword => label.includes(keyword));
+                    });
+                    
+                    if (externalCamera) {
+                        select.value = externalCamera.deviceId;
+                        await startCameraPreviewLauncher(externalCamera.deviceId);
+                    } else {
+                        // Fallback to manual selection if only built-in found don't auto-start
+                        select.value = ""; 
+                        const statusEl = document.getElementById('calibrate-status');
+                        if (statusEl) statusEl.textContent = 'Select an external camera to start preview';
+                    }
                 }
             } catch (err) {
                 console.error('Camera enumeration error:', err);
@@ -902,8 +916,16 @@
             const statusEl = document.getElementById('calibrate-status');
             const canvas = document.getElementById('calibrate-preview');
             
+            // Safety check
+            if (!deviceId) return;
+
             try {
                 await initCalibratorFromLauncher();
+                
+                // Stop previous instance if exists to prevent flickering
+                if (launcherCalibrator) {
+                    launcherCalibrator.stopPreview();
+                }
                 
                 launcherCalibrator = new window.AutoCalibrator({ debug: true });
                 

@@ -205,6 +205,21 @@ function updateDashboard(targetId) {
                         </div>
                     </div>
                 </div>
+                <div class="dashboard-card">
+                    <div class="dashboard-section-title">Metadata</div>
+                    <div class="metadata-item">
+                        <div class="metadata-label">Current View</div>
+                        <div class="metadata-value">Credits</div>
+                    </div>
+                    <div class="metadata-item">
+                        <div class="metadata-label">Active Layer</div>
+                        <div class="metadata-value">None</div>
+                    </div>
+                    <div class="metadata-item">
+                        <div class="metadata-label">Description</div>
+                        <div class="metadata-value">Project team and contributors information.</div>
+                    </div>
+                </div>
             </div>
         `;
 
@@ -228,7 +243,7 @@ function updateDashboard(targetId) {
                     Help us improve! Scan the QR code to share your feedback.
                 </p>
                 <div style="display: flex; justify-content: center; align-items: center;">
-                    <img src="media/survey_qr.png" style="width: 150px; height: 150px; border-radius: 8px;">
+                    <img src="media/survey_qr.png" style="width: 300px; height: 300px; border-radius: 8px;">
                 </div>
             </div>
         `;
@@ -2056,6 +2071,11 @@ async function loadAutoCalibrator() {
 }
 
 async function initAutoCalibrator() {
+    // Prevent re-initialization
+    if (autoCalibrator) {
+        return;
+    }
+    
     try {
         await loadAutoCalibrator();
     } catch (err) {
@@ -2124,6 +2144,8 @@ async function initAutoCalibrator() {
                 .catch(() => {});
             
             const cameras = await autoCalibrator.getCameras();
+            console.log('[Controller] Available cameras:', cameras.map(c => c.label));
+            
             cameraSelect.innerHTML = '<option value="">Select camera...</option>';
             cameras.forEach(cam => {
                 const option = document.createElement('option');
@@ -2132,10 +2154,23 @@ async function initAutoCalibrator() {
                 cameraSelect.appendChild(option);
             });
             
-            // Auto-select first camera if available
+            // Don't auto-start camera - let user manually select
+            // Just pre-select an external camera if available
             if (cameras.length > 0) {
-                cameraSelect.value = cameras[0].deviceId;
-                startCameraPreview(cameras[0].deviceId);
+                const builtInKeywords = ['facetime', 'macbook', 'built-in', 'isight', 'internal', 'iphone'];
+                const externalCamera = cameras.find(cam => {
+                    const label = cam.label.toLowerCase();
+                    return !builtInKeywords.some(keyword => label.includes(keyword));
+                });
+                
+                if (externalCamera) {
+                    // Pre-select the external camera in the dropdown, but don't start it
+                    cameraSelect.value = externalCamera.deviceId;
+                    console.log('[Controller] Pre-selected external camera:', externalCamera.label);
+                }
+                
+                const statusEl = document.getElementById('camera-status');
+                if (statusEl) statusEl.textContent = 'Select camera to start preview';
             }
         } catch (err) {
             console.error('Error getting cameras:', err);
@@ -2144,9 +2179,9 @@ async function initAutoCalibrator() {
         }
         
         // Handle camera change
-        cameraSelect.addEventListener('change', () => {
+        cameraSelect.addEventListener('change', async () => {
             if (cameraSelect.value) {
-                startCameraPreview(cameraSelect.value);
+                await startCameraPreview(cameraSelect.value);
             } else {
                 autoCalibrator.stopPreview();
                 const statusEl = document.getElementById('camera-status');
@@ -2196,8 +2231,14 @@ async function initAutoCalibrator() {
     
     if (stopBtn) {
         stopBtn.addEventListener('click', () => {
+            console.log('[Controller] Stop button clicked');
             if (autoCalibrator) {
                 autoCalibrator.cancel();
+                // Restart preview after stopping
+                const cameraId = cameraSelect?.value;
+                if (cameraId) {
+                    setTimeout(() => startCameraPreview(cameraId), 300);
+                }
             }
             startBtn.disabled = false;
             stopBtn.disabled = true;
@@ -2211,16 +2252,21 @@ async function initAutoCalibrator() {
     }
 }
 
-function startCameraPreview(deviceId) {
+async function startCameraPreview(deviceId) {
     if (!autoCalibrator) return;
+    
+    // Stop any existing preview first
+    autoCalibrator.stopPreview();
     
     const statusEl = document.getElementById('camera-status');
     if (statusEl) statusEl.textContent = 'Starting preview...';
     
-    autoCalibrator.startPreview(deviceId).catch(err => {
+    try {
+        await autoCalibrator.startPreview(deviceId);
+    } catch (err) {
         console.error('Preview error:', err);
         if (statusEl) statusEl.textContent = 'Camera error: ' + err.message;
-    });
+    }
 }
 
 function getCurrentCalibration() {

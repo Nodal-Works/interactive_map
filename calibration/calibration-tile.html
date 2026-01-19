@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>20×20cm Calibration Tile with ArUco Markers</title>
+    <title>20×20cm Calibration Tile with ArUco Markers (Large)</title>
     <style>
         @media print {
             @page { 
@@ -85,15 +85,15 @@
             background: white;
         }
         
-        /* ArUco markers - 30mm x 30mm each */
+        /* ArUco markers - 75mm x 75mm each for better camera detection */
         .aruco-marker {
             position: absolute;
-            width: 30mm;
-            height: 30mm;
+            width: 75mm;
+            height: 75mm;
             display: grid;
             grid-template-columns: repeat(6, 1fr);
             grid-template-rows: repeat(6, 1fr);
-            border: 0.5mm solid black;
+            border: 1.5mm solid black;
             background: white;
         }
         
@@ -113,14 +113,14 @@
         /* Marker labels */
         .marker-label {
             position: absolute;
-            font-size: 8px;
+            font-size: 12px;
             color: #666;
         }
         
-        .label-tl { top: 32mm; left: 0; }
-        .label-tr { top: 32mm; right: 0; text-align: right; }
-        .label-br { bottom: 32mm; right: 0; text-align: right; }
-        .label-bl { bottom: 32mm; left: 0; }
+        .label-tl { top: 77mm; left: 0; }
+        .label-tr { top: 77mm; right: 0; text-align: right; }
+        .label-br { bottom: 77mm; right: 0; text-align: right; }
+        .label-bl { bottom: 77mm; left: 0; }
         
         /* Center crosshair for alignment reference */
         .center-cross {
@@ -197,10 +197,10 @@
 </head>
 <body>
     <div class="instructions no-print">
-        <h1>🎯 20×20cm Calibration Tile (Grayscale ArUco)</h1>
+        <h1>🎯 20×20cm Calibration Tile (Large 7.5cm ArUco Markers)</h1>
         
         <div class="highlight">
-            <p><strong>Grayscale printable!</strong> Uses ArUco markers that work with black & white printing.</p>
+            <p><strong>Extra-large markers for reliable detection!</strong> Each 7.5cm marker fills the corners for easy camera identification.</p>
             <p>Each corner has a unique pattern the camera can identify.</p>
         </div>
         
