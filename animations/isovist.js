@@ -99,7 +99,7 @@
         source: 'isovist-polygon',
         paint: {
           'fill-color': '#ffff00',
-          'fill-opacity': 0.1
+          'fill-opacity': 0.35
         }
       });
     }
@@ -126,7 +126,7 @@
           filter: ['==', ['get', 'ring'], i],
           paint: {
             'fill-color': '#ffd500',
-            'fill-opacity': 0.05
+            'fill-opacity': 0.1
           }
         });
       }
@@ -140,7 +140,7 @@
         source: 'isovist-polygon',
         paint: {
           'line-color': '#ff0099',
-          'line-width': 3,
+          'line-width': 16,
           'line-opacity': 1,
           'line-dasharray': [2, 2]  // Static dashes - never updated to prevent animation
         },
@@ -185,7 +185,7 @@
         paint: {
           'line-color': '#ff0000',
           'line-width': 3,
-          'line-opacity': 0.8
+          'line-opacity': 1
         }
       });
     }
@@ -278,14 +278,14 @@
     const pulseSpeed = 0.1;
     const sine = Math.sin(time * pulseSpeed);
     
-    // Width: 4px to 8px (thicker for more visible glow)
-    const width = 6 + sine * 2; 
+    // Width: 8px to 16px (much thicker for better visibility)
+    const width = 12 + sine * 4; 
     
-    // Opacity: 0.8 to 1.0 (more intense)
-    const opacity = 0.9 + sine * 0.1;
+    // Opacity: 0.9 to 1.0 (high visibility)
+    const opacity = 0.95 + sine * 0.05;
     
-    // Blur: 4px to 16px (much larger glow distance)
-    const blur = 10 + sine * 6;
+    // Blur: 6px to 14px (balanced glow)
+    const blur = 10 + sine * 4;
     
     if (map.getLayer('isovist-line')) {
       map.setPaintProperty('isovist-line', 'line-width', width);
