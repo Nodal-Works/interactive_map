@@ -172,25 +172,49 @@ class AutoCalibrator {
     }
 
     /**
-     * Apply adaptive threshold - compare each pixel to local average
+     * Build integral image for fast box sum computation
+     */
+    buildIntegralImage(gray, w, h) {
+        const integral = new Uint32Array((w + 1) * (h + 1));
+        const iw = w + 1;
+        
+        for (let y = 0; y < h; y++) {
+            let rowSum = 0;
+            for (let x = 0; x < w; x++) {
+                rowSum += gray[y * w + x];
+                integral[(y + 1) * iw + (x + 1)] = rowSum + integral[y * iw + (x + 1)];
+            }
+        }
+        return integral;
+    }
+
+    /**
+     * Apply adaptive threshold using integral image - O(1) per pixel instead of O(blockSize²)
      */
     adaptiveThreshold(gray, w, h, blockSize = 15) {
         const binary = new Uint8Array(w * h);
         const halfBlock = Math.floor(blockSize / 2);
         
+        // Build integral image for O(1) box sum queries
+        const integral = this.buildIntegralImage(gray, w, h);
+        const iw = w + 1;
+        
         for (let y = 0; y < h; y++) {
             for (let x = 0; x < w; x++) {
-                // Calculate local mean
-                let sum = 0, count = 0;
-                for (let dy = -halfBlock; dy <= halfBlock; dy++) {
-                    for (let dx = -halfBlock; dx <= halfBlock; dx++) {
-                        const nx = x + dx, ny = y + dy;
-                        if (nx >= 0 && nx < w && ny >= 0 && ny < h) {
-                            sum += gray[ny * w + nx];
-                            count++;
-                        }
-                    }
-                }
+                // Clamp box coordinates
+                const x1 = Math.max(0, x - halfBlock);
+                const y1 = Math.max(0, y - halfBlock);
+                const x2 = Math.min(w - 1, x + halfBlock);
+                const y2 = Math.min(h - 1, y + halfBlock);
+                
+                const count = (x2 - x1 + 1) * (y2 - y1 + 1);
+                
+                // Sum using integral image: I(D) - I(B) - I(C) + I(A)
+                const sum = integral[(y2 + 1) * iw + (x2 + 1)]
+                          - integral[(y1) * iw + (x2 + 1)]
+                          - integral[(y2 + 1) * iw + (x1)]
+                          + integral[(y1) * iw + (x1)];
+                
                 const mean = sum / count;
                 const idx = y * w + x;
                 // Pixel is "dark" if significantly darker than local average
@@ -209,9 +233,9 @@ class AutoCalibrator {
         const minSize = this.config.markerSizeMin;
         const maxSize = this.config.markerSizeMax;
         
-        // Scan with multiple window sizes
-        for (let size = minSize; size <= maxSize; size += 8) {
-            const step = Math.max(4, Math.floor(size / 8));
+        // Scan with fewer window sizes for better performance
+        for (let size = minSize; size <= maxSize; size += 15) {
+            const step = Math.max(8, Math.floor(size / 4));
             
             for (let y = 0; y < h - size; y += step) {
                 for (let x = 0; x < w - size; x += step) {
@@ -225,7 +249,7 @@ class AutoCalibrator {
                             centerY: y + size / 2
                         });
                         // Skip ahead to avoid overlapping candidates
-                        x += size / 3;
+                        x += size / 2;
                     }
                 }
             }
@@ -904,6 +928,14 @@ class AutoCalibrator {
 
     previewLoop() {
         if (!this.video || !this.ctx) return;
+        
+        // Throttle to ~15fps max for performance
+        const now = performance.now();
+        if (this._lastPreviewTime && now - this._lastPreviewTime < 66) {
+            requestAnimationFrame(() => this.previewLoop());
+            return;
+        }
+        this._lastPreviewTime = now;
         
         const markers = this.detectArucoMarkers();
         const ordered = this.orderMarkers(markers);
