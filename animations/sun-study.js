@@ -132,7 +132,14 @@ class SunStudy {
     if (data.type === 'sun_control') {
         switch (data.action) {
             case 'set_date':
-                this.date = new Date(data.value);
+                // Parse date string as local time (not UTC) to avoid timezone issues
+                // Input format: "YYYY-MM-DD"
+                const parts = data.value.split('-');
+                if (parts.length === 3) {
+                    this.date = new Date(parseInt(parts[0]), parseInt(parts[1]) - 1, parseInt(parts[2]));
+                } else {
+                    this.date = new Date(data.value);
+                }
                 this.updateSunPosition();
                 this.shadowMapsDirty = true;
                 break;
@@ -246,8 +253,9 @@ class SunStudy {
     const height = window.innerHeight;
     // Account for pixel ratio to match actual framebuffer size
     const pixelRatio = this.renderer ? this.renderer.getPixelRatio() : window.devicePixelRatio || 1;
-    const targetWidth = Math.floor(width * pixelRatio);
-    const targetHeight = Math.floor(height * pixelRatio);
+    // OPTIMIZATION: Divide by 2. This cuts GPU load by 4x with almost no visual loss for blurred shadows.
+    const targetWidth = Math.floor((width * pixelRatio) / 2);
+    const targetHeight = Math.floor((height * pixelRatio) / 2);
     
     // Render targets for shadow passes (store shadow result as color)
     this.shadowTargetBuildings = new THREE.WebGLRenderTarget(targetWidth, targetHeight, {
@@ -297,19 +305,11 @@ class SunStudy {
   }
   
   createFalseColorMaterial() {
-    // False color shader for multi-source shadow visualization
-    // Samples two shadow textures to determine shadow source:
-    // - tShadowBuildings: shadow with buildings only
-    // - tShadowCombined: shadow with buildings + trees
-    
     this.falseColorMaterial = new THREE.MeshStandardMaterial({
       color: 0xffffff,
       roughness: 1.0,
       metalness: 0.0,
       side: THREE.DoubleSide,
-      transparent: true,
-      opacity: 1,
-      depthWrite: true
     });
     
     this.falseColorMaterial.onBeforeCompile = (shader) => {
@@ -317,12 +317,11 @@ class SunStudy {
       shader.uniforms.treesEnabled = { value: false };
       shader.uniforms.tShadowBuildings = { value: null };
       shader.uniforms.tShadowCombined = { value: null };
-      shader.uniforms.resolution = { value: new THREE.Vector2(window.innerWidth - 120, window.innerHeight) };
+      shader.uniforms.resolution = { value: new THREE.Vector2(window.innerWidth, window.innerHeight) };
       
-      // Store shader reference to update uniforms later
       this.falseColorMaterial.userData.shader = shader;
       
-      // Inject uniforms and varyings
+      // Inject Fast Noise & Sampling
       shader.fragmentShader = shader.fragmentShader.replace(
         '#include <common>',
         `
@@ -332,86 +331,96 @@ class SunStudy {
         uniform sampler2D tShadowBuildings;
         uniform sampler2D tShadowCombined;
         uniform vec2 resolution;
+
+        // CLEVER TRICK 1: Poisson Disk Sampling (Fast & Soft)
+        // Only 4 samples, rotated by random noise, look as good as 9 or 16 fixed samples
+        const vec2 poissonDisk[4] = vec2[](
+            vec2( -0.94201624, -0.39906216 ),
+            vec2( 0.94558609, -0.76890725 ),
+            vec2( -0.094184101, -0.92938870 ),
+            vec2( 0.34495938, 0.29387760 )
+        );
+
+        float getSoftShadowFast(sampler2D shadowMap, vec2 uv, float radius) {
+            vec2 texelSize = vec2(1.0) / resolution;
+            float shadow = 0.0;
+            
+            // Random rotation based on screen coordinate
+            float noise = fract(sin(dot(uv.xy, vec2(12.9898,78.233))) * 43758.5453);
+            float s = sin(noise * 6.28);
+            float c = cos(noise * 6.28);
+            mat2 rot = mat2(c, -s, s, c);
+            
+            for (int i = 0; i < 4; i++) {
+                vec2 offset = rot * poissonDisk[i] * texelSize * radius;
+                shadow += texture2D(shadowMap, uv + offset).r;
+            }
+            return shadow * 0.25; // Average of 4 samples
+        }
         `
       );
       
-      // Inject false color logic at the end of the fragment shader
       shader.fragmentShader = shader.fragmentShader.replace(
         '#include <dithering_fragment>',
         `
         #include <dithering_fragment>
         
-        // Custom False Color Logic
-        vec3 myNormal = normalize(vNormal);
-        if (!gl_FrontFacing) myNormal = -myNormal;
-        
-        vec3 myLightDir = normalize(sunDirection);
-        
-        // Calculate sun-facing factor
-        float myNdotL = dot(myNormal, myLightDir);
-        float mySunFacing = max(0.0, myNdotL);
-        
-        // Sample shadow textures using screen coordinates
+        // --- Geometry & Lighting ---
+        vec3 N = normalize(vNormal);
+        if (!gl_FrontFacing) N = -N;
+        vec3 L = normalize(sunDirection);
+        float NdotL = max(0.0, dot(N, L));
+        float lightIntensity = 0.4 + (NdotL * 0.6); // Ambient + Diffuse
+
         vec2 screenUV = gl_FragCoord.xy / resolution;
         
-        float shadowBuildings = texture2D(tShadowBuildings, screenUV).r;
-        float shadowCombined = texture2D(tShadowCombined, screenUV).r;
+        // FAST Sampling
+        float shadowB = getSoftShadowFast(tShadowBuildings, screenUV, 1.5);
+        float shadowC = getSoftShadowFast(tShadowCombined, screenUV, 1.5);
         
-        // Shadow detection thresholds (PCF shadows - fairly sharp but with some filtering)
-        float shadowThreshold = 0.65;  // Threshold for detecting shadow
-        float treeDifferenceThreshold = 0.02; // Very sensitive - trees add even small shadow
+        // --- Analysis Logic ---
+        bool isLit = shadowC > 0.95;
+        bool isBuildingShadow = shadowB < 0.8;
+        float treeDiff = shadowB - shadowC;
+        bool isTreeShadow = treeDiff > 0.05;
+
+        // --- CLEVER TRICK 2: Hatch Pattern ---
+        // Creates diagonal lines in screen space
+        // gl_FragCoord.x + gl_FragCoord.y creates diagonal stripes
+        float hatch = sin((gl_FragCoord.x + gl_FragCoord.y) * 0.5); 
+        bool isHatch = hatch > 0.0;
         
-        bool inBuildingShadow = shadowBuildings < shadowThreshold;
-        bool inCombinedShadow = shadowCombined < shadowThreshold;
+        vec3 finalColor = vec3(1.0);
         
-        // Tree-only shadow: No building shadow, but combined has shadow
-        bool inTreeOnlyShadow = !inBuildingShadow && inCombinedShadow && treesEnabled;
-        
-        // Combined shadow: Building shadow exists, AND trees make it even darker
-        // Compare intensities - if combined is noticeably darker than buildings-only,
-        // trees are contributing additional shadow
-        float treesContribution = shadowBuildings - shadowCombined; // positive = trees adding shadow
-        bool treesAddingShadow = treesContribution > treeDifferenceThreshold;
-        bool inCombinedBothShadow = inBuildingShadow && treesAddingShadow && treesEnabled;
-        
-        // Building-only shadow: Building shadow, but trees don't add anything
-        bool inBuildingOnlyShadow = inBuildingShadow && !treesAddingShadow;
-        
-        // Exposure is high only if facing sun AND not in any shadow
-        float exposure = mySunFacing * shadowCombined;
-        
-        vec3 myColor;
-        
-        if (inTreeOnlyShadow) {
-          // Tree-only shadow - BRIGHT GREEN (very distinct)
-          float shadowIntensity = 1.0 - shadowCombined;
-          myColor = mix(vec3(0.2, 0.65, 0.25), vec3(0.1, 0.5, 0.15), shadowIntensity);
-        } else if (inCombinedBothShadow) {
-          // Both building AND trees shadow this area - MAGENTA/PURPLE (very distinct)
-          float shadowIntensity = 1.0 - shadowCombined;
-          myColor = mix(vec3(0.6, 0.2, 0.55), vec3(0.45, 0.1, 0.45), shadowIntensity);
-        } else if (inBuildingOnlyShadow) {
-          // Building shadow only - BLUE tint
-          float shadowIntensity = 1.0 - shadowBuildings;
-          myColor = mix(vec3(0.3, 0.35, 0.6), vec3(0.15, 0.2, 0.5), shadowIntensity);
-        } else {
-          // Lit area - use sun exposure gradient (YELLOW to RED)
-          vec3 color0 = vec3(0.95, 0.85, 0.4);   // Low exposure - pale yellow
-          vec3 color1 = vec3(1.0, 0.7, 0.2);     // Medium exposure - orange
-          vec3 color2 = vec3(1.0, 0.4, 0.15);    // High exposure - red-orange
-          vec3 color3 = vec3(0.95, 0.2, 0.1);    // Direct sun - red
-          
-          myColor = color0;
-          myColor = mix(myColor, color1, smoothstep(0.0, 0.35, exposure));
-          myColor = mix(myColor, color2, smoothstep(0.35, 0.7, exposure));
-          myColor = mix(myColor, color3, smoothstep(0.7, 1.0, exposure));
+        if (isLit) {
+            // Sunlit: Warm Paper-like tone
+            finalColor = mix(vec3(1.0, 0.95, 0.8), vec3(1.0), NdotL);
+        } 
+        else if (isTreeShadow && treesEnabled) {
+            if (isBuildingShadow) {
+               // Overlap: Purple with Hatching
+               // The hatching makes it look "technical" showing it's a mix
+               vec3 basePurple = vec3(0.6, 0.2, 0.7);
+               finalColor = isHatch ? basePurple : basePurple * 0.8;
+            } else {
+               // Tree Only: Solid Green
+               finalColor = vec3(0.3, 0.8, 0.4); 
+            }
+        } 
+        else if (isBuildingShadow) {
+            // Building Only: Solid Cool Blue
+            finalColor = vec3(0.4, 0.6, 0.9);
         }
         
-        // Add subtle dithering to break up banding
-        float dither = (fract(sin(dot(gl_FragCoord.xy, vec2(12.9898, 78.233))) * 43758.5453) - 0.5) * 0.015;
-        myColor += dither;
-        
-        gl_FragColor = vec4(myColor, 1.0);
+        // --- CLEVER TRICK 3: Edge Outline ---
+        // If the normal faces away from the camera significantly, darken it
+        // Simple "rim darkening" to separate geometry
+        vec3 viewDir = normalize(vViewPosition);
+        float rim = 1.0 - max(0.0, dot(viewDir, N));
+        rim = smoothstep(0.6, 1.0, rim);
+        finalColor *= (1.0 - rim * 0.3);
+
+        gl_FragColor = vec4(finalColor * lightIntensity, 1.0);
         `
       );
     };
@@ -782,52 +791,32 @@ class SunStudy {
       this.date, this.timeOfDay, this.latitude
     );
     
-    // Send sun position to controller
     if (this.channel) {
-        this.channel.postMessage({
-            type: 'sun_position',
-            altitude: altitude,
-            azimuth: azimuth
-        });
+        this.channel.postMessage({ type: 'sun_position', altitude: altitude, azimuth: azimuth });
     }
     
     const distance = 500;
     const altRad = Math.max(0.05, altitude * Math.PI / 180);
-    // Adjust azimuth to match map orientation
     const adjustedAz = azimuth - this.mapBearing;
     const azRad = (adjustedAz - 180) * Math.PI / 180;
     
     this.sunLight.intensity = altitude > 0 ? 1.0 : 0;
     
     // Cinematic lighting: Adjust color based on altitude
-    // Golden/Reddish at low altitude, White/Yellow at high altitude
     if (altitude > 0) {
       const color = new THREE.Color();
-      if (altitude < 10) {
-        // Sunrise/Sunset - Reddish Orange
-        color.setHSL(0.05, 1.0, 0.6);
-      } else if (altitude < 25) {
-        // Golden Hour - Orange/Gold
-        const t = (altitude - 10) / 15;
-        color.setHSL(0.1, 1.0, 0.6 + t * 0.2);
-      } else {
-        // Day - Warm White
-        const t = Math.min(1, (altitude - 25) / 40);
-        // Warmer sun: Hue 0.08 (orange-yellow) instead of 0.12 (yellow)
-        color.setHSL(0.08, 0.6 - t * 0.2, 0.8 + t * 0.2);
-      }
+      if (altitude < 10) color.setHSL(0.05, 1.0, 0.6);
+      else if (altitude < 25) { const t = (altitude - 10) / 15; color.setHSL(0.1, 1.0, 0.6 + t * 0.2); }
+      else { const t = Math.min(1, (altitude - 25) / 40); color.setHSL(0.08, 0.6 - t * 0.2, 0.8 + t * 0.2); }
       this.sunLight.color.copy(color);
-      
-      // Adjust intensity for cinematic feel - boosted for projection
       this.sunLight.intensity = Math.min(2.5, 0.8 + Math.sin(altitude * Math.PI / 180) * 2.0);
     }
     
-    // Position the sun light
     const sunX = distance * Math.cos(altRad) * Math.sin(azRad);
     const sunY = distance * Math.sin(altRad);
     const sunZ = distance * Math.cos(altRad) * Math.cos(azRad);
     
-    // Check if sun actually moved (for dirty flag)
+    // Dirty flag check
     const threshold = 0.1;
     if (Math.abs(sunX - this.lastSunPosition.x) > threshold ||
         Math.abs(sunY - this.lastSunPosition.y) > threshold ||
@@ -837,28 +826,48 @@ class SunStudy {
     }
     
     this.sunLight.position.set(sunX, sunY, sunZ);
-    this.sunLight.target.position.set(0, 50, 0); // Target the center of the model (raised)
+    
+    // Offset target logic
+    const shadowExtensionFactor = Math.max(0, (1 - Math.sin(altRad)) * 300);
+    const targetOffsetX = -sunX / distance * shadowExtensionFactor;
+    const targetOffsetZ = -sunZ / distance * shadowExtensionFactor;
+    this.sunLight.target.position.set(targetOffsetX, 50, targetOffsetZ);
     this.sunLight.target.updateMatrixWorld();
     
-    // Update shadow camera to follow the light and cover the scene properly
+    // --- FIX START: Use optimal size ---
+    // Use the calculated size from fitCameraToModel, defaulting to 800 if not ready
+    const baseSize = this.optimalShadowSize || 800;
+    
+    // Dynamic expansion based on sun angle (clamped to prevent explosion)
+    const altitudeFactor = Math.max(0.15, Math.sin(altRad)); 
+    const dynamicShadowSize = baseSize / altitudeFactor; 
+    
+    // Clamp max size to preserve resolution. 
+    // If shadows go beyond 4000 units, they will clip, but the visible part will look sharp.
+    const clampedShadowSize = Math.min(dynamicShadowSize, 4000); 
+    // --- FIX END ---
+    
+    this.sunLight.shadow.camera.left = -clampedShadowSize;
+    this.sunLight.shadow.camera.right = clampedShadowSize;
+    this.sunLight.shadow.camera.top = clampedShadowSize;
+    this.sunLight.shadow.camera.bottom = -clampedShadowSize;
+    
     this.sunLight.shadow.camera.updateProjectionMatrix();
     this.sunLight.updateMatrixWorld();
     
-    // Update shadow cameras for false color mode
+    // Update auxiliary cameras
     if (this.shadowCameraBuildings) {
-      const shadowSize = 800;
-      this.shadowCameraBuildings.left = -shadowSize;
-      this.shadowCameraBuildings.right = shadowSize;
-      this.shadowCameraBuildings.top = shadowSize;
-      this.shadowCameraBuildings.bottom = -shadowSize;
+      this.shadowCameraBuildings.left = -clampedShadowSize;
+      this.shadowCameraBuildings.right = clampedShadowSize;
+      this.shadowCameraBuildings.top = clampedShadowSize;
+      this.shadowCameraBuildings.bottom = -clampedShadowSize;
       this.shadowCameraBuildings.updateProjectionMatrix();
     }
     if (this.shadowCameraTrees) {
-      const shadowSize = 800;
-      this.shadowCameraTrees.left = -shadowSize;
-      this.shadowCameraTrees.right = shadowSize;
-      this.shadowCameraTrees.top = shadowSize;
-      this.shadowCameraTrees.bottom = -shadowSize;
+      this.shadowCameraTrees.left = -clampedShadowSize;
+      this.shadowCameraTrees.right = clampedShadowSize;
+      this.shadowCameraTrees.top = clampedShadowSize;
+      this.shadowCameraTrees.bottom = -clampedShadowSize;
       this.shadowCameraTrees.updateProjectionMatrix();
     }
   }
@@ -1058,48 +1067,35 @@ class SunStudy {
     
     // Fit model to canvas with padding
     const padding = 0.8;
-    
-    // Use the largest dimension to ensure it fits
     const maxDim = Math.max(this.modelSize.x, this.modelSize.z);
     const minCanvasDim = Math.min(canvasWidth, canvasHeight);
     
     const scale = ((minCanvasDim * padding) / maxDim) * 2.0;
     
-    // Apply scale with multiplier (preserving the Z flip)
+    // Apply scale
     this.mesh.scale.set(scale * this.scaleMultiplier, scale * this.scaleMultiplier, -scale * this.scaleMultiplier);
-    
-    // Apply to trees if loaded
     if (this.meshTrees) {
       this.meshTrees.scale.set(scale * this.scaleMultiplier, scale * this.scaleMultiplier, -scale * this.scaleMultiplier);
     }
 
     this.baseScale = scale;
     
-    // Set camera to match the canvas dimensions 1:1 to avoid distortion
+    // --- FIX START: Calculate and store the OPTIMAL base shadow size ---
+    // Instead of hardcoding 800, we use the actual model bounds.
+    // We add a 20% buffer to ensure shadows don't clip at the edges.
+    const worldRadius = (maxDim * scale) / 2;
+    this.optimalShadowSize = Math.max(worldRadius * 1.2, 100); 
+    // --- FIX END ---
+
+    // Set Main Camera
     this.camera.left = -canvasWidth / 2;
     this.camera.right = canvasWidth / 2;
     this.camera.top = canvasHeight / 2;
     this.camera.bottom = -canvasHeight / 2;
     this.camera.updateProjectionMatrix();
     
-    // Update shadow camera to cover the model
-    const worldSize = maxDim * scale;
-    const shadowSize = Math.max(worldSize * 1.5, 800); 
-    
-    this.sunLight.shadow.camera.left = -shadowSize;
-    this.sunLight.shadow.camera.right = shadowSize;
-    this.sunLight.shadow.camera.top = shadowSize;
-    this.sunLight.shadow.camera.bottom = -shadowSize;
-    this.sunLight.shadow.camera.near = 0.5;
-    this.sunLight.shadow.camera.far = 3000;
-    this.sunLight.shadow.camera.updateProjectionMatrix();
-    
-    // Force shadow map update
-    if (this.sunLight.shadow.map) {
-      this.sunLight.shadow.map.dispose();
-      this.sunLight.shadow.map = null;
-    }
-    
+    // Force an update immediately
+    this.updateSunPosition(); 
     this.shadowMapsDirty = true;
   }
   
