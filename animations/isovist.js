@@ -25,6 +25,15 @@
 
   // Listen for remote control messages
   const channel = new BroadcastChannel('map_controller_channel');
+  
+  // Function to broadcast isovist statistics to controller
+  function broadcastIsovistStats(stats) {
+    channel.postMessage({
+      type: 'isovist_stats',
+      data: stats
+    });
+  }
+  
   channel.onmessage = (event) => {
     const data = event.data;
     if (data.type === 'isovist_control') {
@@ -190,6 +199,54 @@
       });
     }
 
+    // Add source and layer for highlighted (viewed) buildings
+    if (!map.getSource('isovist-viewed-buildings')) {
+      map.addSource('isovist-viewed-buildings', {
+        type: 'geojson',
+        data: {
+          type: 'FeatureCollection',
+          features: []
+        }
+      });
+
+      map.addLayer({
+        id: 'isovist-viewed-buildings-fill',
+        type: 'fill',
+        source: 'isovist-viewed-buildings',
+        paint: {
+          'fill-color': [
+            'match',
+            ['get', 'objekttyp'],
+            'Bostad', '#4CAF50',           // Green for residential
+            'Verksamhet', '#2196F3',       // Blue for commercial/business
+            'Samhällsfunktion', '#9C27B0', // Purple for public functions
+            'Komplementbyggnad', '#FF9800', // Orange for outbuildings
+            '#888888'                       // Gray for unknown
+          ],
+          'fill-opacity': 0.6
+        }
+      });
+
+      map.addLayer({
+        id: 'isovist-viewed-buildings-outline',
+        type: 'line',
+        source: 'isovist-viewed-buildings',
+        paint: {
+          'line-color': [
+            'match',
+            ['get', 'objekttyp'],
+            'Bostad', '#2E7D32',           // Darker green
+            'Verksamhet', '#1565C0',       // Darker blue
+            'Samhällsfunktion', '#6A1B9A', // Darker purple
+            'Komplementbyggnad', '#E65100', // Darker orange
+            '#555555'                       // Darker gray
+          ],
+          'line-width': 2,
+          'line-opacity': 1
+        }
+      });
+    }
+
     // Enforce Z-order to ensure outline is visible on top of gradients
     const layerOrder = [
       'isovist-fill',
@@ -198,6 +255,8 @@
       'isovist-gradient-2',
       'isovist-gradient-3',
       'isovist-gradient-4',
+      'isovist-viewed-buildings-fill',
+      'isovist-viewed-buildings-outline',
       'isovist-line',
       'isovist-direction',
       'isovist-viewer-point'
@@ -253,6 +312,12 @@
     }
     if (map.getSource('isovist-gradient')) {
       map.getSource('isovist-gradient').setData({
+        type: 'FeatureCollection',
+        features: []
+      });
+    }
+    if (map.getSource('isovist-viewed-buildings')) {
+      map.getSource('isovist-viewed-buildings').setData({
         type: 'FeatureCollection',
         features: []
       });
@@ -326,16 +391,16 @@
     
     geojson.features.forEach(feature => {
       if (feature.geometry.type === 'Polygon') {
-        addObstacle(feature.geometry.coordinates[0]);
+        addObstacle(feature.geometry.coordinates[0], feature.properties);
       } else if (feature.geometry.type === 'MultiPolygon') {
         feature.geometry.coordinates.forEach(polygon => {
-          addObstacle(polygon[0]);
+          addObstacle(polygon[0], feature.properties);
         });
       }
     });
   }
 
-  function addObstacle(ring) {
+  function addObstacle(ring, properties = {}) {
     if (!ring || ring.length < 3) return;
     
     // Calculate bbox
@@ -349,6 +414,7 @@
     
     obstacles.push({
       points: ring,
+      properties: properties,
       bbox: { minLng, minLat, maxLng, maxLat }
     });
   }
@@ -491,12 +557,21 @@
         type: 'FeatureCollection',
         features: result.bands
       });
+
+      // Update highlighted (viewed) buildings
+      if (map.getSource('isovist-viewed-buildings')) {
+        map.getSource('isovist-viewed-buildings').setData({
+          type: 'FeatureCollection',
+          features: result.viewedBuildings
+        });
+      }
     }
   }
 
   function calculateIsovistFeatures(origin, lookDirection) {
     // Ray casting algorithm to compute visibility polygon
     const rays = [];
+    const viewedObstacleIndices = new Set(); // Track which buildings are viewed
     
     // Determine the viewing angle range
     let startAngle, endAngle, angleStep;
@@ -538,6 +613,9 @@
                  obs.bbox.maxLat < viewBbox.minLat);
     });
 
+    // Create a map from active obstacle to its global index
+    const activeObstacleIndices = activeObstacles.map(obs => obstacles.indexOf(obs));
+
     // Cast rays within the field of view
     const numRays = Math.ceil((endAngle - startAngle) / angleStep);
     for (let i = 0; i <= numRays; i++) {
@@ -546,8 +624,9 @@
 
       // Find closest intersection with any building
       let minDistance = MAX_VIEW_DISTANCE;
+      let hitObstacleIdx = -1;
 
-      activeObstacles.forEach(obstacle => {
+      activeObstacles.forEach((obstacle, localIdx) => {
         const coords = obstacle.points;
 
         // Check intersection with each edge of the building polygon
@@ -559,12 +638,18 @@
             const dist = distance(origin, intersection);
             if (dist < minDistance) {
               minDistance = dist;
+              hitObstacleIdx = activeObstacleIndices[localIdx];
             }
           }
         }
       });
 
-      rays.push({ angle: angle, dist: minDistance });
+      // Track the building that was hit
+      if (hitObstacleIdx >= 0) {
+        viewedObstacleIndices.add(hitObstacleIdx);
+      }
+
+      rays.push({ angle: angle, dist: minDistance, obstacleIndex: hitObstacleIdx });
     }
     
     // Generate polygons
@@ -626,7 +711,53 @@
         });
     }
 
-    return { mainPolygon, bands };
+    // 3. Convert viewed obstacle indices to GeoJSON features with original properties
+    const viewedBuildings = Array.from(viewedObstacleIndices).map(idx => {
+      const obs = obstacles[idx];
+      return {
+        type: 'Feature',
+        geometry: {
+          type: 'Polygon',
+          coordinates: [obs.points]
+        },
+        properties: obs.properties || {}
+      };
+    });
+
+    // 4. Calculate statistics for the controller chart
+    const stats = {
+      totalRays: numRays,
+      openRays: 0,
+      buildingTypeRays: {},
+      buildingTypeCounts: {}
+    };
+    
+    // Count rays that hit max distance (open area) vs buildings by type
+    rays.forEach(ray => {
+      if (ray.dist >= MAX_VIEW_DISTANCE * 0.99) {
+        stats.openRays++;
+      } else if (ray.obstacleIndex !== undefined && ray.obstacleIndex >= 0) {
+        // Get the building type for this ray's obstacle
+        const obs = obstacles[ray.obstacleIndex];
+        const buildingType = obs?.properties?.objekttyp || 'Unknown';
+        stats.buildingTypeRays[buildingType] = (stats.buildingTypeRays[buildingType] || 0) + 1;
+      }
+    });
+    
+    // Count buildings by type (for info only)
+    viewedBuildings.forEach(building => {
+      const buildingType = building.properties.objekttyp || 'Unknown';
+      stats.buildingTypeCounts[buildingType] = (stats.buildingTypeCounts[buildingType] || 0) + 1;
+    });
+    
+    // Calculate visible area percentage (simplified as ratio of rays hitting max distance)
+    stats.openAreaPercent = ((stats.openRays / numRays) * 100).toFixed(1);
+    stats.totalBuildings = viewedBuildings.length;
+    
+    // Broadcast stats to controller
+    broadcastIsovistStats(stats);
+
+    return { mainPolygon, bands, viewedBuildings };
   }
 
   // Collision detection and position validation

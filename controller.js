@@ -846,19 +846,25 @@ function updateDashboard(targetId) {
         
         legendContent.innerHTML = `
             <div class="dashboard-card">
-                <div class="dashboard-section-title">Legend</div>
-                <div style="display: flex; flex-direction: column; gap: 0.5rem;">
-                    <div class="legend-item">
-                        <div class="legend-color" style="background: rgba(255, 255, 0, 0.3); border: 1px solid #eab308;"></div>
-                        <span class="legend-label">Visible Area</span>
+                <div class="dashboard-section-title">Live Visibility</div>
+                <div id="isovist-stats-container">
+                    <div style="text-align: center; color: #888; padding: 1rem; font-size: 11px;">Place viewer on map...</div>
+                </div>
+            </div>
+            <div class="dashboard-card" style="margin-top: 0.75rem;">
+                <div class="dashboard-section-title">Map Legend</div>
+                <div style="display: flex; flex-wrap: wrap; gap: 0.4rem 0.8rem; font-size: 10px;">
+                    <div class="legend-item" style="margin: 0;">
+                        <div class="legend-color" style="width: 14px; height: 14px; background: rgba(255, 255, 0, 0.3); border: 1px solid #eab308;"></div>
+                        <span class="legend-label">Visible</span>
                     </div>
-                    <div class="legend-item">
-                        <div class="legend-color" style="width: 12px; height: 12px; border-radius: 50%; background: #ff0000; border: 2px solid white; margin: 6px;"></div>
-                        <span class="legend-label">Viewer Position</span>
+                    <div class="legend-item" style="margin: 0;">
+                        <div class="legend-color" style="width: 10px; height: 10px; border-radius: 50%; background: #ff0000; border: 2px solid white;"></div>
+                        <span class="legend-label">Viewer</span>
                     </div>
-                    <div class="legend-item">
-                        <div class="legend-color" style="height: 3px; background: #ff0000; margin: 10px 0;"></div>
-                        <span class="legend-label">View Direction</span>
+                    <div class="legend-item" style="margin: 0;">
+                        <div class="legend-color" style="width: 14px; height: 2px; background: #ff0000;"></div>
+                        <span class="legend-label">Direction</span>
                     </div>
                 </div>
             </div>
@@ -1155,11 +1161,206 @@ channel.onmessage = (event) => {
             alert('Failed to copy to clipboard. Check console for data.');
             console.log(calibrationText);
         });
+    } else if (data.type === 'isovist_stats') {
+        updateIsovistChart(data.data);
     } else {
         // Log unknown message types for debugging new features
         debugLog('Unknown message type:', data.type);
     }
 };
+
+function updateIsovistChart(stats) {
+    const container = document.getElementById('isovist-stats-container');
+    if (!container) return;
+    
+    // Check if isovist is active
+    const isovistBtn = document.querySelector('.control-btn[data-target="isovist-btn"]');
+    if (!isovistBtn || !isovistBtn.classList.contains('active')) return;
+    
+    const totalRays = stats.totalRays || 1;
+    const openRays = stats.openRays || 0;
+    const buildingTypeRays = stats.buildingTypeRays || {};
+    
+    // Calculate ray-based percentages (these will add up to 100%)
+    const buildingTypes = {
+        'Open Sky': { rays: openRays, color: '#87CEEB', percent: ((openRays / totalRays) * 100).toFixed(1) },
+        'Bostad': { rays: buildingTypeRays['Bostad'] || 0, color: '#4CAF50', percent: (((buildingTypeRays['Bostad'] || 0) / totalRays) * 100).toFixed(1) },
+        'Verksamhet': { rays: buildingTypeRays['Verksamhet'] || 0, color: '#2196F3', percent: (((buildingTypeRays['Verksamhet'] || 0) / totalRays) * 100).toFixed(1) },
+        'Samhällsfunktion': { rays: buildingTypeRays['Samhällsfunktion'] || 0, color: '#9C27B0', percent: (((buildingTypeRays['Samhällsfunktion'] || 0) / totalRays) * 100).toFixed(1) },
+        'Komplementbyggnad': { rays: buildingTypeRays['Komplementbyggnad'] || 0, color: '#FF9800', percent: (((buildingTypeRays['Komplementbyggnad'] || 0) / totalRays) * 100).toFixed(1) },
+        'Unknown': { rays: buildingTypeRays['Unknown'] || 0, color: '#888888', percent: (((buildingTypeRays['Unknown'] || 0) / totalRays) * 100).toFixed(1) }
+    };
+    
+    // Filter out types with 0 rays (except Open Sky which we always show)
+    const activeTypes = Object.entries(buildingTypes).filter(([type, data]) => 
+        type === 'Open Sky' || data.rays > 0
+    );
+    
+    // Build conic-gradient for pie chart
+    let gradientParts = [];
+    let currentAngle = 0;
+    activeTypes.forEach(([type, data]) => {
+        const percent = parseFloat(data.percent);
+        const nextAngle = currentAngle + (percent * 3.6); // 3.6 degrees per percent
+        gradientParts.push(`${data.color} ${currentAngle}deg ${nextAngle}deg`);
+        currentAngle = nextAngle;
+    });
+    // Fill remaining with dark if not 100%
+    if (currentAngle < 360) {
+        gradientParts.push(`rgba(50,50,50,0.5) ${currentAngle}deg 360deg`);
+    }
+    const gradient = gradientParts.join(', ');
+    
+    let html = `
+        <style>
+            .isovist-pie-container {
+                display: flex;
+                flex-direction: column;
+                align-items: center;
+                gap: 12px;
+            }
+            .pie-chart {
+                width: 200px;
+                height: 200px;
+                border-radius: 50%;
+                background: conic-gradient(${gradient});
+                flex-shrink: 0;
+                box-shadow: 0 4px 12px rgba(0,0,0,0.4);
+                position: relative;
+            }
+            .pie-chart::after {
+                content: '';
+                position: absolute;
+                top: 50%;
+                left: 50%;
+                transform: translate(-50%, -50%);
+                width: 90px;
+                height: 90px;
+                background: #1a1a2e;
+                border-radius: 50%;
+            }
+            .pie-stats {
+                display: flex;
+                justify-content: center;
+                gap: 20px;
+                font-size: 12px;
+                color: #ccc;
+                width: 100%;
+            }
+            .pie-stat-item {
+                text-align: center;
+            }
+            .pie-stat-value {
+                font-weight: 700;
+                font-size: 18px;
+                color: #fff;
+                display: block;
+            }
+            .pie-stat-label {
+                font-size: 10px;
+                color: #888;
+                text-transform: uppercase;
+            }
+            .pie-legend {
+                display: flex;
+                flex-wrap: wrap;
+                gap: 4px 10px;
+                margin-top: 12px;
+                padding-top: 10px;
+                border-top: 1px solid rgba(255,255,255,0.1);
+            }
+            .pie-legend-item {
+                display: flex;
+                align-items: center;
+                gap: 4px;
+                font-size: 10px;
+                color: #aaa;
+            }
+            .pie-legend-dot {
+                width: 8px;
+                height: 8px;
+                border-radius: 50%;
+                flex-shrink: 0;
+            }
+            .building-legend {
+                display: flex;
+                flex-wrap: wrap;
+                gap: 4px 8px;
+                margin-top: 8px;
+                padding-top: 8px;
+                border-top: 1px solid rgba(255,255,255,0.08);
+            }
+            .building-legend-item {
+                display: flex;
+                align-items: center;
+                gap: 3px;
+                font-size: 9px;
+                color: #777;
+            }
+            .building-legend-color {
+                width: 10px;
+                height: 10px;
+                border-radius: 2px;
+                flex-shrink: 0;
+            }
+        </style>
+        <div class="isovist-pie-container">
+            <div class="pie-chart"></div>
+            <div class="pie-stats">
+                <div class="pie-stat-item">
+                    <span class="pie-stat-value">${stats.totalBuildings || 0}</span>
+                    <span class="pie-stat-label">Buildings</span>
+                </div>
+                <div class="pie-stat-item">
+                    <span class="pie-stat-value">${buildingTypes['Open Sky'].percent}%</span>
+                    <span class="pie-stat-label">Open Sky</span>
+                </div>
+                <div class="pie-stat-item">
+                    <span class="pie-stat-value">${(100 - parseFloat(buildingTypes['Open Sky'].percent)).toFixed(1)}%</span>
+                    <span class="pie-stat-label">Built</span>
+                </div>
+            </div>
+        </div>
+        <div class="pie-legend">
+    `;
+    
+    activeTypes.forEach(([type, data]) => {
+        const displayName = type === 'Samhällsfunktion' ? 'Public' : 
+                           type === 'Komplementbyggnad' ? 'Outbld' :
+                           type === 'Verksamhet' ? 'Comm.' :
+                           type === 'Bostad' ? 'Resid.' : 
+                           type === 'Open Sky' ? 'Sky' : type;
+        html += `
+            <div class="pie-legend-item">
+                <div class="pie-legend-dot" style="background: ${data.color};"></div>
+                <span>${displayName} ${data.percent}%</span>
+            </div>
+        `;
+    });
+    
+    html += `</div>
+        <div class="building-legend">
+            <div class="building-legend-item">
+                <div class="building-legend-color" style="background: #4CAF50;"></div>
+                <span>Residential</span>
+            </div>
+            <div class="building-legend-item">
+                <div class="building-legend-color" style="background: #2196F3;"></div>
+                <span>Commercial</span>
+            </div>
+            <div class="building-legend-item">
+                <div class="building-legend-color" style="background: #9C27B0;"></div>
+                <span>Public</span>
+            </div>
+            <div class="building-legend-item">
+                <div class="building-legend-color" style="background: #FF9800;"></div>
+                <span>Outbuilding</span>
+            </div>
+        </div>
+    `;
+    
+    container.innerHTML = html;
+}
 
 function updateBirdDashboard(activeBirds) {
     const container = document.getElementById('active-birds-container');
