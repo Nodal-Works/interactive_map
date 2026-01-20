@@ -64,7 +64,8 @@
   let rho = null; // Density [x][y]
   let ux = null; // Velocity x-component [x][y]
   let uy = null; // Velocity y-component [x][y]
-  let obstacle = null; // Boolean obstacle map [x][y]
+  let obstacle = null; // Boolean obstacle map [x][y] (solid - buildings)
+  let treeObstacle = null; // Boolean tree obstacle map [x][y] (permeable)
   
   // Dynamic velocity scale tracking
   let currentMaxVelocity = 0;
@@ -72,6 +73,14 @@
   
   // Building obstacles from map
   let buildingPolygons = [];
+  
+  // Tree obstacles
+  let treeObstacles = [];
+  let INCLUDE_TREES = true; // Toggle tree obstacles
+  const TREE_BASE_RADIUS = 2; // Base radius in meters for tree canopy
+  const TREE_RADIUS_VARIATION = 1.5; // Random variation in meters
+  const TREE_HEIGHT_FACTOR = 0.3; // Additional radius per meter of height
+  const TREE_POROSITY = 0.6; // Porosity factor (0 = solid, 1 = fully permeable)
   
   function resizeCanvas() {
     const s = computeOverlayPixelSize();
@@ -114,6 +123,7 @@
     ux = new Array(NX);
     uy = new Array(NX);
     obstacle = new Array(NX);
+    treeObstacle = new Array(NX);
     
     for (let i = 0; i < NX; i++) {
       f[i] = new Array(NY);
@@ -122,6 +132,7 @@
       ux[i] = new Array(NY);
       uy[i] = new Array(NY);
       obstacle[i] = new Array(NY);
+      treeObstacle[i] = new Array(NY);
       
       for (let j = 0; j < NY; j++) {
         f[i][j] = new Array(Q);
@@ -142,11 +153,15 @@
         ux[i][j] = u0;
         uy[i][j] = v0;
         obstacle[i][j] = false;
+        treeObstacle[i][j] = false;
       }
     }
     
     // Load building obstacles from map
     loadBuildingObstacles();
+    
+    // Load tree obstacles
+    loadTreeObstacles();
   }
   
   function equilibrium(k, density, u, v) {
@@ -281,6 +296,127 @@
     console.log('CFD: Buildings rasterized to screen-space grid');
   }
   
+  async function loadTreeObstacles() {
+    try {
+      const response = await fetch('media/trees.geojson');
+      if (!response.ok) {
+        console.warn('CFD: Trees file not found');
+        return;
+      }
+      
+      const geojson = await response.json();
+      
+      // Process tree points into circular obstacles
+      treeObstacles = [];
+      
+      // Use a seeded random for consistent radii per tree
+      const seededRandom = (seed) => {
+        const x = Math.sin(seed) * 10000;
+        return x - Math.floor(x);
+      };
+      
+      geojson.features.forEach((feature, idx) => {
+        if (feature.geometry.type === 'Point') {
+          const coords = feature.geometry.coordinates;
+          const height = feature.properties.height || 10;
+          
+          // Calculate radius based on height with random variation
+          const randomVariation = (seededRandom(idx) - 0.5) * 2 * TREE_RADIUS_VARIATION;
+          const radius = TREE_BASE_RADIUS + (height * TREE_HEIGHT_FACTOR) + randomVariation;
+          
+          treeObstacles.push({
+            center: coords,
+            radius: Math.max(1, radius), // minimum 1 meter radius
+            properties: feature.properties
+          });
+        }
+      });
+      
+      console.log(`CFD: Loaded ${treeObstacles.length} tree obstacles`);
+      
+      // Rasterize trees to the grid
+      if (INCLUDE_TREES) {
+        rasterizeTrees();
+      }
+      
+    } catch (error) {
+      console.warn('CFD: Failed to load trees:', error);
+    }
+  }
+  
+  function rasterizeTrees() {
+    if (typeof map === 'undefined' || treeObstacles.length === 0 || !INCLUDE_TREES) return;
+    
+    // Get canvas bounds
+    const canvasRect = cfdCanvas.getBoundingClientRect();
+    const mapContainer = map.getContainer();
+    const mapRect = mapContainer.getBoundingClientRect();
+    
+    let treeCellCount = 0;
+    
+    treeObstacles.forEach(tree => {
+      // Project tree center to screen coordinates
+      const point = map.project(tree.center);
+      const screenX = point.x + mapRect.left;
+      const screenY = point.y + mapRect.top;
+      const canvasX = screenX - canvasRect.left;
+      const canvasY = screenY - canvasRect.top;
+      
+      // Convert radius from meters to pixels (approximate)
+      // Use map zoom to estimate meters per pixel
+      const zoom = map.getZoom();
+      const lat = tree.center[1];
+      const metersPerPixel = 156543.03392 * Math.cos(lat * Math.PI / 180) / Math.pow(2, zoom);
+      const radiusPixels = tree.radius / metersPerPixel;
+      
+      // Convert to grid coordinates
+      const gridCenterX = Math.floor(canvasX / cellSize) + X_OFFSET;
+      const gridCenterY = Math.floor(canvasY / cellSize) + Y_OFFSET;
+      const gridRadius = Math.ceil(radiusPixels / cellSize);
+      
+      // Fill circular area with permeable tree obstacles
+      for (let di = -gridRadius; di <= gridRadius; di++) {
+        for (let dj = -gridRadius; dj <= gridRadius; dj++) {
+          const i = gridCenterX + di;
+          const j = gridCenterY + dj;
+          
+          // Check if within grid bounds
+          if (i >= 0 && i < NX && j >= 0 && j < NY) {
+            // Check if within circle radius
+            const dist = Math.sqrt(di * di + dj * dj);
+            if (dist <= gridRadius) {
+              treeObstacle[i][j] = true;
+              treeCellCount++;
+            }
+          }
+        }
+      }
+    });
+    
+    console.log(`CFD: Rasterized ${treeCellCount} tree cells to grid (permeable)`);
+  }
+  
+  function clearTreeObstacles() {
+    // Clear tree obstacles
+    for (let i = 0; i < NX; i++) {
+      for (let j = 0; j < NY; j++) {
+        treeObstacle[i][j] = false;
+      }
+    }
+  }
+  
+  function toggleTrees() {
+    INCLUDE_TREES = !INCLUDE_TREES;
+    
+    if (INCLUDE_TREES) {
+      rasterizeTrees();
+      console.log('CFD: Trees enabled (permeable obstacles)');
+    } else {
+      clearTreeObstacles();
+      console.log('CFD: Trees disabled');
+    }
+  }
+  
   function pointInScreenPolygon(point, polygon) {
     // Ray casting algorithm for screen coordinates
     let inside = false;
@@ -339,13 +475,17 @@
     // Boundary conditions and collision
     for (let i = 0; i < NX; i++) {
       for (let j = 0; j < NY; j++) {
-        // Handle obstacles with bounce-back
+        // Handle solid obstacles (buildings) with full bounce-back
         if (obstacle[i][j]) {
           for (let k = 0; k < Q; k++) {
             fTemp[i][j][k] = f[i][j][opp[k]];
           }
           continue;
         }
+        
+        // Handle permeable obstacles (trees) with partial bounce-back
+        // This models porous media where some flow passes through
+        const isTreeCell = INCLUDE_TREES && treeObstacle && treeObstacle[i][j];
         
         // Compute macroscopic quantities
         let density = 0.0;
@@ -360,6 +500,14 @@
         
         u /= density;
         v /= density;
+        
+        // Apply drag for tree cells (porous media resistance)
+        if (isTreeCell) {
+          // Reduce velocity through trees based on porosity
+          const dragFactor = 1.0 - TREE_POROSITY; // 0.4 means 40% velocity reduction
+          u *= TREE_POROSITY;
+          v *= TREE_POROSITY;
+        }
         
         // Clamp velocities for stability
         const speed = Math.sqrt(u * u + v * v);
@@ -822,6 +970,9 @@
                 GRID_RESOLUTION = parseInt(data.value);
                 resizeCanvas();
                 initParticles();
+                break;
+            case 'toggle_trees':
+                toggleTrees();
                 break;
         }
     }

@@ -676,6 +676,14 @@ function updateDashboard(targetId) {
                             <option value="300">300 (High)</option>
                         </select>
                     </div>
+
+                    <div class="control-row">
+                        <label class="control-label">Include Trees</label>
+                        <button id="toggle-trees-btn" class="modern-date" style="width: 100px; cursor: pointer; background: #2D5A27; border: 1px solid #4a9441;">
+                            <span class="material-icons" style="font-size: 14px; vertical-align: middle;">park</span>
+                            <span id="trees-status">On</span>
+                        </button>
+                    </div>
                 </div>
 
                 <div class="dashboard-card">
@@ -719,6 +727,14 @@ function updateDashboard(targetId) {
                         <div>
                             <span class="legend-label">Building Obstacles</span>
                             <div style="font-size: 0.75rem; color: #6b7280;">Impermeable boundaries</div>
+                        </div>
+                    </div>
+
+                    <div class="legend-item">
+                        <div class="legend-color" style="background: #2D5A27; border: 1px dashed #4a9441;"></div>
+                        <div>
+                            <span class="legend-label">Tree Canopies</span>
+                            <div style="font-size: 0.75rem; color: #6b7280;">Permeable obstacles (~60% flow)</div>
                         </div>
                     </div>
 
@@ -788,6 +804,19 @@ function updateDashboard(targetId) {
 
         gridResolution.addEventListener('change', (e) => {
             sendCfdControl('set_resolution', e.target.value);
+        });
+
+        // Tree toggle button
+        const toggleTreesBtn = document.getElementById('toggle-trees-btn');
+        const treesStatus = document.getElementById('trees-status');
+        let treesEnabled = true;
+        
+        toggleTreesBtn.addEventListener('click', () => {
+            treesEnabled = !treesEnabled;
+            treesStatus.textContent = treesEnabled ? 'On' : 'Off';
+            toggleTreesBtn.style.background = treesEnabled ? '#2D5A27' : '#333';
+            toggleTreesBtn.style.borderColor = treesEnabled ? '#4a9441' : '#555';
+            sendCfdControl('toggle_trees', treesEnabled);
         });
 
     } else if (targetId === 'isovist-btn') {
