@@ -36,6 +36,13 @@ let buildingFlickerStates = []; // Track which buildings are flickering
 let emergencyVehicle = null; // Single active emergency vehicle
 let emergencySpawnTimer = null;
 
+// City ambient sound
+let cityAmbientAudio = null;
+let audioFadeInterval = null;
+const AUDIO_FADE_DURATION = 1500; // 1.5 seconds fade in/out
+const AUDIO_MAX_VOLUME = 0.5; // Maximum volume level
+const AUDIO_FADE_STEPS = 30; // Smooth fade steps
+
 // Configuration
 const CONFIG = {
   maxCars: 50,
@@ -1316,6 +1323,78 @@ function resizeStreetLifeCanvas() {
   streetLifeCanvas.style.height = s.h + 'px';
 }
 
+// Fade in city ambient sound
+function fadeInCitySound() {
+  // Clear any existing fade
+  if (audioFadeInterval) {
+    clearInterval(audioFadeInterval);
+    audioFadeInterval = null;
+  }
+  
+  // Create audio if it doesn't exist
+  if (!cityAmbientAudio) {
+    cityAmbientAudio = new Audio('media/sound/city.mp3');
+    cityAmbientAudio.loop = true;
+    cityAmbientAudio.volume = 0;
+  }
+  
+  // Start playing at volume 0
+  cityAmbientAudio.volume = 0;
+  cityAmbientAudio.play().catch(err => {
+    console.warn('City ambient sound could not play:', err);
+  });
+  
+  // Gradually fade in
+  const stepDuration = AUDIO_FADE_DURATION / AUDIO_FADE_STEPS;
+  const volumeStep = AUDIO_MAX_VOLUME / AUDIO_FADE_STEPS;
+  let currentStep = 0;
+  
+  audioFadeInterval = setInterval(() => {
+    currentStep++;
+    if (currentStep >= AUDIO_FADE_STEPS) {
+      cityAmbientAudio.volume = AUDIO_MAX_VOLUME;
+      clearInterval(audioFadeInterval);
+      audioFadeInterval = null;
+    } else {
+      cityAmbientAudio.volume = Math.min(volumeStep * currentStep, AUDIO_MAX_VOLUME);
+    }
+  }, stepDuration);
+}
+
+// Fade out city ambient sound
+function fadeOutCitySound() {
+  // Clear any existing fade
+  if (audioFadeInterval) {
+    clearInterval(audioFadeInterval);
+    audioFadeInterval = null;
+  }
+  
+  if (!cityAmbientAudio) return;
+  
+  const startVolume = cityAmbientAudio.volume;
+  if (startVolume === 0) {
+    cityAmbientAudio.pause();
+    return;
+  }
+  
+  // Gradually fade out
+  const stepDuration = AUDIO_FADE_DURATION / AUDIO_FADE_STEPS;
+  const volumeStep = startVolume / AUDIO_FADE_STEPS;
+  let currentStep = 0;
+  
+  audioFadeInterval = setInterval(() => {
+    currentStep++;
+    if (currentStep >= AUDIO_FADE_STEPS) {
+      cityAmbientAudio.volume = 0;
+      cityAmbientAudio.pause();
+      clearInterval(audioFadeInterval);
+      audioFadeInterval = null;
+    } else {
+      cityAmbientAudio.volume = Math.max(startVolume - (volumeStep * currentStep), 0);
+    }
+  }, stepDuration);
+}
+
 // Start animation
 function startStreetLifeAnimation() {
   if (isStreetLifeAnimating) return;
@@ -1329,6 +1408,9 @@ function startStreetLifeAnimation() {
     isStreetLifeAnimating = true;
     streetLifeCanvas.style.display = 'block';
     resizeStreetLifeCanvas();
+    
+    // Start city ambient sound with fade in
+    fadeInCitySound();
     
     // Clear any existing entities
     vehicles = [];
@@ -1358,6 +1440,9 @@ function stopStreetLifeAnimation() {
   isStreetLifeAnimating = false;
   streetLifeCanvas.style.display = 'none';
   stopSpawning();
+  
+  // Fade out city ambient sound
+  fadeOutCitySound();
   
   if (streetLifeAnimationFrame) {
     cancelAnimationFrame(streetLifeAnimationFrame);
