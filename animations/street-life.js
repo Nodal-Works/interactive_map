@@ -1378,7 +1378,7 @@ function stopStreetLifeAnimation() {
 
 // Check if any visualization is active
 function isAnyVisualizationActive() {
-  // Check for active/toggled-on buttons
+  // Check for active/toggled-on/toggled-off buttons
   const activeButtons = [
     'cfd-simulation-btn',
     'stormwater-btn', 
@@ -1391,7 +1391,7 @@ function isAnyVisualizationActive() {
   
   for (const id of activeButtons) {
     const btn = document.getElementById(id);
-    if (btn && (btn.classList.contains('active') || btn.classList.contains('toggled-on'))) {
+    if (btn && (btn.classList.contains('active') || btn.classList.contains('toggled-on') || btn.classList.contains('toggled-off'))) {
       return true;
     }
   }
