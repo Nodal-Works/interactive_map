@@ -3,12 +3,14 @@
 // Uses Sweden location (Gothenburg area) for accurate sun positioning
 // Supports dual model system (buildings + trees) with multi-source shadow discrimination
 
-let THREE, STLLoader, EffectComposer, RenderPass, SSAOPass, SMAAPass, OutputPass;
+let THREE, STLLoader, GLTFLoader, EffectComposer, RenderPass, SSAOPass, SMAAPass, OutputPass;
 
 async function loadDependencies() {
   THREE = await import('three');
   const stlModule = await import('three/addons/loaders/STLLoader.js');
   STLLoader = stlModule.STLLoader;
+  const gltfModule = await import('three/addons/loaders/GLTFLoader.js');
+  GLTFLoader = gltfModule.GLTFLoader;
   
   const composerModule = await import('three/addons/postprocessing/EffectComposer.js');
   EffectComposer = composerModule.EffectComposer;
@@ -958,40 +960,57 @@ class SunStudy {
   loadTreesSTL() {
     if (this.treesLoaded) return;
     
-    const loader = new STLLoader();
-    console.log('Loading trees STL model...');
+    const loader = new GLTFLoader();
+    console.log('Loading trees GLB model (instanced)...');
+    
+    /**
+     * ==================== MESH ALIGNMENT GUIDE ====================
+     * 
+     * When loading additional meshes to align with the buildings (mesh.stl):
+     * 
+     * 1. FILE FORMAT DIFFERENCES:
+     *    - STL files (mesh.stl): Z-up convention, need Y/Z swap
+     *    - GLB/GLTF files: Already Y-up (Three.js convention), NO Y/Z swap needed
+     * 
+     * 2. COORDINATE ALIGNMENT:
+     *    - Both models must be exported from the same origin in the 3D software
+     *    - The buildings center is stored in this.buildingsCenter after STL loads
+     *    - Use this.buildingsCenter to center any additional meshes
+     * 
+     * 3. Z-AXIS DIRECTION:
+     *    - If the new mesh appears mirrored/flipped, negate Z: positions[i+2] = -positions[i+2]
+     *    - This is needed when the export has opposite Z direction
+     * 
+     * 4. TRANSFORM ORDER (applied to mesh group):
+     *    - Scale: this.baseScale * this.scaleMultiplier (with Z negated: -scale for Z)
+     *    - Rotation: this.baseRotation (-PI/2) + rotationOffset
+     *    - Position: offsetX, 50 (Y height), offsetZ
+     * 
+     * 5. DEBUGGING:
+     *    - Log raw bounds immediately after load
+     *    - Log bounds after coordinate transforms
+     *    - Compare center values with this.buildingsCenter
+     *    - After centering, final center should be (0, 0, 0) or very close
+     * 
+     * ===============================================================
+     */
     
     loader.load(
-      './media/trees.stl',
-      (geometry) => {
-        console.log('Trees STL loaded, vertices:', geometry.attributes.position.count);
+      './media/trees_instanced.glb',
+      (gltf) => {
+        console.log('Trees GLB loaded');
         
-        // Apply same coordinate swap as buildings
-        const positions = geometry.attributes.position.array;
-        for (let i = 0; i < positions.length; i += 3) {
-          const y = positions[i + 1];
-          const z = positions[i + 2];
-          positions[i + 1] = z;
-          positions[i + 2] = y;
-        }
-        geometry.attributes.position.needsUpdate = true;
-        geometry.computeVertexNormals();
+        // Debug: Log the raw GLTF scene bounds
+        const rawBox = new THREE.Box3().setFromObject(gltf.scene);
+        const rawSize = new THREE.Vector3();
+        const rawCenter = new THREE.Vector3();
+        rawBox.getSize(rawSize);
+        rawBox.getCenter(rawCenter);
+        console.log('GLB raw bounds - size:', rawSize, 'center:', rawCenter);
+        console.log('Buildings center for reference:', this.buildingsCenter);
         
-        // Use the SAME center as buildings for alignment
-        // This ensures trees align with the terrain/buildings
-        if (this.buildingsCenter) {
-          geometry.translate(-this.buildingsCenter.x, -this.buildingsCenter.y, -this.buildingsCenter.z);
-          console.log('Trees aligned using buildings center:', this.buildingsCenter);
-        } else {
-          // Fallback: use own center if buildings not loaded yet
-          geometry.computeBoundingBox();
-          const center = new THREE.Vector3();
-          geometry.boundingBox.getCenter(center);
-          geometry.translate(-center.x, -center.y, -center.z);
-          console.warn('Trees loaded before buildings - using own center');
-        }
-        geometry.computeBoundingBox();
-        geometry.computeBoundingSphere();
+        // Create a group to hold all tree meshes
+        this.meshTrees = new THREE.Group();
         
         // Tree material - green tint to distinguish
         this.standardMaterialTrees = new THREE.MeshStandardMaterial({
@@ -1004,9 +1023,58 @@ class SunStudy {
           depthWrite: true
         });
         
-        this.meshTrees = new THREE.Mesh(geometry, this.standardMaterialTrees);
-        this.meshTrees.castShadow = true;
-        this.meshTrees.receiveShadow = true;
+        // Traverse the GLTF scene and process all meshes
+        gltf.scene.traverse((child) => {
+          if (child.isMesh) {
+            // Clone geometry to modify it
+            const geometry = child.geometry.clone();
+            
+            // Apply the mesh's world matrix to the geometry
+            child.updateWorldMatrix(true, false);
+            geometry.applyMatrix4(child.matrixWorld);
+            
+            // GLB is already Y-up (GLTF standard), no Y/Z swap needed
+            // Only negate Z to match the buildings' coordinate orientation
+            const positions = geometry.attributes.position.array;
+            for (let i = 0; i < positions.length; i += 3) {
+              positions[i + 2] = -positions[i + 2];  // Negate Z only
+            }
+            geometry.attributes.position.needsUpdate = true;
+            geometry.computeBoundingBox();  // Update bounding box after modifying positions
+            geometry.computeVertexNormals();
+            
+            const mesh = new THREE.Mesh(geometry, this.standardMaterialTrees);
+            mesh.castShadow = true;
+            mesh.receiveShadow = true;
+            this.meshTrees.add(mesh);
+          }
+        });
+        
+        // Compute bounding box for the entire group
+        const box = new THREE.Box3().setFromObject(this.meshTrees);
+        const size = new THREE.Vector3();
+        const center = new THREE.Vector3();
+        box.getSize(size);
+        box.getCenter(center);
+        console.log('Trees bounds after transform - size:', size, 'center:', center);
+        console.log('Buildings center was:', this.buildingsCenter);
+        
+        // Use the BUILDINGS center for alignment since both models share the same world origin
+        // This ensures perfect alignment between buildings and trees
+        const alignCenter = this.buildingsCenter || center;
+        this.meshTrees.children.forEach(child => {
+          child.geometry.translate(-alignCenter.x, -alignCenter.y, -alignCenter.z);
+        });
+        console.log('Trees centered using buildings center:', alignCenter);
+        
+        // Debug: Final bounds after centering
+        const finalBox = new THREE.Box3().setFromObject(this.meshTrees);
+        const finalSize = new THREE.Vector3();
+        const finalCenter = new THREE.Vector3();
+        finalBox.getSize(finalSize);
+        finalBox.getCenter(finalCenter);
+        console.log('Trees final bounds - size:', finalSize, 'center:', finalCenter);
+        
         this.meshTrees.renderOrder = 2;
         this.meshTrees.frustumCulled = true;
         
@@ -1014,6 +1082,7 @@ class SunStudy {
         if (this.baseScale) {
           const scale = this.baseScale * this.scaleMultiplier;
           this.meshTrees.scale.set(scale, scale, -scale);
+          console.log('Trees scale applied:', scale);
         }
         this.meshTrees.rotation.y = this.baseRotation + (this.rotationOffset * Math.PI / 180);
         this.meshTrees.position.x = this.offsetX;
@@ -1040,19 +1109,19 @@ class SunStudy {
           });
         }
         
-        console.log('Trees STL added');
+        console.log('Trees GLB added with', this.meshTrees.children.length, 'meshes');
       },
       (progress) => {
-        console.log('Loading trees STL...', progress.loaded, 'bytes');
+        console.log('Loading trees GLB...', progress.loaded, 'bytes');
       },
       (error) => {
-        console.error('Error loading trees STL:', error);
+        console.error('Error loading trees GLB:', error);
         if (this.channel) {
           this.channel.postMessage({
             type: 'trees_state',
             visible: false,
             loaded: false,
-            error: 'Failed to load trees.stl'
+            error: 'Failed to load trees_instanced.glb'
           });
         }
       }
