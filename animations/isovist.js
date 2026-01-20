@@ -35,6 +35,37 @@
   const MAX_PATH_POINTS = 500;
   const MIN_PATH_DISTANCE = 2; // minimum meters between path points
 
+  // Ambient soundscape settings
+  let ambientAudioContext = null;
+  let ambientSoundEnabled = true; // Toggle for ambient sound
+  const MAX_AMBIENT_VOLUME = 0.5; // Cap volume at 50%
+  const VOLUME_SMOOTHING = 0.1; // How fast volume changes (0-1, lower = smoother)
+  let audioUnlocked = false; // Track if user has interacted (for autoplay policy)
+  let pendingAudioStart = false; // Track if we're waiting to start audio
+  
+  // Nature sounds (bird sounds)
+  const natureSounds = [
+    'media/sound/XC372879 - Thrush Nightingale - Luscinia luscinia.mp3',
+    'media/sound/XC647538 - European Pied Flycatcher - Ficedula hypoleuca.mp3',
+    'media/sound/XC900416 - Black Redstart - Phoenicurus ochruros.mp3'
+  ];
+  
+  // City/urban sounds
+  const citySounds = [
+    'media/sound/city.mp3'
+  ];
+  
+  // Active audio elements and gain nodes
+  let natureAudio = null;
+  let cityAudio = null;
+  let natureGainNode = null;
+  let cityGainNode = null;
+  let currentNatureSoundIndex = 0;
+  let currentGreenViewFactor = 0; // 0 = no trees, 1 = all trees
+  let targetNatureVolume = 0;
+  let targetCityVolume = 0;
+  let volumeAnimationFrame = null;
+
   // Listen for remote control messages
   const channel = new BroadcastChannel('map_controller_channel');
   
@@ -44,7 +75,207 @@
       type: 'isovist_stats',
       data: stats
     });
+    
+    // Update ambient soundscape based on green view factor
+    if (ambientSoundEnabled && stats.totalRays > 0) {
+      // Calculate green view factor: ratio of tree rays to total rays
+      const gvf = stats.treeRays / stats.totalRays;
+      updateAmbientSoundscape(gvf);
+    }
   }
+  
+  // ============================================
+  // AMBIENT SOUNDSCAPE SYSTEM
+  // Based on Green View Factor (GVF)
+  // ============================================
+  
+  function initAmbientAudio() {
+    if (ambientAudioContext) return; // Already initialized
+    if (!audioUnlocked) return; // Don't init until user gesture
+    
+    try {
+      ambientAudioContext = new (window.AudioContext || window.webkitAudioContext)();
+      
+      // Create nature audio (pick a random bird sound to start)
+      currentNatureSoundIndex = Math.floor(Math.random() * natureSounds.length);
+      natureAudio = new Audio(natureSounds[currentNatureSoundIndex]);
+      natureAudio.loop = true;
+      
+      // Create city audio
+      cityAudio = new Audio(citySounds[0]);
+      cityAudio.loop = true;
+      
+      // Create gain nodes for volume control
+      const natureSource = ambientAudioContext.createMediaElementSource(natureAudio);
+      natureGainNode = ambientAudioContext.createGain();
+      natureGainNode.gain.value = 0;
+      natureSource.connect(natureGainNode);
+      natureGainNode.connect(ambientAudioContext.destination);
+      
+      const citySource = ambientAudioContext.createMediaElementSource(cityAudio);
+      cityGainNode = ambientAudioContext.createGain();
+      cityGainNode.gain.value = 0;
+      citySource.connect(cityGainNode);
+      cityGainNode.connect(ambientAudioContext.destination);
+      
+      // Handle nature audio ending to switch to next bird sound
+      natureAudio.addEventListener('ended', switchNatureSound);
+      
+      console.log('Ambient audio initialized');
+    } catch (e) {
+      console.warn('Failed to initialize ambient audio:', e);
+      ambientAudioContext = null;
+    }
+  }
+  
+  function switchNatureSound() {
+    if (!natureAudio || !ambientAudioContext) return;
+    
+    // Pick a different bird sound
+    const prevIndex = currentNatureSoundIndex;
+    do {
+      currentNatureSoundIndex = Math.floor(Math.random() * natureSounds.length);
+    } while (currentNatureSoundIndex === prevIndex && natureSounds.length > 1);
+    
+    // Update source and restart
+    natureAudio.src = natureSounds[currentNatureSoundIndex];
+    if (targetNatureVolume > 0 && audioUnlocked) {
+      natureAudio.play().catch(e => console.warn('Nature sound play failed:', e));
+    }
+  }
+  
+  function startAmbientAudio() {
+    // If user hasn't interacted yet, mark as pending and wait
+    if (!audioUnlocked) {
+      pendingAudioStart = true;
+      console.log('Ambient audio pending - waiting for user interaction');
+      return;
+    }
+    
+    if (!ambientAudioContext) {
+      initAmbientAudio();
+    }
+    
+    if (!ambientAudioContext) return; // Failed to initialize
+    
+    // Resume audio context if suspended (browser autoplay policy)
+    if (ambientAudioContext.state === 'suspended') {
+      ambientAudioContext.resume().catch(e => console.warn('Audio context resume failed:', e));
+    }
+    
+    // Start both audio streams (they start muted, volume controlled by GVF)
+    natureAudio.play().catch(e => console.warn('Nature audio play failed:', e));
+    cityAudio.play().catch(e => console.warn('City audio play failed:', e));
+    
+    // Start volume animation loop
+    if (!volumeAnimationFrame) {
+      animateVolumes();
+    }
+    
+    pendingAudioStart = false;
+    console.log('Ambient audio started');
+  }
+  
+  function stopAmbientAudio() {
+    if (volumeAnimationFrame) {
+      cancelAnimationFrame(volumeAnimationFrame);
+      volumeAnimationFrame = null;
+    }
+    
+    if (natureAudio) {
+      natureAudio.pause();
+      natureAudio.currentTime = 0;
+    }
+    if (cityAudio) {
+      cityAudio.pause();
+      cityAudio.currentTime = 0;
+    }
+    
+    if (natureGainNode) natureGainNode.gain.value = 0;
+    if (cityGainNode) cityGainNode.gain.value = 0;
+    
+    targetNatureVolume = 0;
+    targetCityVolume = 0;
+    currentGreenViewFactor = 0;
+    
+    console.log('Ambient audio stopped');
+  }
+  
+  function updateAmbientSoundscape(gvf) {
+    // gvf: 0 = no trees visible (city sound), 1 = all trees (nature sound)
+    currentGreenViewFactor = gvf;
+    
+    // Calculate target volumes based on GVF
+    // High GVF = more nature, less city
+    // Low GVF = more city, less nature
+    // Both capped at MAX_AMBIENT_VOLUME (0.5)
+    
+    targetNatureVolume = gvf * MAX_AMBIENT_VOLUME;
+    targetCityVolume = (1 - gvf) * MAX_AMBIENT_VOLUME;
+    
+    // Ensure minimum volume for active sound to keep some ambiance
+    const minVolume = 0.05;
+    if (gvf > 0.1) {
+      targetNatureVolume = Math.max(targetNatureVolume, minVolume);
+    }
+    if (gvf < 0.9) {
+      targetCityVolume = Math.max(targetCityVolume, minVolume);
+    }
+  }
+  
+  function animateVolumes() {
+    if (!ambientAudioContext || !isovistActive) {
+      volumeAnimationFrame = null;
+      return;
+    }
+    
+    // Smoothly interpolate current volumes towards targets
+    if (natureGainNode) {
+      const currentNature = natureGainNode.gain.value;
+      const newNature = currentNature + (targetNatureVolume - currentNature) * VOLUME_SMOOTHING;
+      natureGainNode.gain.setValueAtTime(newNature, ambientAudioContext.currentTime);
+    }
+    
+    if (cityGainNode) {
+      const currentCity = cityGainNode.gain.value;
+      const newCity = currentCity + (targetCityVolume - currentCity) * VOLUME_SMOOTHING;
+      cityGainNode.gain.setValueAtTime(newCity, ambientAudioContext.currentTime);
+    }
+    
+    volumeAnimationFrame = requestAnimationFrame(animateVolumes);
+  }
+  
+  // Unlock audio on user interaction (browser autoplay policy)
+  function setupAudioUnlock() {
+    const unlockAudio = () => {
+      if (audioUnlocked) return; // Already unlocked
+      
+      audioUnlocked = true;
+      console.log('Audio unlocked by user gesture');
+      
+      // Resume existing context if any
+      if (ambientAudioContext && ambientAudioContext.state === 'suspended') {
+        ambientAudioContext.resume();
+      }
+      
+      // If audio was waiting to start, start it now
+      if (pendingAudioStart && isovistActive && ambientSoundEnabled) {
+        startAmbientAudio();
+      }
+    };
+    
+    // Listen on multiple events to catch any user interaction
+    document.addEventListener('click', unlockAudio);
+    document.addEventListener('touchstart', unlockAudio);
+    document.addEventListener('keydown', unlockAudio);
+    document.addEventListener('mousedown', unlockAudio);
+  }
+  
+  setupAudioUnlock();
+  
+  // ============================================
+  // END AMBIENT SOUNDSCAPE SYSTEM
+  // ============================================
   
   channel.onmessage = (event) => {
     const data = event.data;
@@ -68,6 +299,22 @@
             case 'toggle_trees':
                 INCLUDE_TREES = !INCLUDE_TREES;
                 if (isovistActive && viewerPosition) updateVisualization();
+                break;
+            case 'toggle_ambient_sound':
+                ambientSoundEnabled = !ambientSoundEnabled;
+                if (!ambientSoundEnabled) {
+                    stopAmbientAudio();
+                } else if (isovistActive && viewerPosition) {
+                    startAmbientAudio();
+                }
+                break;
+            case 'set_ambient_volume':
+                const vol = parseFloat(data.value);
+                if (!isNaN(vol) && vol >= 0 && vol <= 1) {
+                    // Temporarily override max volume
+                    if (natureGainNode) natureGainNode.gain.setTargetAtTime(vol * currentGreenViewFactor, ambientAudioContext.currentTime, 0.1);
+                    if (cityGainNode) cityGainNode.gain.setTargetAtTime(vol * (1 - currentGreenViewFactor), ambientAudioContext.currentTime, 0.1);
+                }
                 break;
         }
     }
@@ -108,6 +355,11 @@
     
     // Load tree obstacles
     loadTreeObstacles();
+    
+    // Initialize ambient soundscape
+    if (ambientSoundEnabled) {
+      startAmbientAudio();
+    }
 
     // Add isovist layers to map
     if (!map.getSource('isovist-polygon')) {
@@ -418,6 +670,9 @@
       cancelAnimationFrame(animationFrameId);
       animationFrameId = null;
     }
+    
+    // Stop ambient soundscape
+    stopAmbientAudio();
 
     // Remove event listeners
     map.off('click', onMapClick);
@@ -1087,6 +1342,11 @@
     // Add tree stats
     stats.totalTrees = viewedTrees.length;
     stats.treesEnabled = INCLUDE_TREES;
+    
+    // Add green view factor (GVF) - ratio of tree rays to total rays
+    stats.greenViewFactor = numRays > 0 ? (stats.treeRays / numRays) : 0;
+    stats.greenViewFactorPercent = (stats.greenViewFactor * 100).toFixed(1);
+    stats.ambientSoundEnabled = ambientSoundEnabled;
     
     // Broadcast stats to controller
     broadcastIsovistStats(stats);
