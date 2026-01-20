@@ -826,18 +826,24 @@ function updateDashboard(targetId) {
                         <span class="material-icons" style="font-size: 18px;">school</span>
                         Educational Context
                     </div>
-                    <div class="info-box" style="margin-bottom: 1rem; border-left-color: #eab308;">
-                        <div class="info-title">Methodology</div>
+                    <div class="info-box" style="margin-bottom: 1rem; border-left-color: #2D5A27;">
+                        <div class="info-title">Green View Factor (GVF)</div>
                         <p class="info-text">
-                            Calculates a <strong>visibility polygon</strong> (isovist) from a specific point by casting rays in all directions until they hit an obstacle (building). 
+                            Measures the <strong>percentage of vegetation visible</strong> from a viewpoint. 
+                            Higher GVF (≥30%) is linked to reduced stress, improved mental health, and better thermal comfort in urban environments.
+                        </p>
+                    </div>
+                    <div class="info-box" style="margin-bottom: 1rem; border-left-color: #eab308;">
+                        <div class="info-title">Isovist Methodology</div>
+                        <p class="info-text">
+                            Calculates a <strong>visibility polygon</strong> from a specific point by casting rays until they hit obstacles (buildings or trees). 
                             Simulates human visual perception in urban space.
                         </p>
                     </div>
                     <div class="info-box" style="border-left-color: #eab308;">
                         <div class="info-title">Application</div>
                         <p class="info-text">
-                            Used in <strong>urban design</strong> and <strong>criminology</strong> (CPTED) to analyze surveillance, openness, and spatial connectivity. 
-                            Helps identify "dead spaces" with poor visibility or maximize scenic views.
+                            Used in <strong>urban design</strong> and <strong>criminology</strong> (CPTED) to analyze surveillance, openness, and spatial connectivity.
                         </p>
                     </div>
                 </div>
@@ -872,6 +878,7 @@ function updateDashboard(targetId) {
 
         // Clear history when switching to isovist
         isovistHistory.data = [];
+        isovistHistory.gvfHistory = [];
 
         // Attach event listeners
         const radiusInput = document.getElementById('isovist-radius');
@@ -1176,6 +1183,7 @@ channel.onmessage = (event) => {
 const isovistHistory = {
     maxPoints: 100,
     data: [],
+    gvfHistory: [], // Track GVF values for rolling average
     colors: {
         'Open View': '#87CEEB',
         'Trees': '#2D5A27',
@@ -1213,7 +1221,35 @@ function updateIsovistChart(stats) {
     };
     
     // Calculate GVF (Green View Factor) - percentage of view that is trees/vegetation
-    const gvf = parseFloat(buildingTypes['Trees'].percent);
+    // Cap at 100% to handle any floating point rounding issues
+    const gvf = Math.min(100, parseFloat(buildingTypes['Trees'].percent));
+    
+    // Add to GVF rolling history
+    isovistHistory.gvfHistory.push(gvf);
+    if (isovistHistory.gvfHistory.length > isovistHistory.maxPoints) {
+        isovistHistory.gvfHistory.shift();
+    }
+    
+    // Calculate rolling average GVF
+    const gvfAverage = isovistHistory.gvfHistory.length > 0 
+        ? (isovistHistory.gvfHistory.reduce((a, b) => a + b, 0) / isovistHistory.gvfHistory.length).toFixed(1)
+        : 0;
+    
+    // Determine GVF rating
+    let gvfRating, gvfRatingColor, gvfRatingIcon;
+    if (gvfAverage >= 30) {
+        gvfRating = 'Good';
+        gvfRatingColor = '#4CAF50';
+        gvfRatingIcon = 'check_circle';
+    } else if (gvfAverage >= 15) {
+        gvfRating = 'Fair';
+        gvfRatingColor = '#FF9800';
+        gvfRatingIcon = 'info';
+    } else {
+        gvfRating = 'Poor';
+        gvfRatingColor = '#f44336';
+        gvfRatingIcon = 'warning';
+    }
     
     // Filter out types with 0 rays (except Open View and Trees which we always show if enabled)
     const activeTypes = Object.entries(buildingTypes).filter(([type, data]) => 
@@ -1267,22 +1303,15 @@ function updateIsovistChart(stats) {
                 position: relative;
             }
             .pie-chart::after {
-                content: 'GVF';
+                content: '';
                 position: absolute;
                 top: 50%;
                 left: 50%;
                 transform: translate(-50%, -50%);
                 width: 90px;
                 height: 90px;
-                background: #1a1a2e;
+                background: #2a2a2a;
                 border-radius: 50%;
-                display: flex;
-                align-items: center;
-                justify-content: center;
-                font-size: 12px;
-                color: #666;
-                text-transform: uppercase;
-                letter-spacing: 1px;
             }
             .pie-chart-gvf {
                 position: absolute;
@@ -1293,17 +1322,18 @@ function updateIsovistChart(stats) {
                 z-index: 1;
             }
             .gvf-value {
-                font-size: 28px;
+                font-size: 26px;
                 font-weight: 700;
-                color: #2D5A27;
+                color: #ffffff;
                 line-height: 1;
             }
             .gvf-label {
                 font-size: 10px;
-                color: #888;
+                color: #2D5A27;
                 text-transform: uppercase;
                 letter-spacing: 1px;
-                margin-top: 2px;
+                margin-top: 4px;
+                font-weight: 600;
             }
             .pie-stats {
                 display: flex;
@@ -1387,11 +1417,48 @@ function updateIsovistChart(stats) {
                 border-radius: 4px;
                 background: rgba(0,0,0,0.2);
             }
+            .gvf-average-container {
+                margin-top: 10px;
+                padding: 10px;
+                background: rgba(0,0,0,0.2);
+                border-radius: 6px;
+                display: flex;
+                align-items: center;
+                justify-content: space-between;
+            }
+            .gvf-average-left {
+                display: flex;
+                align-items: center;
+                gap: 8px;
+            }
+            .gvf-average-label {
+                font-size: 10px;
+                color: #888;
+                text-transform: uppercase;
+                letter-spacing: 0.5px;
+            }
+            .gvf-average-value {
+                font-size: 18px;
+                font-weight: 700;
+                color: #fff;
+            }
+            .gvf-rating {
+                display: flex;
+                align-items: center;
+                gap: 4px;
+                padding: 4px 10px;
+                border-radius: 12px;
+                font-size: 11px;
+                font-weight: 600;
+            }
+            .gvf-rating .material-icons {
+                font-size: 14px;
+            }
         </style>
         <div class="isovist-pie-container">
             <div class="pie-chart">
                 <div class="pie-chart-gvf">
-                    <div class="gvf-value">${gvf}%</div>
+                    <div class="gvf-value">${gvf.toFixed(1)}%</div>
                     <div class="gvf-label">GVF</div>
                 </div>
             </div>
@@ -1454,6 +1521,18 @@ function updateIsovistChart(stats) {
         <div class="history-chart-container">
             <div class="history-chart-title">Visibility History</div>
             <canvas id="isovist-history-canvas" class="history-canvas"></canvas>
+        </div>
+        <div class="gvf-average-container">
+            <div class="gvf-average-left">
+                <div>
+                    <div class="gvf-average-label">Average GVF</div>
+                    <div class="gvf-average-value">${gvfAverage}%</div>
+                </div>
+            </div>
+            <div class="gvf-rating" style="background: ${gvfRatingColor}22; color: ${gvfRatingColor};">
+                <span class="material-icons">${gvfRatingIcon}</span>
+                ${gvfRating}
+            </div>
         </div>
     `;
     
