@@ -50,15 +50,15 @@ const CONFIG = {
   spawnInterval: 200,    // Faster spawning for density
   
   // Streetlight Configuration (Warm Sodium Vapor look)
-  streetlightColor: 'rgba(255, 210, 150, 0.4)', // Brighter warm glow
+  streetlightColor: 'rgba(255, 210, 150, 0.6)', // Brighter warm glow
   streetlightRadius: 60,   // Size of the light pool in pixels
   streetlightSpacing: 0.0008, // Moderate spacing between lights
   
   // Building Window Lights Configuration
-  buildingGlowColor: 'rgba(255, 220, 150, 0.15)',  // Subtle warm glow
+  buildingGlowColor: 'rgba(255, 220, 150, 0.25)',  // Brighter warm glow
   buildingDashLength: 8,    // Length of lit "window" dashes
   buildingGapLength: 12,    // Gap between dashes
-  buildingGlowWidth: 3,     // Width of the glow stroke
+  buildingGlowWidth: 2,     // Width of the glow stroke
   
   // Emergency Vehicle Configuration (Narrative Events)
   emergencySpawnMin: 10000,   // Min time between spawns (10 sec)
@@ -668,7 +668,7 @@ function drawCar(ctx, pos, angle, colors, headlightsOn, direction = 1) {
   
   // 2. BODY GLOW (The "Neon" look)
   ctx.shadowColor = colors.body;
-  ctx.shadowBlur = 10; // This makes the car look like a light source
+  ctx.shadowBlur = 18; // This makes the car look like a light source
   ctx.fillStyle = colors.body;
   
   ctx.beginPath();
@@ -678,7 +678,7 @@ function drawCar(ctx, pos, angle, colors, headlightsOn, direction = 1) {
   // 3. TAILLIGHTS (Intense Red Trails)
   // We draw these slightly offset so they leave red streaks
   ctx.shadowColor = '#ff0000';
-  ctx.shadowBlur = 6;
+  ctx.shadowBlur = 12;
   ctx.fillStyle = '#ff2222';
   ctx.fillRect(-width/2 + 1, len/2 - 1, 2, 2);
   ctx.fillRect(width/2 - 3, len/2 - 1, 2, 2);
@@ -714,7 +714,7 @@ function drawBus(ctx, pos, angle, colors, isAtStop, direction = 1) {
   
   // Bus body with glow
   ctx.shadowColor = colors.body;
-  ctx.shadowBlur = 12;
+  ctx.shadowBlur = 20;
   ctx.fillStyle = colors.body;
   ctx.beginPath();
   ctx.roundRect(-width / 2, -len / 2, width, len, 3);
@@ -722,7 +722,7 @@ function drawBus(ctx, pos, angle, colors, isAtStop, direction = 1) {
   
   // Windows (multiple along the side) - illuminated from inside
   ctx.shadowColor = colors.windows;
-  ctx.shadowBlur = 4;
+  ctx.shadowBlur = 8;
   ctx.fillStyle = colors.windows;
   for (let i = 0; i < 4; i++) {
     ctx.fillRect(-width / 2 + 1, -len / 2 + 4 + i * 5, width - 2, 3);
@@ -733,7 +733,7 @@ function drawBus(ctx, pos, angle, colors, isAtStop, direction = 1) {
   
   // Taillights (Intense Red Trails)
   ctx.shadowColor = '#ff0000';
-  ctx.shadowBlur = 8;
+  ctx.shadowBlur = 14;
   ctx.fillStyle = '#ff2222';
   ctx.fillRect(-width/2 + 1, len/2 - 2, 2, 3);
   ctx.fillRect(width/2 - 3, len/2 - 2, 2, 3);
@@ -764,7 +764,7 @@ function drawPedestrian(ctx, pos, wobblePhase, color, size) {
   
   // Glow effect
   ctx.shadowColor = color;
-  ctx.shadowBlur = 6;
+  ctx.shadowBlur = 12;
   
   // Head
   ctx.fillStyle = color;
@@ -808,7 +808,7 @@ function drawTaxi(ctx, pos, angle, colors, isAvailable, direction = 1) {
   
   // Taxi body with glow
   ctx.shadowColor = colors.body;
-  ctx.shadowBlur = 10;
+  ctx.shadowBlur = 18;
   ctx.fillStyle = colors.body;
   ctx.beginPath();
   ctx.roundRect(-width / 2, -len / 2, width, len, 2);
@@ -818,12 +818,12 @@ function drawTaxi(ctx, pos, angle, colors, isAvailable, direction = 1) {
   const signColor = isAvailable ? '#00ff00' : '#ff0000';
   ctx.fillStyle = signColor;
   ctx.shadowColor = signColor;
-  ctx.shadowBlur = 12;
+  ctx.shadowBlur = 20;
   ctx.fillRect(-2, -len / 4 - 3, 4, 3);
   
   // Taillights (Intense Red Trails)
   ctx.shadowColor = '#ff0000';
-  ctx.shadowBlur = 6;
+  ctx.shadowBlur = 12;
   ctx.fillStyle = '#ff2222';
   ctx.fillRect(-width/2 + 1, len/2 - 1, 2, 2);
   ctx.fillRect(width/2 - 3, len/2 - 1, 2, 2);
@@ -847,7 +847,7 @@ function drawBicycle(ctx, pos, angle, colors, pedalPhase, direction = 1) {
   ctx.strokeStyle = colors.frame;
   ctx.lineWidth = 1.5;
   ctx.shadowColor = colors.frame;
-  ctx.shadowBlur = 4;
+  ctx.shadowBlur = 10;
   
   // Frame triangle
   ctx.beginPath();
@@ -869,7 +869,7 @@ function drawBicycle(ctx, pos, angle, colors, pedalPhase, direction = 1) {
   const bobY = Math.sin(pedalPhase) * 0.5;
   ctx.fillStyle = colors.rider;
   ctx.shadowColor = colors.rider;
-  ctx.shadowBlur = 6;
+  ctx.shadowBlur = 12;
   
   // Rider body
   ctx.beginPath();
@@ -1068,8 +1068,8 @@ function drawStreetlights(ctx, width, height) {
       pos.x, pos.y, radius  // Outer circle
     );
     grad.addColorStop(0, CONFIG.streetlightColor);   // Warm center
-    grad.addColorStop(0.3, 'rgba(255, 210, 150, 0.06)'); // Gradual falloff
-    grad.addColorStop(0.7, 'rgba(255, 210, 150, 0.02)'); // Soft spread
+    grad.addColorStop(0.3, 'rgba(255, 210, 150, 0.12)'); // Gradual falloff
+    grad.addColorStop(0.7, 'rgba(255, 210, 150, 0.05)'); // Soft spread
     grad.addColorStop(1, 'rgba(0,0,0,0)');           // Fade to nothing
     
     ctx.fillStyle = grad;
@@ -1164,9 +1164,9 @@ function drawBuildings(ctx, width, height) {
     
     // Some buildings are white, others are warm - seeded by index
     const isWhite = ((index * 7) % 5) === 0; // ~20% of buildings are white
-    const brightness = 0.08 + (((index * 7) % 13) / 13) * 0.15;
+    const brightness = 0.15 + (((index * 7) % 13) / 13) * 0.25;
     if (isWhite) {
-      ctx.strokeStyle = `rgba(255, 255, 255, ${brightness + 0.05})`; // Pure white, slightly brighter
+      ctx.strokeStyle = `rgba(255, 255, 255, ${brightness + 0.1})`; // Pure white, brighter
     } else {
       ctx.strokeStyle = `rgba(255, 220, 150, ${brightness})`; // Warm glow
     }
