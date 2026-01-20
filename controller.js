@@ -1177,14 +1177,15 @@ const isovistHistory = {
     maxPoints: 100,
     data: [],
     colors: {
-        'Open Sky': '#87CEEB',
-        'Bostad': '#4CAF50',
-        'Verksamhet': '#2196F3',
+        'Open View': '#87CEEB',
+        'Trees': '#2D5A27',
+        'Bostad': '#E57373',
+        'Verksamhet': '#00ACC1',
         'Samhällsfunktion': '#9C27B0',
         'Komplementbyggnad': '#FF9800',
         'Unknown': '#888888'
     },
-    order: ['Unknown', 'Komplementbyggnad', 'Samhällsfunktion', 'Verksamhet', 'Bostad', 'Open Sky']
+    order: ['Unknown', 'Komplementbyggnad', 'Samhällsfunktion', 'Verksamhet', 'Bostad', 'Trees', 'Open View']
 };
 
 function updateIsovistChart(stats) {
@@ -1197,26 +1198,32 @@ function updateIsovistChart(stats) {
     
     const totalRays = stats.totalRays || 1;
     const openRays = stats.openRays || 0;
+    const treeRays = stats.treeRays || 0;
     const buildingTypeRays = stats.buildingTypeRays || {};
     
     // Calculate ray-based percentages (these will add up to 100%)
     const buildingTypes = {
-        'Open Sky': { rays: openRays, color: '#87CEEB', percent: ((openRays / totalRays) * 100).toFixed(1) },
-        'Bostad': { rays: buildingTypeRays['Bostad'] || 0, color: '#4CAF50', percent: (((buildingTypeRays['Bostad'] || 0) / totalRays) * 100).toFixed(1) },
-        'Verksamhet': { rays: buildingTypeRays['Verksamhet'] || 0, color: '#2196F3', percent: (((buildingTypeRays['Verksamhet'] || 0) / totalRays) * 100).toFixed(1) },
+        'Open View': { rays: openRays, color: '#87CEEB', percent: ((openRays / totalRays) * 100).toFixed(1) },
+        'Trees': { rays: treeRays, color: '#2D5A27', percent: ((treeRays / totalRays) * 100).toFixed(1) },
+        'Bostad': { rays: buildingTypeRays['Bostad'] || 0, color: '#E57373', percent: (((buildingTypeRays['Bostad'] || 0) / totalRays) * 100).toFixed(1) },
+        'Verksamhet': { rays: buildingTypeRays['Verksamhet'] || 0, color: '#00ACC1', percent: (((buildingTypeRays['Verksamhet'] || 0) / totalRays) * 100).toFixed(1) },
         'Samhällsfunktion': { rays: buildingTypeRays['Samhällsfunktion'] || 0, color: '#9C27B0', percent: (((buildingTypeRays['Samhällsfunktion'] || 0) / totalRays) * 100).toFixed(1) },
         'Komplementbyggnad': { rays: buildingTypeRays['Komplementbyggnad'] || 0, color: '#FF9800', percent: (((buildingTypeRays['Komplementbyggnad'] || 0) / totalRays) * 100).toFixed(1) },
         'Unknown': { rays: buildingTypeRays['Unknown'] || 0, color: '#888888', percent: (((buildingTypeRays['Unknown'] || 0) / totalRays) * 100).toFixed(1) }
     };
     
-    // Filter out types with 0 rays (except Open Sky which we always show)
+    // Calculate GVF (Green View Factor) - percentage of view that is trees/vegetation
+    const gvf = parseFloat(buildingTypes['Trees'].percent);
+    
+    // Filter out types with 0 rays (except Open View and Trees which we always show if enabled)
     const activeTypes = Object.entries(buildingTypes).filter(([type, data]) => 
-        type === 'Open Sky' || data.rays > 0
+        type === 'Open View' || type === 'Trees' || data.rays > 0
     );
     
     // Add to history
     isovistHistory.data.push({
-        'Open Sky': parseFloat(buildingTypes['Open Sky'].percent),
+        'Open View': parseFloat(buildingTypes['Open View'].percent),
+        'Trees': parseFloat(buildingTypes['Trees'].percent),
         'Bostad': parseFloat(buildingTypes['Bostad'].percent),
         'Verksamhet': parseFloat(buildingTypes['Verksamhet'].percent),
         'Samhällsfunktion': parseFloat(buildingTypes['Samhällsfunktion'].percent),
@@ -1260,7 +1267,7 @@ function updateIsovistChart(stats) {
                 position: relative;
             }
             .pie-chart::after {
-                content: '';
+                content: 'GVF';
                 position: absolute;
                 top: 50%;
                 left: 50%;
@@ -1269,6 +1276,34 @@ function updateIsovistChart(stats) {
                 height: 90px;
                 background: #1a1a2e;
                 border-radius: 50%;
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                font-size: 12px;
+                color: #666;
+                text-transform: uppercase;
+                letter-spacing: 1px;
+            }
+            .pie-chart-gvf {
+                position: absolute;
+                top: 50%;
+                left: 50%;
+                transform: translate(-50%, -50%);
+                text-align: center;
+                z-index: 1;
+            }
+            .gvf-value {
+                font-size: 28px;
+                font-weight: 700;
+                color: #2D5A27;
+                line-height: 1;
+            }
+            .gvf-label {
+                font-size: 10px;
+                color: #888;
+                text-transform: uppercase;
+                letter-spacing: 1px;
+                margin-top: 2px;
             }
             .pie-stats {
                 display: flex;
@@ -1354,19 +1389,24 @@ function updateIsovistChart(stats) {
             }
         </style>
         <div class="isovist-pie-container">
-            <div class="pie-chart"></div>
+            <div class="pie-chart">
+                <div class="pie-chart-gvf">
+                    <div class="gvf-value">${gvf}%</div>
+                    <div class="gvf-label">GVF</div>
+                </div>
+            </div>
             <div class="pie-stats">
                 <div class="pie-stat-item">
                     <span class="pie-stat-value">${stats.totalBuildings || 0}</span>
                     <span class="pie-stat-label">Buildings</span>
                 </div>
                 <div class="pie-stat-item">
-                    <span class="pie-stat-value">${buildingTypes['Open Sky'].percent}%</span>
-                    <span class="pie-stat-label">Open Sky</span>
+                    <span class="pie-stat-value">${stats.totalTrees || 0}</span>
+                    <span class="pie-stat-label">Trees</span>
                 </div>
                 <div class="pie-stat-item">
-                    <span class="pie-stat-value">${(100 - parseFloat(buildingTypes['Open Sky'].percent)).toFixed(1)}%</span>
-                    <span class="pie-stat-label">Built</span>
+                    <span class="pie-stat-value">${buildingTypes['Open View'].percent}%</span>
+                    <span class="pie-stat-label">Open View</span>
                 </div>
             </div>
         </div>
@@ -1378,7 +1418,8 @@ function updateIsovistChart(stats) {
                            type === 'Komplementbyggnad' ? 'Outbld' :
                            type === 'Verksamhet' ? 'Comm.' :
                            type === 'Bostad' ? 'Resid.' : 
-                           type === 'Open Sky' ? 'Sky' : type;
+                           type === 'Open View' ? 'Open' :
+                           type === 'Trees' ? 'Trees' : type;
         html += `
             <div class="pie-legend-item">
                 <div class="pie-legend-dot" style="background: ${data.color};"></div>
@@ -1390,11 +1431,11 @@ function updateIsovistChart(stats) {
     html += `</div>
         <div class="building-legend">
             <div class="building-legend-item">
-                <div class="building-legend-color" style="background: #4CAF50;"></div>
+                <div class="building-legend-color" style="background: #E57373;"></div>
                 <span>Residential</span>
             </div>
             <div class="building-legend-item">
-                <div class="building-legend-color" style="background: #2196F3;"></div>
+                <div class="building-legend-color" style="background: #00ACC1;"></div>
                 <span>Commercial</span>
             </div>
             <div class="building-legend-item">
@@ -1404,6 +1445,10 @@ function updateIsovistChart(stats) {
             <div class="building-legend-item">
                 <div class="building-legend-color" style="background: #FF9800;"></div>
                 <span>Outbuilding</span>
+            </div>
+            <div class="building-legend-item">
+                <div class="building-legend-color" style="background: #2D5A27;"></div>
+                <span>Trees</span>
             </div>
         </div>
         <div class="history-chart-container">

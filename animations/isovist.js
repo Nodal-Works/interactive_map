@@ -23,6 +23,13 @@
   const FOLLOW_THRESHOLD = 50; // distance in meters before viewer starts following
   const FOLLOW_SPEED = 0.15; // how fast viewer follows (0-1, higher = faster)
   
+  // Tree obstacle settings
+  let treeObstacles = []; // Circular obstacles from trees
+  const TREE_BASE_RADIUS = 2; // Base radius in meters for tree canopy
+  const TREE_RADIUS_VARIATION = 1.5; // Random variation in meters
+  const TREE_HEIGHT_FACTOR = 0.3; // Additional radius per meter of height
+  let INCLUDE_TREES = true; // Toggle tree obstacles in view analysis
+  
   // Path history for trace
   let pathHistory = [];
   const MAX_PATH_POINTS = 500;
@@ -57,6 +64,10 @@
                 break;
              case 'toggle_follow':
                 FOLLOW_CURSOR = !FOLLOW_CURSOR;
+                break;
+            case 'toggle_trees':
+                INCLUDE_TREES = !INCLUDE_TREES;
+                if (isovistActive && viewerPosition) updateVisualization();
                 break;
         }
     }
@@ -94,6 +105,9 @@
   function activateIsovist() {
     // Load building obstacles from loaded GeoJSON
     loadBuildingObstacles();
+    
+    // Load tree obstacles
+    loadTreeObstacles();
 
     // Add isovist layers to map
     if (!map.getSource('isovist-polygon')) {
@@ -264,8 +278,8 @@
           'fill-color': [
             'match',
             ['get', 'objekttyp'],
-            'Bostad', '#4CAF50',           // Green for residential
-            'Verksamhet', '#2196F3',       // Blue for commercial/business
+            'Bostad', '#E57373',           // Coral for residential
+            'Verksamhet', '#00ACC1',       // Teal for commercial/business
             'Samhällsfunktion', '#9C27B0', // Purple for public functions
             'Komplementbyggnad', '#FF9800', // Orange for outbuildings
             '#888888'                       // Gray for unknown
@@ -282,8 +296,8 @@
           'line-color': [
             'match',
             ['get', 'objekttyp'],
-            'Bostad', '#2E7D32',           // Darker green
-            'Verksamhet', '#1565C0',       // Darker blue
+            'Bostad', '#C62828',           // Darker coral/red
+            'Verksamhet', '#00838F',       // Darker teal
             'Samhällsfunktion', '#6A1B9A', // Darker purple
             'Komplementbyggnad', '#E65100', // Darker orange
             '#555555'                       // Darker gray
@@ -294,10 +308,78 @@
       });
     }
 
+    // Add source and layer for ALL trees (background layer)
+    if (!map.getSource('isovist-all-trees')) {
+      map.addSource('isovist-all-trees', {
+        type: 'geojson',
+        data: {
+          type: 'FeatureCollection',
+          features: []
+        }
+      });
+
+      // All tree canopy circles (faded background)
+      map.addLayer({
+        id: 'isovist-all-trees-fill',
+        type: 'fill',
+        source: 'isovist-all-trees',
+        paint: {
+          'fill-color': '#90EE90',  // Light green
+          'fill-opacity': 0.05
+        }
+      });
+
+      map.addLayer({
+        id: 'isovist-all-trees-outline',
+        type: 'line',
+        source: 'isovist-all-trees',
+        paint: {
+          'line-color': '#228B22',
+          'line-width': 0.5,
+          'line-opacity': 0.05
+        }
+      });
+    }
+
+    // Add source and layer for highlighted (viewed) trees
+    if (!map.getSource('isovist-trees')) {
+      map.addSource('isovist-trees', {
+        type: 'geojson',
+        data: {
+          type: 'FeatureCollection',
+          features: []
+        }
+      });
+
+      // Tree canopy circles (viewed trees - brighter)
+      map.addLayer({
+        id: 'isovist-trees-fill',
+        type: 'fill',
+        source: 'isovist-trees',
+        paint: {
+          'fill-color': '#2D5A27',  // Dark forest green
+          'fill-opacity': 0.7
+        }
+      });
+
+      map.addLayer({
+        id: 'isovist-trees-outline',
+        type: 'line',
+        source: 'isovist-trees',
+        paint: {
+          'line-color': '#1B3D1B',  // Even darker green
+          'line-width': 1.5,
+          'line-opacity': 0.9
+        }
+      });
+    }
+
     // Enforce Z-order to ensure outline is visible on top of gradients
     const layerOrder = [
       'isovist-path-trace-line',
       'isovist-path-trace-dots',
+      'isovist-all-trees-fill',
+      'isovist-all-trees-outline',
       'isovist-fill',
       'isovist-gradient-0',
       'isovist-gradient-1',
@@ -306,6 +388,8 @@
       'isovist-gradient-4',
       'isovist-viewed-buildings-fill',
       'isovist-viewed-buildings-outline',
+      'isovist-trees-fill',
+      'isovist-trees-outline',
       'isovist-line',
       'isovist-direction',
       'isovist-viewer-point'
@@ -381,6 +465,21 @@
         }
       });
     }
+    if (map.getSource('isovist-trees')) {
+      map.getSource('isovist-trees').setData({
+        type: 'FeatureCollection',
+        features: []
+      });
+    }
+    if (map.getSource('isovist-all-trees')) {
+      map.getSource('isovist-all-trees').setData({
+        type: 'FeatureCollection',
+        features: []
+      });
+    }
+    
+    // Clear tree obstacles
+    treeObstacles = [];
 
     // Remove building footprints overlay
     if (map.getLayer('user-fill')) {
@@ -476,6 +575,90 @@
       properties: properties,
       bbox: { minLng, minLat, maxLng, maxLat }
     });
+  }
+
+  async function loadTreeObstacles() {
+    try {
+      const response = await fetch('media/trees.geojson');
+      if (!response.ok) {
+        console.warn('Trees file not found');
+        return;
+      }
+      
+      const geojson = await response.json();
+      
+      if (!isovistActive) return;
+      
+      // Process tree points into circular obstacles
+      treeObstacles = [];
+      
+      // Use a seeded random for consistent radii per tree
+      const seededRandom = (seed) => {
+        const x = Math.sin(seed) * 10000;
+        return x - Math.floor(x);
+      };
+      
+      geojson.features.forEach((feature, idx) => {
+        if (feature.geometry.type === 'Point') {
+          const coords = feature.geometry.coordinates;
+          const height = feature.properties.height || 10;
+          
+          // Calculate radius based on height with random variation
+          const randomVariation = (seededRandom(idx) - 0.5) * 2 * TREE_RADIUS_VARIATION;
+          const radius = TREE_BASE_RADIUS + (height * TREE_HEIGHT_FACTOR) + randomVariation;
+          
+          // Calculate bbox for spatial filtering
+          const radiusDeg = radius / 111000; // rough meters to degrees
+          
+          treeObstacles.push({
+            center: coords,
+            radius: Math.max(1, radius), // minimum 1 meter radius
+            properties: feature.properties,
+            bbox: {
+              minLng: coords[0] - radiusDeg,
+              minLat: coords[1] - radiusDeg,
+              maxLng: coords[0] + radiusDeg,
+              maxLat: coords[1] + radiusDeg
+            }
+          });
+        }
+      });
+      
+      console.log(`Loaded ${treeObstacles.length} tree obstacles`);
+      showToast(`Loaded ${treeObstacles.length} trees for view analysis`, 3000);
+      
+      // Update the all-trees layer to show all tree canopies
+      if (map.getSource('isovist-all-trees')) {
+        const allTreeFeatures = treeObstacles.map(tree => {
+          // Create a circle polygon approximation (24 points)
+          const circlePoints = [];
+          const numPoints = 24;
+          for (let i = 0; i <= numPoints; i++) {
+            const angle = (i / numPoints) * 360;
+            circlePoints.push(destination(tree.center, tree.radius, angle));
+          }
+          return {
+            type: 'Feature',
+            geometry: {
+              type: 'Polygon',
+              coordinates: [circlePoints]
+            },
+            properties: {
+              ...tree.properties,
+              radius: tree.radius
+            }
+          };
+        });
+        
+        map.getSource('isovist-all-trees').setData({
+          type: 'FeatureCollection',
+          features: allTreeFeatures
+        });
+      }
+      
+    } catch (error) {
+      console.warn('Failed to load trees:', error);
+    }
   }
 
   async function loadDefaultBuildings() {
@@ -644,6 +827,14 @@
           features: result.viewedBuildings
         });
       }
+      
+      // Update highlighted (viewed) trees
+      if (map.getSource('isovist-trees')) {
+        map.getSource('isovist-trees').setData({
+          type: 'FeatureCollection',
+          features: result.viewedTrees || []
+        });
+      }
     }
   }
 
@@ -651,6 +842,7 @@
     // Ray casting algorithm to compute visibility polygon
     const rays = [];
     const viewedObstacleIndices = new Set(); // Track which buildings are viewed
+    const viewedTreeIndices = new Set(); // Track which trees are viewed
     
     // Determine the viewing angle range
     let startAngle, endAngle, angleStep;
@@ -694,6 +886,16 @@
 
     // Create a map from active obstacle to its global index
     const activeObstacleIndices = activeObstacles.map(obs => obstacles.indexOf(obs));
+    
+    // Filter active trees by distance (bbox check)
+    const activeTrees = INCLUDE_TREES ? treeObstacles.filter(tree => {
+        return !(tree.bbox.minLng > viewBbox.maxLng || 
+                 tree.bbox.maxLng < viewBbox.minLng || 
+                 tree.bbox.minLat > viewBbox.maxLat || 
+                 tree.bbox.maxLat < viewBbox.minLat);
+    }) : [];
+    
+    const activeTreeIndices = activeTrees.map(tree => treeObstacles.indexOf(tree));
 
     // Cast rays within the field of view
     const numRays = Math.ceil((endAngle - startAngle) / angleStep);
@@ -704,6 +906,7 @@
       // Find closest intersection with any building
       let minDistance = MAX_VIEW_DISTANCE;
       let hitObstacleIdx = -1;
+      let hitTreeIdx = -1;
 
       activeObstacles.forEach((obstacle, localIdx) => {
         const coords = obstacle.points;
@@ -718,7 +921,22 @@
             if (dist < minDistance) {
               minDistance = dist;
               hitObstacleIdx = activeObstacleIndices[localIdx];
+              hitTreeIdx = -1; // Building takes precedence
             }
+          }
+        }
+      });
+      
+      // Check intersection with tree circles
+      activeTrees.forEach((tree, localIdx) => {
+        const intersections = rayCircleIntersection(origin, rayEnd, tree.center, tree.radius);
+        if (intersections.length > 0) {
+          // Use the closest intersection point
+          const dist = distance(origin, intersections[0]);
+          if (dist < minDistance) {
+            minDistance = dist;
+            hitTreeIdx = activeTreeIndices[localIdx];
+            hitObstacleIdx = -1; // Tree is closer
           }
         }
       });
@@ -727,8 +945,13 @@
       if (hitObstacleIdx >= 0) {
         viewedObstacleIndices.add(hitObstacleIdx);
       }
+      
+      // Track the tree that was hit
+      if (hitTreeIdx >= 0) {
+        viewedTreeIndices.add(hitTreeIdx);
+      }
 
-      rays.push({ angle: angle, dist: minDistance, obstacleIndex: hitObstacleIdx });
+      rays.push({ angle: angle, dist: minDistance, obstacleIndex: hitObstacleIdx, treeIndex: hitTreeIdx });
     }
     
     // Generate polygons
@@ -802,19 +1025,47 @@
         properties: obs.properties || {}
       };
     });
+    
+    // 3b. Convert viewed tree indices to GeoJSON circle polygons
+    const viewedTrees = Array.from(viewedTreeIndices).map(idx => {
+      const tree = treeObstacles[idx];
+      // Create a circle polygon approximation (32 points)
+      const circlePoints = [];
+      const numPoints = 32;
+      for (let i = 0; i <= numPoints; i++) {
+        const angle = (i / numPoints) * 360;
+        circlePoints.push(destination(tree.center, tree.radius, angle));
+      }
+      return {
+        type: 'Feature',
+        geometry: {
+          type: 'Polygon',
+          coordinates: [circlePoints]
+        },
+        properties: {
+          ...tree.properties,
+          radius: tree.radius,
+          type: 'tree'
+        }
+      };
+    });
 
     // 4. Calculate statistics for the controller chart
     const stats = {
       totalRays: numRays,
       openRays: 0,
+      treeRays: 0,
       buildingTypeRays: {},
       buildingTypeCounts: {}
     };
     
-    // Count rays that hit max distance (open area) vs buildings by type
+    // Count rays that hit max distance (open area) vs buildings/trees by type
     rays.forEach(ray => {
       if (ray.dist >= MAX_VIEW_DISTANCE * 0.99) {
         stats.openRays++;
+      } else if (ray.treeIndex !== undefined && ray.treeIndex >= 0) {
+        // Ray hit a tree
+        stats.treeRays++;
       } else if (ray.obstacleIndex !== undefined && ray.obstacleIndex >= 0) {
         // Get the building type for this ray's obstacle
         const obs = obstacles[ray.obstacleIndex];
@@ -833,10 +1084,79 @@
     stats.openAreaPercent = ((stats.openRays / numRays) * 100).toFixed(1);
     stats.totalBuildings = viewedBuildings.length;
     
+    // Add tree stats
+    stats.totalTrees = viewedTrees.length;
+    stats.treesEnabled = INCLUDE_TREES;
+    
     // Broadcast stats to controller
     broadcastIsovistStats(stats);
 
-    return { mainPolygon, bands, viewedBuildings };
+    return { mainPolygon, bands, viewedBuildings, viewedTrees };
+  }
+  
+  // Ray-circle intersection helper
+  function rayCircleIntersection(rayStart, rayEnd, circleCenter, radiusMeters) {
+    // Convert to approximate local coordinates (meters)
+    const toLocal = (point) => {
+      const latMid = (rayStart[1] + circleCenter[1]) / 2;
+      const metersPerDegLng = 111320 * Math.cos(latMid * Math.PI / 180);
+      const metersPerDegLat = 110540;
+      return [
+        (point[0] - rayStart[0]) * metersPerDegLng,
+        (point[1] - rayStart[1]) * metersPerDegLat
+      ];
+    };
+    
+    const fromLocal = (point) => {
+      const latMid = (rayStart[1] + circleCenter[1]) / 2;
+      const metersPerDegLng = 111320 * Math.cos(latMid * Math.PI / 180);
+      const metersPerDegLat = 110540;
+      return [
+        point[0] / metersPerDegLng + rayStart[0],
+        point[1] / metersPerDegLat + rayStart[1]
+      ];
+    };
+    
+    const p1 = toLocal(rayStart); // [0, 0]
+    const p2 = toLocal(rayEnd);
+    const c = toLocal(circleCenter);
+    const r = radiusMeters;
+    
+    // Direction vector
+    const dx = p2[0] - p1[0];
+    const dy = p2[1] - p1[1];
+    
+    // Quadratic coefficients
+    const a = dx * dx + dy * dy;
+    const b = 2 * (dx * (p1[0] - c[0]) + dy * (p1[1] - c[1]));
+    const cc = (p1[0] - c[0]) ** 2 + (p1[1] - c[1]) ** 2 - r * r;
+    
+    const discriminant = b * b - 4 * a * cc;
+    
+    if (discriminant < 0) return [];
+    
+    const intersections = [];
+    const sqrtDisc = Math.sqrt(discriminant);
+    
+    const t1 = (-b - sqrtDisc) / (2 * a);
+    const t2 = (-b + sqrtDisc) / (2 * a);
+    
+    // Check if intersections are on the ray segment (t between 0 and 1)
+    if (t1 >= 0 && t1 <= 1) {
+      const ix = p1[0] + t1 * dx;
+      const iy = p1[1] + t1 * dy;
+      intersections.push(fromLocal([ix, iy]));
+    }
+    if (t2 >= 0 && t2 <= 1 && Math.abs(t2 - t1) > 0.001) {
+      const ix = p1[0] + t2 * dx;
+      const iy = p1[1] + t2 * dy;
+      intersections.push(fromLocal([ix, iy]));
+    }
+    
+    // Sort by distance from ray start
+    intersections.sort((a, b) => distance(rayStart, a) - distance(rayStart, b));
+    
+    return intersections;
   }
 
   // Collision detection and position validation
