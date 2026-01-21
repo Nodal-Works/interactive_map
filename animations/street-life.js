@@ -1431,6 +1431,11 @@ function startStreetLifeAnimation() {
     
     animateStreetLife();
     
+    // Start Västtrafik live transit overlay
+    if (window.trafikAnimation) {
+      window.trafikAnimation.start();
+    }
+    
     console.log('Street Life animation started');
   });
 }
@@ -1456,6 +1461,11 @@ function stopStreetLifeAnimation() {
   if (emergencySpawnTimer) {
     clearTimeout(emergencySpawnTimer);
     emergencySpawnTimer = null;
+  }
+  
+  // Stop Västtrafik live transit overlay
+  if (window.trafikAnimation) {
+    window.trafikAnimation.stop();
   }
   
   console.log('Street Life animation stopped');

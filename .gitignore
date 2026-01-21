@@ -9,6 +9,9 @@ yarn.lock
 .env.*.local
 .venv/
 
+# API configuration (contains secrets)
+trafik-config.json
+
 # IDE
 .vscode/
 .idea/
