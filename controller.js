@@ -14,6 +14,7 @@ const MSG_TYPES = {
     SLIDESHOW_CONTROL: 'slideshow_control',
     // Incoming (main -> controller)
     STATE_UPDATE: 'state_update',
+    ANIMATION_STATE: 'animation_state',  // New: animation on/off state
     SLIDESHOW_UPDATE: 'slideshow_update',
     SLIDESHOW_LEGEND_HIGHLIGHT: 'slideshow_legend_highlight',
     BIRD_STATUS: 'bird_status',
@@ -42,6 +43,74 @@ let slideshowState = {
     slideType: null
 };
 
+// Animation layer tracking - tracks active animations and their order
+// Animation buttons are buttons that toggle visualizations on/off
+const ANIMATION_BUTTONS = [
+    'cfd-simulation-btn',
+    'stormwater-btn', 
+    'sun-study-btn',
+    'slideshow-btn',
+    'grid-animation-btn',
+    'isovist-btn',
+    'bird-sounds-btn'
+];
+
+// Function buttons are buttons that perform actions (not toggleable animations)
+const FUNCTION_BUTTONS = [
+    'reset-view-btn',
+    'fullscreen-btn',
+    'calibrate-btn',
+    'credits-btn'
+];
+
+// Track active animations in order they were activated
+let activeAnimations = [];
+
+function isAnimationButton(targetId) {
+    return ANIMATION_BUTTONS.includes(targetId);
+}
+
+// Called when we receive actual state from the main window
+function setAnimationState(targetId, isActive) {
+    if (isActive) {
+        if (!activeAnimations.includes(targetId)) {
+            activeAnimations.push(targetId);
+        }
+    } else {
+        activeAnimations = activeAnimations.filter(id => id !== targetId);
+    }
+    syncAnimationButtonStates();
+}
+
+function syncAnimationButtonStates() {
+    // Remove all existing badges first
+    document.querySelectorAll('.animation-order-badge').forEach(badge => badge.remove());
+    
+    // Update each animation button's active state and badge
+    ANIMATION_BUTTONS.forEach(targetId => {
+        const btn = document.querySelector(`[data-target="${targetId}"]`);
+        if (!btn) return;
+        
+        const isActive = activeAnimations.includes(targetId);
+        const orderIndex = activeAnimations.indexOf(targetId);
+        
+        // Set or remove active class based on tracking
+        if (isActive) {
+            btn.classList.add('active');
+            
+            // Only show order badge if multiple animations are active
+            if (activeAnimations.length > 1) {
+                const badge = document.createElement('span');
+                badge.className = 'animation-order-badge';
+                badge.textContent = orderIndex + 1;
+                btn.appendChild(badge);
+            }
+        } else {
+            btn.classList.remove('active');
+        }
+    });
+}
+
 // Update connection status
 // Since BroadcastChannel doesn't have a direct "connected" event for peers, 
 // we'll assume connected if we can send, but we can implement a ping/pong if needed.
@@ -52,7 +121,11 @@ statusText.textContent = 'Connected';
 // Function to show welcome screen
 function showWelcome() {
     welcomeScreen.classList.remove('hidden');
-    document.querySelectorAll('.control-btn').forEach(b => b.classList.remove('active'));
+    // Clear all animation tracking and sync button states
+    activeAnimations = [];
+    syncAnimationButtonStates();
+    // Also clear function button selections
+    document.querySelectorAll('.control-btn.function-btn').forEach(b => b.classList.remove('selected'));
     startTour();
 }
 
@@ -72,17 +145,22 @@ document.querySelectorAll('.control-btn[data-target]').forEach(btn => {
         const targetId = btn.dataset.target;
         const action = btn.dataset.action;
         
-        // Send message to main window
+        // Send message to main window - the main window will respond with actual state
         channel.postMessage({
             type: MSG_TYPES.CONTROL_ACTION,
             target: targetId,
             action: action
         });
 
-        // Update UI state locally
-        document.querySelectorAll('.control-btn').forEach(b => b.classList.remove('active'));
-        btn.classList.add('active');
+        // For function buttons, mark as selected for dashboard display
+        if (!isAnimationButton(targetId)) {
+            document.querySelectorAll('.control-btn.function-btn').forEach(b => {
+                b.classList.remove('selected');
+            });
+            btn.classList.add('selected');
+        }
         
+        // Always update metadata and dashboard when a button is clicked
         updateMetadata(targetId);
         updateDashboard(targetId);
 
@@ -1116,19 +1194,12 @@ channel.onmessage = (event) => {
     const data = event.data;
     debugLog('Received:', data.type, data);
     
-    if (data.type === MSG_TYPES.STATE_UPDATE) {
-        // Update controller UI based on main window state
-        if (data.activeLayer) {
-             document.querySelectorAll('.control-btn').forEach(b => {
-                 if (b.dataset.target === data.activeLayer) {
-                     b.classList.add('active');
-                     updateMetadata(data.activeLayer);
-                     updateDashboard(data.activeLayer);
-                 } else {
-                     b.classList.remove('active');
-                 }
-             });
-        }
+    if (data.type === MSG_TYPES.ANIMATION_STATE) {
+        // Received actual animation state from main window - update our tracking
+        setAnimationState(data.animationId, data.isActive);
+    } else if (data.type === MSG_TYPES.STATE_UPDATE) {
+        // Legacy state update - ignore for animation buttons now
+        // We use ANIMATION_STATE for that instead
     } else if (data.type === MSG_TYPES.SLIDESHOW_UPDATE) {
         // Update slideshow state and display
         slideshowState = {
@@ -2078,12 +2149,10 @@ function nextTourStep() {
 }
 
 function showTourStep() {
-    // Remove highlight from all
-    document.querySelectorAll('.control-btn').forEach(b => b.classList.remove('tour-highlight'));
+    // Note: We no longer highlight buttons during tour to avoid confusion
+    // with actually selected/active buttons
     
     const step = tourSteps[currentStep];
-    const btn = document.querySelector(step.selector);
-    if (btn) btn.classList.add('tour-highlight');
     
     // Update text with fade effect
     tourInfo.style.opacity = 0;
@@ -2109,7 +2178,6 @@ function stopTour() {
         clearInterval(tourInterval);
         tourInterval = null;
     }
-    document.querySelectorAll('.control-btn').forEach(b => b.classList.remove('tour-highlight'));
     tourInfo.classList.remove('active');
     setEffect('default'); // Stop effects
 }

@@ -4,6 +4,7 @@
 const gridCanvas = document.getElementById('grid-animation-canvas');
 const gridCtx = gridCanvas.getContext('2d');
 const gridBtn = document.getElementById('grid-animation-btn');
+const gridChannel = new BroadcastChannel('map_controller_channel');
 
 // Table physical dimensions
 const TABLE_WIDTH_CM = 100;
@@ -127,6 +128,7 @@ function startGridAnimation() {
   
   isAnimating = true;
   gridCanvas.classList.add('active');
+  gridChannel.postMessage({ type: 'animation_state', animationId: 'grid-animation-btn', isActive: true });
   resizeGridCanvas();
   animateGrid();
   
@@ -139,6 +141,7 @@ function startGridAnimation() {
 function stopGridAnimation() {
   isAnimating = false;
   gridCanvas.classList.remove('active');
+  gridChannel.postMessage({ type: 'animation_state', animationId: 'grid-animation-btn', isActive: false });
   if (animationFrame) {
     cancelAnimationFrame(animationFrame);
     animationFrame = null;

@@ -806,6 +806,9 @@ async function startSlideshow() {
   isSlideShowActive = true;
   currentSlideIndex = 0;
   
+  // Broadcast animation state to controller
+  slideshowChannel.postMessage({ type: 'animation_state', animationId: 'slideshow-btn', isActive: true });
+  
   // Broadcast initial state immediately
   if (slideshowConfig && slideshowConfig.slides && slideshowConfig.slides.length > 0) {
     broadcastSlideshowState(slideshowConfig.slides[0]);
@@ -844,6 +847,9 @@ async function startSlideshow() {
 // Stop slideshow
 function stopSlideshow() {
   isSlideShowActive = false;
+  
+  // Broadcast animation state to controller
+  slideshowChannel.postMessage({ type: 'animation_state', animationId: 'slideshow-btn', isActive: false });
   
   // Clear timer
   if (slideshowTimer) {

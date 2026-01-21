@@ -587,6 +587,11 @@ class StormwaterFlowAnimation {
     
     this.isActive = true;
     this.canvas.classList.add('active');
+    
+    // Broadcast state to controller
+    const channel = new BroadcastChannel('map_controller_channel');
+    channel.postMessage({ type: 'animation_state', animationId: 'stormwater-btn', isActive: true });
+    
     this.handleResize();
     
     // Play rain sound
@@ -721,6 +726,10 @@ class StormwaterFlowAnimation {
     
     this.isActive = false;
     this.canvas.classList.remove('active');
+    
+    // Broadcast state to controller
+    const channel = new BroadcastChannel('map_controller_channel');
+    channel.postMessage({ type: 'animation_state', animationId: 'stormwater-btn', isActive: false });
     
     // Stop rain sound
     this.rainAudio.pause();

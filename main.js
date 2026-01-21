@@ -262,6 +262,43 @@ const tableOverlay = document.getElementById('table-overlay');
 if (tableOverlay) tableOverlay.style.display = 'none';
 
 let centerLocked = false;
+let calibrationModeActive = false;
+
+// Function to enable/disable map interactions based on calibration mode
+function setCalibrationMode(enabled) {
+  calibrationModeActive = enabled;
+  if (enabled) {
+    // Enable all interactions for calibration
+    try { map.dragPan.enable(); } catch(e){}
+    try { map.doubleClickZoom.enable(); } catch(e){}
+    try { map.scrollZoom.enable(); } catch(e){}
+    try { map.boxZoom.enable(); } catch(e){}
+    try { map.keyboard.enable(); } catch(e){}
+    try { map.touchZoomRotate.enable(); } catch(e){}
+    showToast('Calibration mode: Zoom/Pan enabled');
+  } else {
+    // Disable zoom/pan interactions when not in calibration mode
+    map.dragPan.disable();
+    map.doubleClickZoom.disable();
+    map.scrollZoom.disable();
+    map.boxZoom.disable();
+    map.keyboard.disable();
+    map.touchZoomRotate.disable();
+    showToast('Calibration mode off: Zoom/Pan disabled');
+  }
+}
+
+// Disable zoom/pan by default after map loads
+map.on('load', () => {
+  // Disable all zoom/pan interactions by default
+  map.dragPan.disable();
+  map.doubleClickZoom.disable();
+  map.scrollZoom.disable();
+  map.boxZoom.disable();
+  map.keyboard.disable();
+  map.touchZoomRotate.disable();
+  console.log('Map interactions disabled by default (enable via calibration mode)');
+});
 
 function setInteractionLock(locked) {
   centerLocked = locked;
@@ -276,12 +313,15 @@ function setInteractionLock(locked) {
     map.jumpTo({ center: tableCenter });
     showToast('Center locked');
   } else {
-    try { map.dragPan.enable(); } catch(e){}
-    try { map.doubleClickZoom.enable(); } catch(e){}
-    try { map.scrollZoom.enable(); } catch(e){}
-    try { map.boxZoom.enable(); } catch(e){}
-    try { map.keyboard.enable(); } catch(e){}
-    try { map.touchZoomRotate.enable(); } catch(e){}
+    // Only enable if calibration mode is active
+    if (calibrationModeActive) {
+      try { map.dragPan.enable(); } catch(e){}
+      try { map.doubleClickZoom.enable(); } catch(e){}
+      try { map.scrollZoom.enable(); } catch(e){}
+      try { map.boxZoom.enable(); } catch(e){}
+      try { map.keyboard.enable(); } catch(e){}
+      try { map.touchZoomRotate.enable(); } catch(e){}
+    }
     showToast('Center unlocked');
   }
 }
@@ -353,6 +393,13 @@ controllerChannel.onmessage = (event) => {
     if (data.type === 'control_action') {
         const targetId = data.target;
         const btn = document.getElementById(targetId);
+        
+        // Handle calibration mode toggle
+        if (targetId === 'calibrate-btn') {
+            // Toggle calibration mode
+            setCalibrationMode(!calibrationModeActive);
+        }
+        
         if (btn) {
             // Simulate click or trigger the function directly
             // Using click() is easiest as it triggers existing event listeners

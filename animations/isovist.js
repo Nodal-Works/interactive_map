@@ -7,6 +7,8 @@
     console.warn('Isovist: Map not ready yet, will initialize when available');
   }
 
+  const isovistChannel = new BroadcastChannel('map_controller_channel');
+  
   let isovistActive = false;
   let viewerPosition = null;
   let cursorPosition = null;
@@ -350,6 +352,9 @@
   }
 
   function activateIsovist() {
+    // Broadcast state to controller
+    isovistChannel.postMessage({ type: 'animation_state', animationId: 'isovist-btn', isActive: true });
+    
     // Load building obstacles from loaded GeoJSON
     loadBuildingObstacles();
     
@@ -665,6 +670,9 @@
   }
 
   function deactivateIsovist() {
+    // Broadcast state to controller
+    isovistChannel.postMessage({ type: 'animation_state', animationId: 'isovist-btn', isActive: false });
+    
     // Stop animation
     if (animationFrameId) {
       cancelAnimationFrame(animationFrameId);

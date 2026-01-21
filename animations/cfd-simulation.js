@@ -894,6 +894,9 @@
     cfdBtn.style.background = '#0078d4';
     cfdBtn.style.color = '#fff';
     
+    // Broadcast state to controller
+    channel.postMessage({ type: 'animation_state', animationId: 'cfd-simulation-btn', isActive: true });
+    
     // Play wind sound
     windAudio.play().catch(e => console.warn("Audio play failed:", e));
     
@@ -912,6 +915,9 @@
     cfdBtn.classList.remove('toggled-on');
     cfdBtn.style.background = '';
     cfdBtn.style.color = '';
+    
+    // Broadcast state to controller
+    channel.postMessage({ type: 'animation_state', animationId: 'cfd-simulation-btn', isActive: false });
     
     // Stop wind sound
     windAudio.pause();

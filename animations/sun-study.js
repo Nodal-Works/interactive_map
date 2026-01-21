@@ -1235,6 +1235,11 @@ class SunStudy {
     const sunBtn = document.getElementById('sun-study-btn');
     if (sunBtn) sunBtn.classList.toggle('active', this.isActive);
     
+    // Broadcast state to controller
+    if (this.channel) {
+      this.channel.postMessage({ type: 'animation_state', animationId: 'sun-study-btn', isActive: this.isActive });
+    }
+    
     if (this.isActive) {
       await this.show();
     } else {

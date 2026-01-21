@@ -131,6 +131,9 @@ class BirdSoundsLayer {
     this.isActive = !this.isActive;
     const btn = document.getElementById('bird-sounds-btn');
     if (btn) btn.classList.toggle('active', this.isActive);
+    
+    // Broadcast state to controller
+    this.controllerChannel.postMessage({ type: 'animation_state', animationId: 'bird-sounds-btn', isActive: this.isActive });
 
     if (this.isActive) {
       this.initAudioContext();
