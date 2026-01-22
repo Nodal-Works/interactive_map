@@ -615,7 +615,6 @@ The following tables are included in this document:
 | 12 | Modality Selection Criteria | 3.2 | Determine appropriate display technology |
 | 13 | CEE Economic Model Decision Matrix | 3.1 | At-a-glance modality cost comparison |
 
----
 
 ## Appendix F: Glossary of Terms
 
