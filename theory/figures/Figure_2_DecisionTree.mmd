@@ -1,0 +1,61 @@
+%%{init: {'theme': 'base', 'themeVariables': { 'primaryColor': '#fff', 'primaryTextColor': '#333', 'primaryBorderColor': '#333', 'lineColor': '#333'}}}%%
+flowchart TD
+    %% Styles
+    classDef default fill:#fff,stroke:#333,stroke-width:1px
+    classDef decision fill:#f9f9f9,stroke:#000,stroke-width:2px
+    classDef stop fill:#ffebee,stroke:#c62828,stroke-width:2px
+    classDef result fill:#e1f5fe,stroke:#0277bd,stroke-width:2px
+    classDef highlight fill:#f3e5f5,stroke:#8e44ad,stroke-width:2px
+
+    Start((START)) --> Step0
+    
+    %% STEP 0: CEE GATEKEEPER
+    Step0{{"STEP 0: CEE CHECK<br/>Is Information Complexity ><br/>Modality-Load Threshold β?"}}:::decision
+    
+    Step0 -- "No (IC ≤ β)" --> Stop1["STOP: Use Simpler Modality<br/>(2D Map / Dashboard / Paper)<br/><br/>MR cognitively inefficient<br/>for this data complexity"]:::stop
+    Step0 -- "Yes (IC > β)" --> Step1
+    
+    %% STEP 1: VISIBILITY
+    Step1{{"STEP 1: VISIBILITY<br/>Is the phenomenon visible<br/>to the naked eye?"}}:::decision
+    
+    Step1 -- Visible --> ResVis1["GOAL: Enhancement<br/>• Realistic representation<br/>• Literal audio (ambient)<br/>• Low explanation need"]:::result
+    Step1 -- Invisible --> ResVis2["GOAL: Revelation<br/>• Invent visual language<br/>• Audio embodies force<br/>• Higher explanation need"]:::highlight
+    
+    ResVis1 --> Step2
+    ResVis2 --> Step2
+    
+    %% STEP 2: DYNAMISM
+    Step2{{"STEP 2: DYNAMISM<br/>Does it change over time?"}}:::decision
+    
+    Step2 -- Static --> ResDyn1["Reference Layer<br/>• No animation<br/>• Toggle on/off"]:::result
+    Step2 -- Parametric --> ResDyn2["Scenario Layer<br/>• Time/parameter control<br/>• Before/after comparison"]:::result
+    Step2 -- Dynamic --> ResDyn3["Flow/Simulation Layer<br/>• Continuous animation<br/>• Particle systems"]:::highlight
+    
+    ResDyn1 --> Step3
+    ResDyn2 --> Step3
+    ResDyn3 --> Step3
+    
+    %% SONIFICATION OPPORTUNITY
+    ResVis2 -.->|"High-Value<br/>Sonification<br/>Opportunity"| ResDyn3
+    ResDyn3 -.->|"SONIFY:<br/>Wind/Flow/Field"| AudioNode[["🔊 Audio Design:<br/>Ecological or Parametric<br/>Sonification"]]:::highlight
+
+    %% STEP 3: AGENCY
+    Step3{{"STEP 3: AGENCY<br/>What can the user do?"}}:::decision
+    
+    Step3 -- Observe --> ResAg1["Ambient Display<br/>• No input needed<br/>• Peripheral viewing"]:::result
+    Step3 -- Explore --> ResAg2["Embodied Query<br/>• Cursor = body position<br/>• Hover reveals info"]:::result
+    Step3 -- Manipulate --> ResAg3["Parameter Controls<br/>• Sliders/tangibles<br/>• What-if scenarios"]:::result
+    
+    ResAg1 --> Step4
+    ResAg2 --> Step4
+    ResAg3 --> Step4
+    
+    %% STEP 4: ABSTRACTION
+    Step4{{"STEP 4: ABSTRACTION<br/>How processed is the data?"}}:::decision
+    
+    Step4 -- Concrete --> ResAbs1["Iconic Representation<br/>• Self-explanatory<br/>• Minimal legend"]:::result
+    Step4 -- Processed --> ResAbs2["Symbolic Encoding<br/>• Visual metaphor<br/>• Legend required"]:::result
+    Step4 -- Derived --> ResAbs3["Abstract Display<br/>• Numbers/charts<br/>• Full explanation needed"]:::result
+
+    %% Link styling
+    linkStyle 0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20 stroke:#333,stroke-width:1px
