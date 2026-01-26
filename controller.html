@@ -11,7 +11,7 @@
             background: #1a1a1a;
             color: #e0e0e0;
             display: grid;
-            grid-template-columns: 120px 1fr;
+            grid-template-columns: 120px 1fr 120px;
             grid-template-rows: auto 1fr;
             height: 100vh;
             overflow: hidden;
@@ -31,7 +31,7 @@
 
         h1 { margin: 0; font-size: 1.8rem; color: #f0f0f0; }
 
-        #controls-panel {
+        #controls-panel, #right-panel {
             background: #242424;
             border-right: 1px solid #3a3a3a;
             padding: 1.5rem 0.75rem;
@@ -40,6 +40,11 @@
             flex-direction: column;
             gap: 2rem;
             align-items: center;
+        }
+
+        #right-panel {
+            border-right: none;
+            border-left: 1px solid #3a3a3a;
         }
 
         #main-panel {
@@ -625,6 +630,15 @@
             </div>
         </section>
     </main>
+
+    <aside id="right-panel">
+        <div class="control-group">
+            <h3>Demos</h3>
+            <button class="control-btn animation-btn" data-action="click" data-target="fcc-demo-btn" title="FCC VR Demo">
+                <span class="material-icons">videocam</span>
+            </button>
+        </div>
+    </aside>
 
     <script src="controller.js"></script>
     

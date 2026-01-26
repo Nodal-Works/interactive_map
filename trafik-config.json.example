@@ -5,5 +5,6 @@
   "accessToken": "YOUR_ACCESS_TOKEN_HERE",
   "tokenExpiry": 0,
   "bbox": [11.936224, 57.677523, 12.018278, 57.699659],
+  "streetViewApiKey": "YOUR_STREET_VIEW_APIKEY",
   "_comment": "bbox format: [minLng, minLat, maxLng, maxLat]. Copy this file to trafik-config.json and fill in your Västtrafik API credentials. Get them from https://developer.vasttrafik.se/"
 }
