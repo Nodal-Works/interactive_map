@@ -1438,6 +1438,16 @@ channel.onmessage = (event) => {
     } else if (data.type === 'street_view_position') {
         // Received position from main map - update Street View panorama
         updateStreetViewPosition(data.position, data.heading);
+    } else if (data.type === 'sam_segment') {
+        // Trigger segmentation as requested from main window
+        const segBtn = document.getElementById('sam-segment-btn');
+        if (segBtn) {
+            // Simulate user click
+            segBtn.click();
+        } else {
+            // Update status if available
+            if (typeof setSamStatus === 'function') setSamStatus('No segmentation UI', false);
+        }
     } else {
         // Log unknown message types for debugging new features
         debugLog('Unknown message type:', data.type);
@@ -3449,5 +3459,127 @@ function updateStreetViewPosition(position, heading) {
     }
     
     updateStreetViewImage();
+}
+
+// --- SAM Segmentation (Controller side) ---
+const SAM_SERVER_URL = 'http://localhost:8000';
+
+function setSamStatus(msg, ok) {
+    const el = document.getElementById('sam-server-status');
+    if (!el) return;
+    el.textContent = 'SAM Server: ' + msg;
+    el.style.color = ok ? '#22c55e' : '#ef4444';
+}
+
+async function checkSamServer() {
+    try {
+        const r = await fetch(SAM_SERVER_URL + '/');
+        if (r.ok) {
+            setSamStatus('Ready', true);
+            return true;
+        }
+    } catch (e) {
+        // ignore
+    }
+    setSamStatus('Unavailable', false);
+    return false;
+}
+
+async function initSamSegmentation() {
+    const btn = document.getElementById('sam-segment-btn');
+    if (!btn) return;
+    btn.addEventListener('click', async () => {
+        const img = document.getElementById('street-view-image');
+        if (!img || !img.src || img.style.display === 'none') {
+            alert('No Street View image available to segment');
+            return;
+        }
+
+        const available = await checkSamServer();
+        if (!available) {
+            alert('SAM server not available at ' + SAM_SERVER_URL);
+            return;
+        }
+
+        btn.disabled = true;
+        const origText = btn.textContent;
+        btn.textContent = 'Segmenting...';
+        setSamStatus('Processing...', true);
+
+        try {
+            const imageResp = await fetch(img.src);
+            const imageBlob = await imageResp.blob();
+            const fd = new FormData();
+            fd.append('file', imageBlob, 'streetview.jpg');
+
+            const resp = await fetch(SAM_SERVER_URL + '/segment', {
+                method: 'POST',
+                body: fd
+            });
+
+            if (!resp.ok) throw new Error('Server returned ' + resp.status);
+
+            const maskBlob = await resp.blob();
+            const segJson = resp.headers.get('X-Segmentation-JSON');
+
+            // Display mask
+            const maskUrl = URL.createObjectURL(maskBlob);
+            const maskContainer = document.getElementById('sam-mask-container');
+            if (maskContainer) {
+                maskContainer.innerHTML = `<img src="${maskUrl}" style="max-width:100%; border-radius:8px; border:2px solid #444; margin-bottom:0.5rem;" alt="Segmentation Mask" />`;
+            }
+
+            // Display class table
+            if (segJson) {
+                let data = {};
+                try { data = JSON.parse(segJson); } catch (e) { data = {}; }
+                const cats = data.categories || {};
+                let table = '<table style="width:100%; font-size:1rem; color:#eee; border-collapse:collapse;">';
+                table += '<tr><th style="text-align:left; color:#60a5fa;">Class</th><th style="text-align:right; color:#60a5fa;">%</th></tr>';
+                Object.entries(cats).sort((a,b)=> (b[1].pixel_ratio_percent||0) - (a[1].pixel_ratio_percent||0)).forEach(([cat, val]) => {
+                    const pct = (val && val.pixel_ratio_percent) ? val.pixel_ratio_percent.toFixed(2) : '0.00';
+                    table += `<tr><td style="padding:2px 4px;">${cat}</td><td style="text-align:right; padding:2px 4px;">${pct}</td></tr>`;
+                });
+                table += '</table>';
+                const classTable = document.getElementById('sam-class-table');
+                if (classTable) classTable.innerHTML = table;
+            }
+
+            setSamStatus('Done', true);
+        } catch (err) {
+            console.error('Segmentation error', err);
+            setSamStatus('Error', false);
+            alert('Segmentation failed: ' + err.message);
+        } finally {
+            btn.disabled = false;
+            btn.textContent = origText;
+        }
+    });
+
+    // initial check
+    checkSamServer();
+
+    // Bind Spacebar to trigger segmentation (when not typing in an input)
+    document.addEventListener('keydown', (e) => {
+        if (e.code !== 'Space' && e.key !== ' ') return;
+        // Ignore if modifier keys are held
+        if (e.altKey || e.ctrlKey || e.metaKey || e.shiftKey) return;
+        const active = document.activeElement;
+        if (active && (active.tagName === 'INPUT' || active.tagName === 'TEXTAREA' || active.isContentEditable)) return;
+        // Prevent page scroll
+        e.preventDefault();
+        // Only trigger if button exists
+        const segBtn = document.getElementById('sam-segment-btn');
+        if (segBtn && !segBtn.disabled) {
+            segBtn.click();
+        }
+    });
+}
+
+// bind when DOM ready
+if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', initSamSegmentation);
+} else {
+    initSamSegmentation();
 }
 

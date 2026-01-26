@@ -16,6 +16,20 @@
       }
     }
     </script>
+    <script>
+    // Spacebar in main view triggers segmentation in controller via BroadcastChannel
+    (function() {
+      const channel = new BroadcastChannel('map_controller_channel');
+      document.addEventListener('keydown', (e) => {
+        if (e.code !== 'Space' && e.key !== ' ') return;
+        if (e.altKey || e.ctrlKey || e.metaKey || e.shiftKey) return;
+        const active = document.activeElement;
+        if (active && (active.tagName === 'INPUT' || active.tagName === 'TEXTAREA' || active.isContentEditable)) return;
+        e.preventDefault();
+        channel.postMessage({ type: 'sam_segment' });
+      });
+    })();
+    </script>
   </head>
   <body>
     <!-- Left sidebar -->

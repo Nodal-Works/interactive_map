@@ -2,6 +2,7 @@
 // Map interaction module - sends click positions to controller
 // Version: 3.2 - Shows actual camera position from Street View metadata
 
+// Street View + SAM Segmentation Integration
 (function() {
   const channel = new BroadcastChannel('map_controller_channel');
   
@@ -33,7 +34,111 @@
   const cameraHistory = [];
   const MAX_HISTORY = 10; // Number of past positions to show
   
-  console.log('Street View module loaded (v3.3 - with camera trail)');
+  console.log('Street View module loaded (v3.4 - with SAM segmentation)');
+
+  // --- SAM Segmentation Integration ---
+  const SAM_SERVER_URL = 'http://localhost:8000';
+  let samServerAvailable = false;
+
+  // Check if the SAM server is running
+  async function checkSamServer() {
+    try {
+      const resp = await fetch(SAM_SERVER_URL + '/');
+      if (resp.ok) {
+        samServerAvailable = true;
+        setSamStatus('Ready', true);
+      } else {
+        samServerAvailable = false;
+        setSamStatus('Unavailable', false);
+      }
+    } catch (e) {
+      samServerAvailable = false;
+      setSamStatus('Unavailable', false);
+    }
+  }
+
+  function setSamStatus(msg, ok) {
+    const el = document.getElementById('sam-server-status');
+    if (el) {
+      el.textContent = 'SAM Server: ' + msg;
+      el.style.color = ok ? '#22c55e' : '#ef4444';
+    }
+  }
+
+  // Handle segmentation button click
+  function initSamSegmentation() {
+    const btn = document.getElementById('sam-segment-btn');
+    if (!btn) return;
+    btn.addEventListener('click', async () => {
+      await checkSamServer();
+      if (!samServerAvailable) {
+        showToast('SAM server not available');
+        return;
+      }
+      // Get the current Street View image element
+      const img = document.getElementById('street-view-image');
+      if (!img || !img.src || img.style.display === 'none') {
+        showToast('No Street View image to segment');
+        return;
+      }
+      btn.disabled = true;
+      btn.textContent = 'Segmenting...';
+      setSamStatus('Processing...', true);
+      try {
+        // Fetch the image as a blob
+        const imageBlob = await fetch(img.src).then(r => r.blob());
+        const formData = new FormData();
+        formData.append('file', imageBlob, 'streetview.jpg');
+        // Optionally add confidence/lite params
+        // formData.append('confidence', '0.3');
+        // formData.append('lite', 'true');
+        const resp = await fetch(SAM_SERVER_URL + '/segment', {
+          method: 'POST',
+          body: formData
+        });
+        if (!resp.ok) throw new Error('Segmentation failed');
+        // Get mask image
+        const maskBlob = await resp.blob();
+        // Get JSON from header
+        const segJson = resp.headers.get('X-Segmentation-JSON');
+        // Show mask
+        const maskUrl = URL.createObjectURL(maskBlob);
+        const maskContainer = document.getElementById('sam-mask-container');
+        if (maskContainer) {
+          maskContainer.innerHTML = `<img src="${maskUrl}" style="max-width:100%; border-radius:8px; border:2px solid #444; margin-bottom:0.5rem;" alt="Segmentation Mask" />`;
+        }
+        // Show class breakdown
+        if (segJson) {
+          const data = JSON.parse(segJson);
+          const cats = data.categories || {};
+          let table = '<table style="width:100%; font-size:1rem; color:#eee; border-collapse:collapse;">';
+          table += '<tr><th style="text-align:left; color:#60a5fa;">Class</th><th style="text-align:right; color:#60a5fa;">%</th></tr>';
+          Object.entries(cats).sort((a,b)=>b[1].pixel_ratio_percent-a[1].pixel_ratio_percent).forEach(([cat, val]) => {
+            table += `<tr><td style="padding:2px 4px;">${cat}</td><td style="text-align:right; padding:2px 4px;">${val.pixel_ratio_percent.toFixed(2)}</td></tr>`;
+          });
+          table += '</table>';
+          const classTable = document.getElementById('sam-class-table');
+          if (classTable) classTable.innerHTML = table;
+        }
+        setSamStatus('Done', true);
+      } catch (err) {
+        setSamStatus('Error', false);
+        showToast('Segmentation failed: ' + err.message);
+      } finally {
+        btn.disabled = false;
+        btn.textContent = 'Segment Street View';
+      }
+    });
+    // Initial status check
+    checkSamServer();
+  }
+
+  // Wait for DOM and initialize SAM integration
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', initSamSegmentation);
+  } else {
+    initSamSegmentation();
+  }
   
   // Load API key from config (try multiple paths)
   async function loadApiKey() {
@@ -601,16 +706,13 @@
   // Initialize button on main map
   function initStreetViewButton() {
     if (buttonInitialized) return;
-    
     const btn = document.getElementById('street-view-btn');
     if (!btn) {
       console.log('Street View button not found');
       return;
     }
-    
     console.log('Initializing Street View button');
     buttonInitialized = true;
-    
     btn.addEventListener('click', () => {
       console.log('Street View button clicked, active:', streetViewActive);
       if (streetViewActive) {
@@ -620,14 +722,14 @@
       }
     });
   }
-  
+
   // Initialize when DOM is ready
   if (document.readyState === 'loading') {
     document.addEventListener('DOMContentLoaded', initStreetViewButton);
   } else {
     initStreetViewButton();
   }
-  
+
   // Also try when map is ready
   const checkMap = setInterval(() => {
     if (window.map) {
@@ -637,5 +739,5 @@
     }
   }, 100);
   setTimeout(() => clearInterval(checkMap), 10000);
-  
+
 })();
