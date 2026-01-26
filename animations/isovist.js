@@ -1,6 +1,6 @@
 // Interactive Isovist (Viewshed) Visualization
 // Real-time visibility polygon calculation with draggable viewer
-// Version: 1.3
+// Version: 1.4 - with Street View camera trail
 
 (function() {
   if (typeof window.map === 'undefined') {
@@ -37,11 +37,40 @@
   const MAX_PATH_POINTS = 500;
   const MIN_PATH_DISTANCE = 2; // minimum meters between path points
   
+  // Street View actual camera position trail
+  let streetViewApiKey = null;
+  let actualCameraPosition = null;
+  let cameraHistory = [];
+  const MAX_CAMERA_HISTORY = 12;
+  let lastMetadataFetch = null;
+  const METADATA_FETCH_DISTANCE = 5; // meters between fetches
+  
   // Street View position broadcast throttling
   let lastBroadcastPosition = null;
   let lastBroadcastHeading = null;
   const BROADCAST_MIN_DISTANCE = 3; // minimum meters between broadcasts
   const BROADCAST_MIN_HEADING_CHANGE = 15; // minimum degrees before heading update
+  
+  // Load Street View API key
+  async function loadStreetViewApiKey() {
+    const paths = ['trafik-config.json', './trafik-config.json'];
+    for (const path of paths) {
+      try {
+        const response = await fetch(path);
+        if (response.ok) {
+          const config = await response.json();
+          const key = config.streetViewApiKey || config.googleMapsApiKey;
+          if (key) {
+            streetViewApiKey = key;
+            console.log('Isovist: Street View API key loaded');
+            return;
+          }
+        }
+      } catch (e) { /* try next */ }
+    }
+    console.warn('Isovist: Could not load Street View API key');
+  }
+  loadStreetViewApiKey();
 
   // Ambient soundscape settings
   let ambientAudioContext = null;
@@ -522,6 +551,61 @@
         }
       });
     }
+    
+    // Add Street View actual camera position trail (green markers)
+    if (!map.getSource('isovist-streetview-camera')) {
+      map.addSource('isovist-streetview-camera', {
+        type: 'geojson',
+        data: {
+          type: 'FeatureCollection',
+          features: []
+        }
+      });
+      
+      // Historical camera positions (fading green)
+      map.addLayer({
+        id: 'isovist-streetview-camera-history',
+        type: 'circle',
+        source: 'isovist-streetview-camera',
+        filter: ['==', ['get', 'type'], 'history'],
+        paint: {
+          'circle-radius': 7,
+          'circle-color': '#00ff88',
+          'circle-opacity': ['get', 'opacity'],
+          'circle-stroke-color': '#ffffff',
+          'circle-stroke-width': 2,
+          'circle-stroke-opacity': ['get', 'opacity']
+        }
+      });
+      
+      // Current camera position glow (bright green)
+      map.addLayer({
+        id: 'isovist-streetview-camera-glow',
+        type: 'circle',
+        source: 'isovist-streetview-camera',
+        filter: ['==', ['get', 'type'], 'current'],
+        paint: {
+          'circle-radius': 18,
+          'circle-color': '#00ff88',
+          'circle-opacity': 0.4,
+          'circle-blur': 1
+        }
+      });
+      
+      // Current camera position point (bright green)
+      map.addLayer({
+        id: 'isovist-streetview-camera-point',
+        type: 'circle',
+        source: 'isovist-streetview-camera',
+        filter: ['==', ['get', 'type'], 'current'],
+        paint: {
+          'circle-radius': 10,
+          'circle-color': '#00ff88',
+          'circle-stroke-color': '#ffffff',
+          'circle-stroke-width': 3
+        }
+      });
+    }
 
     // Add source and layer for highlighted (viewed) buildings
     if (!map.getSource('isovist-viewed-buildings')) {
@@ -653,6 +737,9 @@
       'isovist-viewed-buildings-outline',
       'isovist-trees-fill',
       'isovist-trees-outline',
+      'isovist-streetview-camera-history',
+      'isovist-streetview-camera-glow',
+      'isovist-streetview-camera-point',
       'isovist-line',
       'isovist-direction',
       'isovist-viewer-point'
@@ -699,6 +786,9 @@
     cursorPosition = null;
     isDragging = false;
     pathHistory = [];  // Clear path history
+    actualCameraPosition = null;
+    cameraHistory = [];
+    lastMetadataFetch = null;
 
     // Clear layers
     if (map.getSource('isovist-polygon')) {
@@ -732,6 +822,12 @@
           type: 'LineString',
           coordinates: []
         }
+      });
+    }
+    if (map.getSource('isovist-streetview-camera')) {
+      map.getSource('isovist-streetview-camera').setData({
+        type: 'FeatureCollection',
+        features: []
       });
     }
     if (map.getSource('isovist-trees')) {
@@ -843,6 +939,78 @@
       points: ring,
       properties: properties,
       bbox: { minLng, minLat, maxLng, maxLat }
+    });
+  }
+  
+  // Fetch Street View metadata to get actual camera position
+  async function fetchStreetViewMetadata(position) {
+    if (!streetViewApiKey) return;
+    
+    // Throttle metadata fetches
+    if (lastMetadataFetch && distance(lastMetadataFetch, position) < METADATA_FETCH_DISTANCE) {
+      return;
+    }
+    lastMetadataFetch = [...position];
+    
+    const lat = position[1];
+    const lng = position[0];
+    const url = `https://maps.googleapis.com/maps/api/streetview/metadata?location=${lat},${lng}&key=${streetViewApiKey}`;
+    
+    try {
+      const response = await fetch(url);
+      const data = await response.json();
+      
+      if (data.status === 'OK' && data.location) {
+        const newCameraPos = [data.location.lng, data.location.lat];
+        
+        // Add to history if different from last position
+        if (!actualCameraPosition || distance(actualCameraPosition, newCameraPos) > 2) {
+          if (actualCameraPosition) {
+            cameraHistory.unshift([...actualCameraPosition]);
+            while (cameraHistory.length > MAX_CAMERA_HISTORY) {
+              cameraHistory.pop();
+            }
+          }
+        }
+        
+        actualCameraPosition = newCameraPos;
+        
+        // Update the camera layer
+        updateStreetViewCameraLayer();
+      }
+    } catch (err) {
+      // Silently fail
+    }
+  }
+  
+  // Update Street View camera position layer
+  function updateStreetViewCameraLayer() {
+    if (!map.getSource('isovist-streetview-camera')) return;
+    
+    const features = [];
+    
+    // Historical camera positions
+    cameraHistory.forEach((pos, index) => {
+      const opacity = 1 - ((index + 1) / (MAX_CAMERA_HISTORY + 1));
+      features.push({
+        type: 'Feature',
+        geometry: { type: 'Point', coordinates: pos },
+        properties: { type: 'history', opacity: opacity }
+      });
+    });
+    
+    // Current camera position
+    if (actualCameraPosition) {
+      features.push({
+        type: 'Feature',
+        geometry: { type: 'Point', coordinates: actualCameraPosition },
+        properties: { type: 'current' }
+      });
+    }
+    
+    map.getSource('isovist-streetview-camera').setData({
+      type: 'FeatureCollection',
+      features: features
     });
   }
 
@@ -1021,6 +1189,9 @@
 
   function performUpdate() {
     if (!viewerPosition) return;
+    
+    // Fetch Street View actual camera position (throttled internally)
+    fetchStreetViewMetadata(viewerPosition);
     
     // Broadcast position for Street View (throttled by distance OR heading change)
     const currentHeading = cursorPosition ? calculateBearing(viewerPosition, cursorPosition) : 0;
