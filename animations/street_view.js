@@ -1,6 +1,6 @@
 // Google Street View Integration
 // Map interaction module - sends click positions to controller
-// Version: 3.1 - Dynamic follow cursor mode with map preview
+// Version: 3.2 - Shows actual camera position from Street View metadata
 
 (function() {
   const channel = new BroadcastChannel('map_controller_channel');
@@ -10,6 +10,8 @@
   let buttonInitialized = false;
   let viewerPosition = null;
   let cursorPosition = null;
+  let actualCameraPosition = null; // The real Street View camera location
+  let apiKey = null;
   
   // Follow cursor settings (matching isovist behavior)
   let FOLLOW_CURSOR = true;
@@ -19,13 +21,43 @@
   // Broadcast throttling
   let lastBroadcastPosition = null;
   let lastBroadcastHeading = null;
+  let lastMetadataFetch = null;
   const BROADCAST_MIN_DISTANCE = 3; // meters
   const BROADCAST_MIN_HEADING_CHANGE = 15; // degrees
+  const METADATA_FETCH_DISTANCE = 5; // meters - fetch new metadata if moved this far
   
   // Direction line settings
   const DIRECTION_LINE_LENGTH = 50; // meters
   
-  console.log('Street View module loaded (v3.1 - with map preview)');
+  // Camera position history for fading trail
+  const cameraHistory = [];
+  const MAX_HISTORY = 10; // Number of past positions to show
+  
+  console.log('Street View module loaded (v3.3 - with camera trail)');
+  
+  // Load API key from config (try multiple paths)
+  async function loadApiKey() {
+    const paths = ['trafik-config.json', './trafik-config.json', '../trafik-config.json'];
+    for (const path of paths) {
+      try {
+        const response = await fetch(path);
+        if (response.ok) {
+          const config = await response.json();
+          // Try both possible key names
+          const key = config.streetViewApiKey || config.googleMapsApiKey;
+          if (key) {
+            apiKey = key;
+            console.log('Street View API key loaded from', path);
+            return;
+          }
+        }
+      } catch (e) {
+        // Try next path
+      }
+    }
+    console.warn('Could not load API key from any path');
+  }
+  loadApiKey();
   
   // Listen for control messages from controller
   channel.onmessage = (event) => {
@@ -53,6 +85,18 @@
     streetViewActive = true;
     
     console.log('Street View activating...');
+    
+    // Hide street life animation canvas
+    const streetLifeCanvas = document.getElementById('street-life-canvas');
+    if (streetLifeCanvas) {
+      streetLifeCanvas.style.display = 'none';
+    }
+    
+    // Hide trafik (tram/bus) canvas
+    const trafikCanvas = document.getElementById('trafik-canvas');
+    if (trafikCanvas) {
+      trafikCanvas.style.display = 'none';
+    }
     
     // Broadcast state
     channel.postMessage({ 
@@ -84,6 +128,18 @@
     
     console.log('Street View deactivating...');
     
+    // Show street life animation canvas again
+    const streetLifeCanvas = document.getElementById('street-life-canvas');
+    if (streetLifeCanvas) {
+      streetLifeCanvas.style.display = 'block';
+    }
+    
+    // Show trafik (tram/bus) canvas again
+    const trafikCanvas = document.getElementById('trafik-canvas');
+    if (trafikCanvas) {
+      trafikCanvas.style.display = 'block';
+    }
+    
     // Broadcast state
     channel.postMessage({ 
       type: 'animation_state', 
@@ -104,8 +160,11 @@
     // Reset state
     viewerPosition = null;
     cursorPosition = null;
+    actualCameraPosition = null;
     lastBroadcastPosition = null;
     lastBroadcastHeading = null;
+    lastMetadataFetch = null;
+    cameraHistory.length = 0; // Clear history
     
     showToast('Street View deactivated');
   }
@@ -114,7 +173,10 @@
   function addMapLayers() {
     if (!window.map) return;
     
-    // Add source for viewer point and direction
+    // Note: Google Street View coverage overlay requires the full Google Maps JavaScript API
+    // which would conflict with MapLibre. The coverage isn't available as public tiles.
+    
+    // Add source for viewer point and direction (user's requested position)
     if (!window.map.getSource('streetview-viewer')) {
       window.map.addSource('streetview-viewer', {
         type: 'geojson',
@@ -165,19 +227,79 @@
         }
       });
       
-      // Viewer point layer (rendered on top)
+      // Viewer point outer glow (user's requested position)
+      window.map.addLayer({
+        id: 'streetview-viewer-glow',
+        type: 'circle',
+        source: 'streetview-viewer',
+        filter: ['all', ['==', ['geometry-type'], 'Point'], ['!=', ['get', 'type'], 'camera']],
+        paint: {
+          'circle-radius': 16,
+          'circle-color': '#00aaff',
+          'circle-opacity': 0.3,
+          'circle-blur': 1
+        }
+      });
+      
+      // Viewer point layer (user's requested position - blue)
       window.map.addLayer({
         id: 'streetview-viewer-point',
         type: 'circle',
         source: 'streetview-viewer',
-        filter: ['==', ['geometry-type'], 'Point'],
+        filter: ['all', ['==', ['geometry-type'], 'Point'], ['!', ['has', 'type']]],
         paint: {
-          'circle-radius': 8,
+          'circle-radius': 10,
           'circle-color': '#00aaff',
           'circle-stroke-color': '#ffffff',
           'circle-stroke-width': 3
         }
       });
+      
+      // Historical camera positions (fading green trail)
+      window.map.addLayer({
+        id: 'streetview-camera-history',
+        type: 'circle',
+        source: 'streetview-viewer',
+        filter: ['==', ['get', 'type'], 'camera-history'],
+        paint: {
+          'circle-radius': 8,
+          'circle-color': '#00ff88',
+          'circle-opacity': ['get', 'opacity'],
+          'circle-stroke-color': '#ffffff',
+          'circle-stroke-width': 2,
+          'circle-stroke-opacity': ['get', 'opacity']
+        }
+      });
+      
+      // Actual camera position glow (green - brightest)
+      window.map.addLayer({
+        id: 'streetview-camera-glow',
+        type: 'circle',
+        source: 'streetview-viewer',
+        filter: ['==', ['get', 'type'], 'camera'],
+        paint: {
+          'circle-radius': 22,
+          'circle-color': '#00ff88',
+          'circle-opacity': 0.5,
+          'circle-blur': 1
+        }
+      });
+      
+      // Actual camera position point (green - brightest, on top)
+      window.map.addLayer({
+        id: 'streetview-camera-point',
+        type: 'circle',
+        source: 'streetview-viewer',
+        filter: ['==', ['get', 'type'], 'camera'],
+        paint: {
+          'circle-radius': 14,
+          'circle-color': '#00ff88',
+          'circle-stroke-color': '#ffffff',
+          'circle-stroke-width': 4
+        }
+      });
+      
+      console.log('Street View viewer layers added');
     }
   }
   
@@ -185,7 +307,7 @@
   function clearMapLayers() {
     if (!window.map) return;
     
-    // Clear data
+    // Clear viewer data
     if (window.map.getSource('streetview-viewer')) {
       window.map.getSource('streetview-viewer').setData({
         type: 'FeatureCollection',
@@ -250,12 +372,93 @@
       });
     }
     
+    // Add historical camera positions (fading trail)
+    cameraHistory.forEach((pos, index) => {
+      const opacity = 1 - ((index + 1) / (MAX_HISTORY + 1)); // Fade from ~0.9 to ~0.1
+      features.push({
+        type: 'Feature',
+        geometry: {
+          type: 'Point',
+          coordinates: pos
+        },
+        properties: { 
+          type: 'camera-history',
+          opacity: opacity,
+          index: index
+        }
+      });
+    });
+    
+    // Add actual camera position if available (green marker - brightest)
+    if (actualCameraPosition) {
+      features.push({
+        type: 'Feature',
+        geometry: {
+          type: 'Point',
+          coordinates: actualCameraPosition
+        },
+        properties: { type: 'camera' }
+      });
+    }
+    
     // Update source
     if (window.map.getSource('streetview-viewer')) {
       window.map.getSource('streetview-viewer').setData({
         type: 'FeatureCollection',
         features: features
       });
+    }
+  }
+  
+  // Fetch Street View metadata to get actual camera position
+  async function fetchStreetViewMetadata(position) {
+    if (!apiKey) {
+      console.warn('No API key for Street View metadata');
+      return;
+    }
+    
+    // Throttle metadata fetches
+    if (lastMetadataFetch && distance(lastMetadataFetch, position) < METADATA_FETCH_DISTANCE) {
+      return;
+    }
+    lastMetadataFetch = [...position];
+    
+    const lat = position[1];
+    const lng = position[0];
+    const url = `https://maps.googleapis.com/maps/api/streetview/metadata?location=${lat},${lng}&key=${apiKey}`;
+    
+    try {
+      const response = await fetch(url);
+      const data = await response.json();
+      
+      if (data.status === 'OK' && data.location) {
+        const newCameraPos = [data.location.lng, data.location.lat];
+        
+        // Add to history if different from last position (avoid duplicates)
+        if (!actualCameraPosition || 
+            distance(actualCameraPosition, newCameraPos) > 2) {
+          // Add previous position to history before updating
+          if (actualCameraPosition) {
+            cameraHistory.unshift([...actualCameraPosition]);
+            // Trim history to max size
+            while (cameraHistory.length > MAX_HISTORY) {
+              cameraHistory.pop();
+            }
+          }
+        }
+        
+        actualCameraPosition = newCameraPos;
+        console.log('Actual camera at:', actualCameraPosition, 'Date:', data.date);
+        
+        // Update visualization with camera position
+        updateMapVisualization();
+      } else {
+        actualCameraPosition = null;
+        console.log('No Street View coverage at this location');
+        updateMapVisualization();
+      }
+    } catch (err) {
+      console.warn('Failed to fetch Street View metadata:', err);
     }
   }
   
@@ -266,6 +469,9 @@
     viewerPosition = [e.lngLat.lng, e.lngLat.lat];
     cursorPosition = viewerPosition; // Initialize cursor at click point
     console.log('Viewer placed at:', viewerPosition);
+    
+    // Fetch actual camera position
+    fetchStreetViewMetadata(viewerPosition);
     
     // Update map visualization
     updateMapVisualization();
@@ -291,6 +497,9 @@
         const newLng = viewerPosition[0] + (cursorPosition[0] - viewerPosition[0]) * FOLLOW_SPEED;
         const newLat = viewerPosition[1] + (cursorPosition[1] - viewerPosition[1]) * FOLLOW_SPEED;
         viewerPosition = [newLng, newLat];
+        
+        // Fetch metadata for new position (throttled internally)
+        fetchStreetViewMetadata(viewerPosition);
       }
     }
     
