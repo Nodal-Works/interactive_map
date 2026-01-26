@@ -1,6 +1,6 @@
 // Interactive Isovist (Viewshed) Visualization
 // Real-time visibility polygon calculation with draggable viewer
-// Version: 1.1 - Static dash pattern with breathing glow effect
+// Version: 1.3
 
 (function() {
   if (typeof window.map === 'undefined') {
@@ -36,6 +36,12 @@
   let pathHistory = [];
   const MAX_PATH_POINTS = 500;
   const MIN_PATH_DISTANCE = 2; // minimum meters between path points
+  
+  // Street View position broadcast throttling
+  let lastBroadcastPosition = null;
+  let lastBroadcastHeading = null;
+  const BROADCAST_MIN_DISTANCE = 3; // minimum meters between broadcasts
+  const BROADCAST_MIN_HEADING_CHANGE = 15; // minimum degrees before heading update
 
   // Ambient soundscape settings
   let ambientAudioContext = null;
@@ -1015,6 +1021,24 @@
 
   function performUpdate() {
     if (!viewerPosition) return;
+    
+    // Broadcast position for Street View (throttled by distance OR heading change)
+    const currentHeading = cursorPosition ? calculateBearing(viewerPosition, cursorPosition) : 0;
+    const positionChanged = !lastBroadcastPosition || distance(lastBroadcastPosition, viewerPosition) > BROADCAST_MIN_DISTANCE;
+    const headingChanged = lastBroadcastHeading === null || Math.abs(currentHeading - lastBroadcastHeading) > BROADCAST_MIN_HEADING_CHANGE;
+    
+    if (positionChanged || headingChanged) {
+      lastBroadcastPosition = [...viewerPosition];
+      lastBroadcastHeading = currentHeading;
+      isovistChannel.postMessage({
+        type: 'street_view_position',
+        position: {
+          lng: viewerPosition[0],
+          lat: viewerPosition[1]
+        },
+        heading: currentHeading
+      });
+    }
 
     // Update path history
     if (pathHistory.length === 0 || 

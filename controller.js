@@ -70,7 +70,8 @@ const ANIMATION_BUTTONS = [
     'grid-animation-btn',
     'isovist-btn',
     'bird-sounds-btn',
-    'fcc-demo-btn'
+    'fcc-demo-btn',
+    'street-view-btn'
 ];
 
 // Function buttons are buttons that perform actions (not toggleable animations)
@@ -918,6 +919,44 @@ function updateDashboard(targetId) {
     } else if (targetId === 'isovist-btn') {
         dashboardContent.innerHTML = `
             <div class="dashboard-container">
+                <div class="dashboard-card" style="padding: 0; overflow: hidden;">
+                    <div style="padding: 0.75rem 1rem 0.5rem; border-bottom: 1px solid #333;">
+                        <div class="dashboard-section-title" style="margin: 0;">
+                            <span class="material-icons" style="font-size: 18px;">streetview</span>
+                            Street View (Live)
+                        </div>
+                    </div>
+                    <div id="street-view-panel" style="width: 100%; height: 200px; background: #1a1a1a; position: relative;">
+                        <img id="street-view-image" style="width: 100%; height: 100%; object-fit: cover; display: none;" />
+                        <div id="street-view-no-coverage" style="
+                            position: absolute;
+                            top: 0; left: 0; right: 0; bottom: 0;
+                            display: flex;
+                            align-items: center;
+                            justify-content: center;
+                            flex-direction: column;
+                            color: #666;
+                            font-size: 12px;
+                            background: #1a1a1a;
+                        ">
+                            <span style="font-size: 32px; margin-bottom: 8px;">📍</span>
+                            <span style="font-size: 13px;">Place viewer on map</span>
+                            <span style="font-size: 10px; color: #555;">Street View updates as you move</span>
+                        </div>
+                        <div id="street-view-coords" style="
+                            position: absolute;
+                            bottom: 4px;
+                            left: 4px;
+                            background: rgba(0,0,0,0.7);
+                            color: #888;
+                            font-size: 9px;
+                            padding: 2px 6px;
+                            border-radius: 3px;
+                            display: none;
+                        "></div>
+                    </div>
+                </div>
+                
                 <div class="dashboard-card">
                     <div class="dashboard-section-title">
                         <span class="material-icons" style="font-size: 18px;">visibility</span>
@@ -951,29 +990,26 @@ function updateDashboard(targetId) {
                         <span class="material-icons" style="font-size: 18px;">school</span>
                         Educational Context
                     </div>
-                    <div class="info-box" style="margin-bottom: 1rem; border-left-color: #2D5A27;">
+                    <div class="info-box" style="margin-bottom: 0.75rem; border-left-color: #2D5A27;">
                         <div class="info-title">Green View Factor (GVF)</div>
                         <p class="info-text">
                             Measures the <strong>percentage of vegetation visible</strong> from a viewpoint. 
-                            Higher GVF (≥30%) is linked to reduced stress, improved mental health, and better thermal comfort in urban environments.
-                        </p>
-                    </div>
-                    <div class="info-box" style="margin-bottom: 1rem; border-left-color: #eab308;">
-                        <div class="info-title">Isovist Methodology</div>
-                        <p class="info-text">
-                            Calculates a <strong>visibility polygon</strong> from a specific point by casting rays until they hit obstacles (buildings or trees). 
-                            Simulates human visual perception in urban space.
+                            Higher GVF (≥30%) is linked to reduced stress and better thermal comfort.
                         </p>
                     </div>
                     <div class="info-box" style="border-left-color: #eab308;">
-                        <div class="info-title">Application</div>
+                        <div class="info-title">Isovist Analysis</div>
                         <p class="info-text">
-                            Used in <strong>urban design</strong> and <strong>criminology</strong> (CPTED) to analyze surveillance, openness, and spatial connectivity.
+                            Calculates <strong>visibility polygons</strong> by casting rays until they hit obstacles.
+                            Used in urban design and CPTED analysis.
                         </p>
                     </div>
                 </div>
             </div>
         `;
+        
+        // Initialize Street View for isovist dashboard
+        loadStreetViewConfig();
         
         legendContent.innerHTML = `
             <div class="dashboard-card">
@@ -1186,6 +1222,92 @@ function updateDashboard(targetId) {
         // FCC VR Demo dashboard with video player and timeline
         updateFCCDemoDashboard();
         
+    } else if (targetId === 'street-view-btn') {
+        // Street View dashboard with embedded image
+        dashboardContent.innerHTML = `
+            <div class="dashboard-container">
+                <div class="dashboard-card" style="padding: 0; overflow: hidden;">
+                    <div id="street-view-panel" style="width: 100%; height: 350px; background: #1a1a1a; position: relative;">
+                        <img id="street-view-image" style="width: 100%; height: 100%; object-fit: cover; display: none;" />
+                        <div id="street-view-no-coverage" style="
+                            position: absolute;
+                            top: 0; left: 0; right: 0; bottom: 0;
+                            display: flex;
+                            align-items: center;
+                            justify-content: center;
+                            flex-direction: column;
+                            color: #666;
+                            font-size: 14px;
+                            background: #1a1a1a;
+                        ">
+                            <span style="font-size: 48px; margin-bottom: 12px;">📍</span>
+                            <span style="font-size: 16px; margin-bottom: 4px;">Click on the map</span>
+                            <span style="font-size: 12px; color: #555;">to view Street View at that location</span>
+                        </div>
+                        <div id="street-view-coords" style="
+                            position: absolute;
+                            bottom: 8px;
+                            left: 8px;
+                            background: rgba(0,0,0,0.7);
+                            color: #888;
+                            font-size: 10px;
+                            padding: 4px 8px;
+                            border-radius: 4px;
+                            font-family: monospace;
+                            z-index: 10;
+                        "></div>
+                        <div id="street-view-heading-controls" style="
+                            position: absolute;
+                            bottom: 8px;
+                            right: 8px;
+                            display: none;
+                            gap: 4px;
+                            z-index: 10;
+                        ">
+                            <button id="sv-rotate-left" style="background: rgba(0,0,0,0.7); border: none; color: white; padding: 8px 12px; border-radius: 4px; cursor: pointer;">◀</button>
+                            <button id="sv-rotate-right" style="background: rgba(0,0,0,0.7); border: none; color: white; padding: 8px 12px; border-radius: 4px; cursor: pointer;">▶</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        `;
+        
+        legendContent.innerHTML = `
+            <div class="dashboard-card">
+                <div class="dashboard-section-title">How to Use</div>
+                <div style="font-size: 11px; color: #ccc; line-height: 1.6;">
+                    <div style="display: flex; align-items: flex-start; gap: 8px; margin-bottom: 8px;">
+                        <span style="color: #3b82f6; font-weight: bold;">1.</span>
+                        <span>Click the Street View button to activate</span>
+                    </div>
+                    <div style="display: flex; align-items: flex-start; gap: 8px; margin-bottom: 8px;">
+                        <span style="color: #3b82f6; font-weight: bold;">2.</span>
+                        <span>Click anywhere on the main map display</span>
+                    </div>
+                    <div style="display: flex; align-items: flex-start; gap: 8px; margin-bottom: 8px;">
+                        <span style="color: #3b82f6; font-weight: bold;">3.</span>
+                        <span>View the Street View image here</span>
+                    </div>
+                    <div style="display: flex; align-items: flex-start; gap: 8px;">
+                        <span style="color: #3b82f6; font-weight: bold;">4.</span>
+                        <span>Use ◀ ▶ buttons to rotate view</span>
+                    </div>
+                </div>
+            </div>
+            <div class="dashboard-card" style="margin-top: 1rem;">
+                <div class="info-box" style="border-left-color: #22c55e;">
+                    <div class="info-title">Coverage</div>
+                    <p class="info-text">
+                        Street View is available along most roads in Sweden. 
+                        If no imagery exists, you'll see a "No Coverage" message.
+                    </p>
+                </div>
+            </div>
+        `;
+        
+        // Initialize rotation controls
+        initStreetViewControls();
+        
     } else {
         // Default or other tools
         dashboardContent.innerHTML = '<p>Select a simulation to view details.</p>';
@@ -1313,6 +1435,9 @@ channel.onmessage = (event) => {
         // Update playback state
         fccDemoState.isPlaying = data.isPlaying;
         updateFCCDemoPlayButton();
+    } else if (data.type === 'street_view_position') {
+        // Received position from main map - update Street View panorama
+        updateStreetViewPosition(data.position, data.heading);
     } else {
         // Log unknown message types for debugging new features
         debugLog('Unknown message type:', data.type);
@@ -1964,9 +2089,9 @@ function updateFCCDemoDashboard() {
         </div>
     `;
     
-    // Legend with video player
+    // Legend with video player and Street View
     legendContent.innerHTML = `
-        <div class="dashboard-card" style="height: 100%;">
+        <div class="dashboard-card">
             <div class="dashboard-section-title">
                 <span class="material-icons" style="font-size: 18px;">videocam</span>
                 VR Recording
@@ -1979,12 +2104,52 @@ function updateFCCDemoDashboard() {
                     Your browser does not support video playback.
                 </video>
             </div>
-            <div style="margin-top: 0.75rem; display: flex; align-items: center; gap: 0.5rem;">
-                <span class="material-icons" style="font-size: 16px; color: #6b7280;">info</span>
-                <span style="font-size: 0.85rem; color: #6b7280;">Video synced with map isovist</span>
+        </div>
+        
+        <div class="dashboard-card" style="margin-top: 0.75rem;">
+            <div class="dashboard-section-title">
+                <span class="material-icons" style="font-size: 18px;">streetview</span>
+                Street View (Live)
+            </div>
+            <div id="street-view-panel" style="width: 100%; height: 180px; background: #1a1a1a; border-radius: 8px; position: relative; overflow: hidden;">
+                <img id="street-view-image" style="width: 100%; height: 100%; object-fit: cover; display: none;" />
+                <div id="street-view-no-coverage" style="
+                    position: absolute;
+                    top: 0; left: 0; right: 0; bottom: 0;
+                    display: flex;
+                    align-items: center;
+                    justify-content: center;
+                    flex-direction: column;
+                    color: #666;
+                    font-size: 11px;
+                    background: #1a1a1a;
+                ">
+                    <span style="font-size: 28px; margin-bottom: 6px;">📍</span>
+                    <span style="font-size: 12px;">Play to see Street View</span>
+                    <span style="font-size: 10px; color: #555;">Updates along path</span>
+                </div>
+                <div id="street-view-coords" style="
+                    position: absolute;
+                    bottom: 4px;
+                    left: 4px;
+                    background: rgba(0,0,0,0.7);
+                    color: #888;
+                    font-size: 9px;
+                    padding: 2px 6px;
+                    border-radius: 3px;
+                    font-family: monospace;
+                    display: none;
+                "></div>
+            </div>
+            <div style="margin-top: 0.5rem; display: flex; align-items: center; gap: 0.5rem;">
+                <span class="material-icons" style="font-size: 14px; color: #6b7280;">sync</span>
+                <span style="font-size: 0.75rem; color: #6b7280;">Synced with path position</span>
             </div>
         </div>
     `;
+    
+    // Initialize Street View for FCC dashboard
+    loadStreetViewConfig();
     
     // Attach event listeners
     attachFCCDemoEventListeners();
@@ -3173,5 +3338,116 @@ function getCurrentCalibration() {
         channel.addEventListener('message', handler);
         channel.postMessage({ type: MSG_TYPES.CALIBRATE_ACTION, action: 'copy_calibration' });
     });
+}
+
+// ============================================
+// STREET VIEW STATIC API SYSTEM (Controller Side)
+// ============================================
+
+let streetViewApiKey = null;
+let streetViewCurrentPosition = null;
+let streetViewCurrentHeading = 0;
+
+async function loadStreetViewConfig() {
+    if (streetViewApiKey) return true;
+    try {
+        const response = await fetch('trafik-config.json');
+        const config = await response.json();
+        streetViewApiKey = config.streetViewApiKey;
+        console.log('Street View API key loaded');
+        return true;
+    } catch (e) {
+        console.warn('Could not load Street View API key:', e);
+        return false;
+    }
+}
+
+function initStreetViewControls() {
+    const leftBtn = document.getElementById('sv-rotate-left');
+    const rightBtn = document.getElementById('sv-rotate-right');
+    
+    if (leftBtn) {
+        leftBtn.addEventListener('click', () => {
+            streetViewCurrentHeading = (streetViewCurrentHeading - 45 + 360) % 360;
+            if (streetViewCurrentPosition) {
+                updateStreetViewImage();
+            }
+        });
+    }
+    
+    if (rightBtn) {
+        rightBtn.addEventListener('click', () => {
+            streetViewCurrentHeading = (streetViewCurrentHeading + 45) % 360;
+            if (streetViewCurrentPosition) {
+                updateStreetViewImage();
+            }
+        });
+    }
+}
+
+function updateStreetViewImage() {
+    const img = document.getElementById('street-view-image');
+    const noCoverageMsg = document.getElementById('street-view-no-coverage');
+    const coordsDisplay = document.getElementById('street-view-coords');
+    const controls = document.getElementById('street-view-heading-controls');
+    
+    if (!img || !streetViewApiKey || !streetViewCurrentPosition) return;
+    
+    const { lat, lng } = streetViewCurrentPosition;
+    
+    // Update coordinates display
+    if (coordsDisplay) {
+        coordsDisplay.textContent = `${lat.toFixed(6)}, ${lng.toFixed(6)} | Heading: ${streetViewCurrentHeading}°`;
+    }
+    
+    // Build Street View Static API URL
+    const size = '640x350';
+    const url = `https://maps.googleapis.com/maps/api/streetview?size=${size}&location=${lat},${lng}&heading=${streetViewCurrentHeading}&pitch=0&fov=100&key=${streetViewApiKey}`;
+    
+    // Set up image load handlers
+    img.onload = () => {
+        // Check if we got an actual image (not the "no imagery" placeholder)
+        // The static API returns a gray image with text if no coverage
+        img.style.display = 'block';
+        if (noCoverageMsg) noCoverageMsg.style.display = 'none';
+        if (coordsDisplay) coordsDisplay.style.display = 'block';
+        if (controls) controls.style.display = 'flex';
+    };
+    
+    img.onerror = () => {
+        img.style.display = 'none';
+        if (coordsDisplay) coordsDisplay.style.display = 'none';
+        if (noCoverageMsg) {
+            noCoverageMsg.innerHTML = `
+                <span style="font-size: 48px; margin-bottom: 12px;">📷</span>
+                <span style="font-size: 16px; margin-bottom: 4px;">No Street View Coverage</span>
+                <span style="font-size: 12px; color: #555;">Try clicking a different location on the map</span>
+            `;
+            noCoverageMsg.style.display = 'flex';
+        }
+        if (controls) controls.style.display = 'none';
+    };
+    
+    img.src = url;
+}
+
+function updateStreetViewPosition(position, heading) {
+    streetViewCurrentPosition = position;
+    // Use provided heading or keep current if not provided
+    if (heading !== undefined) {
+        streetViewCurrentHeading = Math.round(heading);
+    }
+    
+    // Load API key if needed
+    if (!streetViewApiKey) {
+        loadStreetViewConfig().then(hasKey => {
+            if (hasKey) {
+                updateStreetViewImage();
+            }
+        });
+        return;
+    }
+    
+    updateStreetViewImage();
 }
 

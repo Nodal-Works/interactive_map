@@ -36,6 +36,12 @@
   let treeObstacles = [];
   let INCLUDE_TREES = true;
   
+  // Street View position broadcast throttling
+  let lastBroadcastPosition = null;
+  let lastBroadcastHeading = null;
+  const BROADCAST_MIN_DISTANCE = 2; // meters between broadcasts
+  const BROADCAST_MIN_HEADING_CHANGE = 10; // degrees between heading broadcasts
+  
   // Listen for control messages from controller
   channel.onmessage = (event) => {
     const data = event.data;
@@ -170,6 +176,8 @@
     pathCoordinates = [];
     obstacles = [];
     treeObstacles = [];
+    lastBroadcastPosition = null;
+    lastBroadcastHeading = null;
   }
   
   async function loadPathData() {
@@ -579,6 +587,11 @@
   
   function seekTo(progress) {
     currentProgress = Math.max(0, Math.min(1, progress));
+    
+    // Reset broadcast state to force immediate update
+    lastBroadcastPosition = null;
+    lastBroadcastHeading = null;
+    
     updateVisualization();
     
     // Broadcast to controller
@@ -594,6 +607,9 @@
     
     // Get position and look direction along path
     const { position, direction } = getPositionAlongPath(currentProgress);
+    
+    // Broadcast position for Street View (throttled)
+    broadcastStreetViewPosition(position, direction);
     
     // Update viewer marker
     const viewerFeatures = {
@@ -651,6 +667,31 @@
       channel.postMessage({
         type: 'fcc_demo_stats',
         data: result.stats
+      });
+    }
+  }
+  
+  // Broadcast position to controller for Street View (throttled)
+  function broadcastStreetViewPosition(position, heading) {
+    if (!position) return;
+    
+    const currentHeading = heading || 0;
+    const positionChanged = !lastBroadcastPosition || 
+      distance([lastBroadcastPosition.lng, lastBroadcastPosition.lat], position) > BROADCAST_MIN_DISTANCE;
+    const headingChanged = lastBroadcastHeading === null || 
+      Math.abs(currentHeading - lastBroadcastHeading) > BROADCAST_MIN_HEADING_CHANGE;
+    
+    if (positionChanged || headingChanged) {
+      lastBroadcastPosition = { lng: position[0], lat: position[1] };
+      lastBroadcastHeading = currentHeading;
+      
+      channel.postMessage({
+        type: 'street_view_position',
+        position: {
+          lng: position[0],
+          lat: position[1]
+        },
+        heading: currentHeading
       });
     }
   }
