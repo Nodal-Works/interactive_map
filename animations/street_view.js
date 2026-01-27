@@ -97,24 +97,85 @@
           body: formData
         });
         if (!resp.ok) throw new Error('Segmentation failed');
-        // Get mask image
-        const maskBlob = await resp.blob();
-        // Get JSON from header
-        const segJson = resp.headers.get('X-Segmentation-JSON');
-        // Show mask
-        const maskUrl = URL.createObjectURL(maskBlob);
-        const maskContainer = document.getElementById('sam-mask-container');
-        if (maskContainer) {
-          maskContainer.innerHTML = `<img src="${maskUrl}" style="max-width:100%; border-radius:8px; border:2px solid #444; margin-bottom:0.5rem;" alt="Segmentation Mask" />`;
+
+        const contentType = (resp.headers.get('content-type') || '').toLowerCase();
+        let segData = null;
+        if (contentType.includes('application/json')) {
+          const body = await resp.json();
+          segData = body.results || body;
+          if (body.mask) {
+            const maskContainer = document.getElementById('sam-mask-container');
+            if (maskContainer) {
+              maskContainer.innerHTML = `<img src="${body.mask}" style="max-width:100%; border-radius:8px; border:2px solid #444; margin-bottom:0.5rem;" alt="Segmentation Mask" />`;
+            }
+          }
+        } else {
+          // Older behavior: image blob + X-Segmentation-JSON header
+          const maskBlob = await resp.blob();
+          const segJson = resp.headers.get('X-Segmentation-JSON');
+
+          let finalMaskBlob = maskBlob;
+          if (segJson) {
+            try {
+              const data = JSON.parse(segJson);
+              const candidates = [];
+              if (data.mask_url) candidates.push(data.mask_url);
+              if (data.mask) candidates.push(data.mask);
+              if (data.mask_filename) candidates.push(data.mask_filename);
+              if (data.files && typeof data.files === 'object') Object.values(data.files).forEach(v => candidates.push(v));
+              if (data.output_files && typeof data.output_files === 'object') Object.values(data.output_files).forEach(v => candidates.push(v));
+
+              let chosen = null;
+              for (const c of candidates) {
+                if (!c) continue;
+                const s = String(c);
+                if (/mask/i.test(s) || /_mask\./i.test(s)) { chosen = s; break; }
+                if (/^https?:\/\/.+\.(png|jpg|jpeg|webp)$/i.test(s)) { chosen = s; break; }
+              }
+
+              if (chosen) {
+                const candidateUrl = (/^https?:\/\//i.test(chosen)) ? chosen : (SAM_SERVER_URL + '/' + chosen.replace(/^\//, ''));
+                try {
+                  const r2 = await fetch(candidateUrl);
+                  if (r2.ok) {
+                    const b2 = await r2.blob();
+                    const ct = r2.headers.get('content-type') || '';
+                    if (ct.startsWith('image/') || b2.size > 0) finalMaskBlob = b2;
+                  }
+                } catch (e) {
+                  // ignore
+                }
+              }
+              segData = data;
+            } catch (e) {
+              // ignore
+            }
+          }
+
+          const maskUrl = URL.createObjectURL(finalMaskBlob);
+          const maskContainer = document.getElementById('sam-mask-container');
+          if (maskContainer) {
+            maskContainer.innerHTML = `<img src="${maskUrl}" style="max-width:100%; border-radius:8px; border:2px solid #444; margin-bottom:0.5rem;" alt="Segmentation Mask" />`;
+          }
         }
         // Show class breakdown
         if (segJson) {
           const data = JSON.parse(segJson);
           const cats = data.categories || {};
+          const palette = {
+            'Open View': '#1f78b4',
+            'Trees': '#33a02c',
+            'Bostad': '#e31a1c',
+            'Verksamhet': '#ff7f00',
+            'Samhällsfunktion': '#6a3d9a',
+            'Komplementbyggnad': '#b15928',
+            'Unknown': '#8c8c8c'
+          };
           let table = '<table style="width:100%; font-size:1rem; color:#eee; border-collapse:collapse;">';
-          table += '<tr><th style="text-align:left; color:#60a5fa;">Class</th><th style="text-align:right; color:#60a5fa;">%</th></tr>';
+          table += '<tr><th style="text-align:left; color:#60a5fa;">Class</th></tr>';
           Object.entries(cats).sort((a,b)=>b[1].pixel_ratio_percent-a[1].pixel_ratio_percent).forEach(([cat, val]) => {
-            table += `<tr><td style="padding:2px 4px;">${cat}</td><td style="text-align:right; padding:2px 4px;">${val.pixel_ratio_percent.toFixed(2)}</td></tr>`;
+            const color = palette[cat] || '#777';
+            table += `<tr><td style="padding:6px 4px; display:flex; align-items:center; gap:8px;"><span style="width:12px; height:12px; background:${color}; display:inline-block; border-radius:2px;"></span><span>${cat}</span></td></tr>`;
           });
           table += '</table>';
           const classTable = document.getElementById('sam-class-table');
