@@ -134,8 +134,13 @@ Open the app using the launcher: [launcher.html](launcher.html). You can double-
 
 ```bash
 # From the repository root (fallback only)
+# Use python3 on macOS/Linux, or python on Windows:
 python3 -m http.server 8000
-# then open http://localhost:8000/launcher.html
+
+# If python3 doesn't work, try:
+python -m http.server 8000
+
+# Then open http://localhost:8000/launcher.html
 ```
 
 > **TODO:** Camera-based calibration is currently disabled—see [calibration/README.md](calibration/README.md) for notes. Re-enable when fixed.
