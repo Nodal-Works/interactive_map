@@ -70,7 +70,6 @@ const ANIMATION_BUTTONS = [
     'grid-animation-btn',
     'isovist-btn',
     'bird-sounds-btn',
-    'campus-demo-btn',
     'fcc-demo-btn',
     'street-view-btn'
 ];
@@ -98,10 +97,6 @@ function setAnimationState(targetId, isActive) {
         }
     } else {
         activeAnimations = activeAnimations.filter(id => id !== targetId);
-        // Reset campus demo legend when it's deactivated
-        if (targetId === 'campus-demo-btn') {
-            resetCampusDemoLegend();
-        }
     }
     syncAnimationButtonStates();
 }
@@ -207,84 +202,6 @@ function updateDashboard(targetId) {
     if (dashboardTitle) dashboardTitle.textContent = 'Dashboard';
     if (legendTitle) legendTitle.textContent = 'Legend';
     
-    // Hide SAM segmentation section by default (only shown for street-view-btn)
-    const samSection = document.getElementById('sam-segmentation-section');
-    if (samSection && targetId !== 'street-view-btn') {
-        samSection.style.display = 'none';
-    }
-    
-    // Campus Demo dashboard
-    if (targetId === 'campus-demo-btn') {
-        if (dashboardTitle) dashboardTitle.textContent = 'Campus Vision';
-        if (legendTitle) legendTitle.textContent = 'Campus Vision Legend';
-
-        dashboardContent.innerHTML = `
-            <div class="dashboard-container">
-                <div class="dashboard-card">
-                    <div class="dashboard-section-title">
-                        <span class="material-icons" style="font-size: 18px;">school</span>
-                        Chalmers Campus Vision
-                    </div>
-                    <div class="info-box" style="border-left-color: #3b82f6;">
-                        <div class="info-title">Interactive Campus Presentation</div>
-                        <p class="info-text">
-                            Navigate through the campus vision with layers showing routes, activity nodes, and green spaces.
-                        </p>
-                    </div>
-                    <p style="color: #888; margin-top: 1rem; font-size: 0.9rem;">
-                        Press → to start, use ← → to navigate
-                    </p>
-                </div>
-            </div>
-        `;
-        
-        // Show the campus demo legend container, hide default
-        const campusLegend = document.getElementById('campus-demo-legend');
-        if (campusLegend) {
-            legendContent.style.display = 'none';
-            campusLegend.style.display = 'block';
-        } else {
-            legendContent.innerHTML = `
-                <div class="dashboard-card">
-                    <div class="dashboard-section-title">Ready to Start</div>
-                    <p style="color: #888;">Press → to begin the presentation</p>
-                </div>
-            `;
-        }
-        
-        // Show Campus Demo Contributors in the metadata section
-        const metadataContent = document.getElementById('metadata-content');
-        const metadataSection = metadataContent?.parentElement;
-        if (metadataSection) {
-            const metadataTitle = metadataSection.querySelector('h2');
-            if (metadataTitle) metadataTitle.textContent = 'Contributors';
-            metadataContent.className = 'credits-grid';
-            metadataContent.innerHTML = `
-                <div class="credit-item">
-                    <div class="credit-role">Chalmers Fastigheter</div>
-                    <div class="credit-name">Ida Gäskeby</div>
-                </div>
-                <div class="credit-item">
-                    <div class="credit-role">Spacescape</div>
-                    <div class="credit-contribution">Spatial Planning & Analysis</div>
-                    <div class="credit-name">Selma Sinanovic Gabrallah</div>
-                    <div class="credit-name">Malin Dahlhielm</div>
-                </div>
-                <div class="credit-item">
-                    <div class="credit-role">Chalmers Rektors Office</div>
-                    <div class="credit-name">Stefan Forsaeus Nilsson</div>
-                    <div class="credit-contribution">Rådgivare, Ledningskansliet, Chalmers verksamhetsstöd</div>
-                </div>
-                <div class="credit-item">
-                    <div class="credit-role">Visualisation Developer</div>
-                    <div class="credit-name">Sanjay Somanath</div>
-                </div>
-            `;
-        }
-        
-        return;
-    }
-
     // Use dedicated slideshow dashboard function for slideshow
     if (targetId === 'slideshow-btn') {
         // If we already know the slideshow is active, show the dashboard immediately
@@ -1391,18 +1308,10 @@ function updateDashboard(targetId) {
         // Initialize rotation controls
         initStreetViewControls();
         
-        // Show SAM segmentation section for Street View
-        const samSection = document.getElementById('sam-segmentation-section');
-        if (samSection) samSection.style.display = 'block';
-        
     } else {
         // Default or other tools
         dashboardContent.innerHTML = '<p>Select a simulation to view details.</p>';
         legendContent.innerHTML = '<p>Select a simulation to view its legend.</p>';
-        
-        // Hide SAM segmentation section for non-Street View
-        const samSection = document.getElementById('sam-segmentation-section');
-        if (samSection) samSection.style.display = 'none';
     }
 }
 
@@ -1529,9 +1438,6 @@ channel.onmessage = (event) => {
     } else if (data.type === 'street_view_position') {
         // Received position from main map - update Street View panorama
         updateStreetViewPosition(data.position, data.heading);
-    } else if (data.type === 'campus_demo_phase') {
-        // Update campus demo legend based on current phase
-        updateCampusDemoLegend(data.phase, data.phaseIndex, data.label);
     } else if (data.type === 'sam_segment') {
         // Trigger segmentation as requested from main window
         const segBtn = document.getElementById('sam-segment-btn');
@@ -2415,138 +2321,6 @@ function formatTime(seconds) {
 // END FCC DEMO DASHBOARD FUNCTIONS
 // ============================================
 
-// ============================================
-// CAMPUS DEMO LEGEND FUNCTIONS
-// ============================================
-
-// Track shown phases for cumulative legend display
-let campusDemoShownPhases = [];
-
-function updateCampusDemoLegend(phaseName, phaseIndex, label) {
-    const legendContent = document.getElementById('legend-content');
-    const campusLegend = document.getElementById('campus-demo-legend');
-    const dashboardContent = document.getElementById('dashboard-content');
-    
-    if (!campusLegend) return;
-    
-    // Add this phase to shown phases if not already there
-    if (!campusDemoShownPhases.includes(phaseName)) {
-        campusDemoShownPhases.push(phaseName);
-    }
-    
-    // Hide default legend, show campus demo legend
-    legendContent.style.display = 'none';
-    campusLegend.style.display = 'block';
-    
-    // Update legend title
-    const legendTitle = document.getElementById('legend-title');
-    if (legendTitle) {
-        legendTitle.textContent = 'Campus Vision Legend';
-    }
-    
-    // Show all phases up to current
-    const allPhases = campusLegend.querySelectorAll('.legend-phase');
-    allPhases.forEach(phaseEl => {
-        const phase = phaseEl.getAttribute('data-phase');
-        if (campusDemoShownPhases.includes(phase)) {
-            phaseEl.style.display = 'block';
-            // Highlight current phase
-            if (phase === phaseName) {
-                phaseEl.style.opacity = '1';
-                phaseEl.style.transform = 'scale(1.02)';
-                phaseEl.style.transition = 'all 0.3s ease';
-            } else {
-                phaseEl.style.opacity = '0.6';
-                phaseEl.style.transform = 'scale(1)';
-            }
-        } else {
-            phaseEl.style.display = 'none';
-        }
-    });
-    
-    // Update dashboard with current phase info
-    dashboardContent.innerHTML = `
-        <div class="dashboard-container">
-            <div class="dashboard-card">
-                <div class="dashboard-section-title">
-                    <span class="material-icons" style="font-size: 18px;">school</span>
-                    Campus Vision Presentation
-                </div>
-                <div class="info-box" style="border-left-color: #3b82f6; margin-bottom: 1rem;">
-                    <div class="info-title">${label}</div>
-                    <p class="info-text">
-                        Phase ${phaseIndex + 1} of 10
-                    </p>
-                </div>
-                <div style="display: flex; gap: 0.5rem; flex-wrap: wrap; margin-top: 1rem;">
-                    ${Array.from({length: 10}, (_, i) => `
-                        <div style="
-                            width: 24px; 
-                            height: 24px; 
-                            border-radius: 50%; 
-                            background: ${i < phaseIndex ? '#888' : (i === phaseIndex ? '#4CAF50' : '#444')};
-                            display: flex;
-                            align-items: center;
-                            justify-content: center;
-                            font-size: 12px;
-                            color: ${i <= phaseIndex ? '#fff' : '#666'};
-                            transition: all 0.3s;
-                        ">${i + 1}</div>
-                    `).join('')}
-                </div>
-                <p style="color: #888; margin-top: 1rem; font-size: 0.9rem;">
-                    Use ← → arrow keys to navigate
-                </p>
-            </div>
-        </div>
-    `;
-}
-
-// Reset campus demo legend when demo stops
-function resetCampusDemoLegend() {
-    campusDemoShownPhases = [];
-    const legendContent = document.getElementById('legend-content');
-    const campusLegend = document.getElementById('campus-demo-legend');
-    const legendTitle = document.getElementById('legend-title');
-    
-    if (legendContent) legendContent.style.display = 'block';
-    if (campusLegend) campusLegend.style.display = 'none';
-    if (legendTitle) legendTitle.textContent = 'Legend';
-    
-    // Hide all phase legends
-    if (campusLegend) {
-        campusLegend.querySelectorAll('.legend-phase').forEach(el => {
-            el.style.display = 'none';
-        });
-    }
-    
-    // Reset the metadata section back to default
-    const metadataContent = document.getElementById('metadata-content');
-    const metadataSection = metadataContent?.parentElement;
-    if (metadataSection) {
-        const metadataTitle = metadataSection.querySelector('h2');
-        if (metadataTitle) metadataTitle.textContent = 'Metadata';
-        metadataContent.className = '';
-        metadataContent.innerHTML = `
-            <div class="metadata-item">
-                <div class="metadata-label">Current View</div>
-                <div class="metadata-value" id="meta-view">Default</div>
-            </div>
-            <div class="metadata-item">
-                <div class="metadata-label">Active Layer</div>
-                <div class="metadata-value" id="meta-layer">None</div>
-            </div>
-             <div class="metadata-item">
-                <div class="metadata-label">Description</div>
-                <div class="metadata-value" id="meta-desc">Interactive map of the district. Use controls to toggle layers.</div>
-            </div>
-        `;
-    }
-}
-
-// END CAMPUS DEMO LEGEND FUNCTIONS
-// ============================================
-
 // Update slideshow dashboard with live metadata and controls
 function updateSlideshowDashboard() {
     const dashboardContent = document.getElementById('dashboard-content');
@@ -3294,34 +3068,18 @@ startTour();
 document.addEventListener('keydown', (e) => {
     // Check if slideshow button is active
     const slideshowBtn = document.querySelector('.control-btn[data-target="slideshow-btn"]');
-    if (slideshowBtn && slideshowBtn.classList.contains('active') && slideshowState.isActive) {
-        if (e.key === 'ArrowRight' || e.key === ' ') {
-            e.preventDefault();
-            channel.postMessage({ type: MSG_TYPES.SLIDESHOW_CONTROL, action: 'next' });
-        } else if (e.key === 'ArrowLeft') {
-            e.preventDefault();
-            channel.postMessage({ type: MSG_TYPES.SLIDESHOW_CONTROL, action: 'previous' });
-        } else if (e.key === 'Escape') {
-            e.preventDefault();
-            channel.postMessage({ type: MSG_TYPES.SLIDESHOW_CONTROL, action: 'stop' });
-        }
-        return;
-    }
+    if (!slideshowBtn || !slideshowBtn.classList.contains('active')) return;
+    if (!slideshowState.isActive) return;
     
-    // Check if campus demo button is active
-    const campusDemoBtn = document.querySelector('.control-btn[data-target="campus-demo-btn"]');
-    if (campusDemoBtn && campusDemoBtn.classList.contains('active')) {
-        if (e.key === 'ArrowRight' || e.key === ' ') {
-            e.preventDefault();
-            channel.postMessage({ type: 'campus_demo_control', action: 'next' });
-        } else if (e.key === 'ArrowLeft') {
-            e.preventDefault();
-            channel.postMessage({ type: 'campus_demo_control', action: 'previous' });
-        } else if (e.key === 'Escape') {
-            e.preventDefault();
-            channel.postMessage({ type: 'campus_demo_control', action: 'stop' });
-        }
-        return;
+    if (e.key === 'ArrowRight' || e.key === ' ') {
+        e.preventDefault();
+        channel.postMessage({ type: MSG_TYPES.SLIDESHOW_CONTROL, action: 'next' });
+    } else if (e.key === 'ArrowLeft') {
+        e.preventDefault();
+        channel.postMessage({ type: MSG_TYPES.SLIDESHOW_CONTROL, action: 'previous' });
+    } else if (e.key === 'Escape') {
+        e.preventDefault();
+        channel.postMessage({ type: MSG_TYPES.SLIDESHOW_CONTROL, action: 'stop' });
     }
 });
 
@@ -4025,4 +3783,3 @@ if (document.readyState === 'loading') {
 } else {
     initSamSegmentation();
 }
-

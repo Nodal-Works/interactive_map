@@ -462,7 +462,6 @@
             background: #333;
             border-radius: 8px;
             border: 1px solid #444;
-            margin-bottom: 0.5rem;
         }
         
         .legend-color {
@@ -470,17 +469,12 @@
             height: 32px;
             border-radius: 4px;
             box-shadow: inset 0 0 0 1px rgba(255,255,255,0.1);
-            flex-shrink: 0;
         }
         
         .legend-label {
             font-size: 1.15rem;
             color: #d0d0d0;
             font-weight: 500;
-        }
-
-        .legend-phase {
-            transition: all 0.3s ease;
         }
 
         .credits-grid {
@@ -609,39 +603,6 @@
             <div id="legend-content">
                 <p>Select a simulation to view its legend.</p>
             </div>
-            <!-- Campus Demo Legend (hidden by default) -->
-            <div id="campus-demo-legend" style="display: none;">
-                <div class="legend-phase" data-phase="boundary" style="display:none;">
-                    <div class="legend-item"><div class="legend-color" style="background: linear-gradient(90deg, hsl(205, 50%, 70%), hsl(255, 50%, 70%));"></div><div class="legend-label">Project Boundary</div></div>
-                </div>
-                <div class="legend-phase" data-phase="living-primary" style="display:none;">
-                    <div class="legend-item"><div class="legend-color" style="background: rgb(219, 87, 19);"></div><div class="legend-label">Primary Routes</div></div>
-                </div>
-                <div class="legend-phase" data-phase="living-secondary" style="display:none;">
-                    <div class="legend-item"><div class="legend-color" style="background: rgba(219, 87, 19, 0.7);"></div><div class="legend-label">Secondary Routes</div></div>
-                </div>
-                <div class="legend-phase" data-phase="living-points" style="display:none;">
-                    <div class="legend-item"><div class="legend-color" style="background: rgb(237, 192, 6); border-radius: 50%;"></div><div class="legend-label">Key Points</div></div>
-                </div>
-                <div class="legend-phase" data-phase="living-asterix" style="display:none;">
-                    <div class="legend-item"><div class="legend-color" style="background: radial-gradient(circle, #e6a832 30%, transparent 70%);"></div><div class="legend-label">Activity Nodes</div></div>
-                </div>
-                <div class="legend-phase" data-phase="health-primary" style="display:none;">
-                    <div class="legend-item"><div class="legend-color" style="background: rgb(86, 130, 0);"></div><div class="legend-label">Health Primary Routes</div></div>
-                </div>
-                <div class="legend-phase" data-phase="health-secondary" style="display:none;">
-                    <div class="legend-item"><div class="legend-color" style="background: rgba(86, 130, 0, 0.7);"></div><div class="legend-label">Health Secondary Routes</div></div>
-                </div>
-                <div class="legend-phase" data-phase="health-tertiary" style="display:none;">
-                    <div class="legend-item"><div class="legend-color" style="background: rgb(226, 144, 77);"></div><div class="legend-label">Health Tertiary Routes</div></div>
-                </div>
-                <div class="legend-phase" data-phase="health-points" style="display:none;">
-                    <div class="legend-item"><div class="legend-color" style="background: rgb(183, 179, 99); border-radius: 50%;"></div><div class="legend-label">Health Points</div></div>
-                </div>
-                <div class="legend-phase" data-phase="green-spaces" style="display:none;">
-                    <div class="legend-item"><div class="legend-color" style="background: rgb(140, 186, 99); border-radius: 30%;"></div><div class="legend-label">Green Meeting Spaces</div></div>
-                </div>
-            </div>
         </section>
 
 
@@ -650,8 +611,8 @@
             <div id="dashboard-content">
                 <p>No active data.</p>
             </div>
-            <!-- SAM Segmentation Section (only for Street View) -->
-            <div id="sam-segmentation-section" style="display:none; margin-top:2rem;">
+            <!-- SAM Segmentation Section -->
+            <div id="sam-segmentation-section" style="margin-top:2rem;">
                 <h3 style="margin-bottom:0.5rem; color:#60a5fa;">Street View Segmentation</h3>
                     <button id="sam-segment-btn" type="button" class="modern-btn primary" style="margin-bottom:1rem;">Segment Street View</button>
                 <div id="sam-server-status" style="font-size:1rem; color:#aaa; margin-bottom:0.5rem;"></div>
@@ -685,9 +646,6 @@
             <h3>Demos</h3>
             <button class="control-btn animation-btn" data-action="click" data-target="fcc-demo-btn" title="FCC VR Demo">
                 <span class="material-icons">videocam</span>
-            </button>
-            <button class="control-btn animation-btn" data-action="click" data-target="campus-demo-btn" title="Chalmers Campus Vision">
-                <span class="material-icons">school</span>
             </button>
             <button class="control-btn animation-btn" data-action="click" data-target="street-view-btn" title="Google Street View">
                 <span class="material-icons">streetview</span>
