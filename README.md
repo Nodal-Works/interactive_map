@@ -16,7 +16,7 @@ The default view displays a dark basemap centred on the study area in Gothenburg
 
 A lightweight entry point that centralises app startup, lets you choose between the main display or the controller, performs initial asset loading checks, and helps recover from local file or CORS issues. Open the launcher using [launcher.html](launcher.html).
 
-![Launcher](media/Launcher.png)
+![Launcher](media/launcher.png)
 
 ---
 
