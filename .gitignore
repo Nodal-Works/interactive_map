@@ -32,3 +32,6 @@ Thumbs.db
 # Temporary files
 *.tmp
 .cache/
+
+# Internal documentation
+theory/
