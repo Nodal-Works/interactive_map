@@ -17,6 +17,22 @@
   let prevStreetLifeActive = false;
   let prevTrafikActive = false;
 
+  // Positioning controls state
+  let positionControls = null;
+  let svgTransform = {
+    translateX: 128,
+    translateY: -35,
+    scale: 2.45,
+    rotation: 3  // in 90-degree increments (0, 1, 2, 3 = 0°, -90°, -180°, -270°)
+  };
+  const SHOW_POSITION_CONTROLS = false; // Set to true to show calibration controls
+
+  // Buildings overlay state
+  let buildingsLayerAdded = false;
+  const BUILDINGS_SOURCE_ID = 'campus-demo-buildings';
+  const BUILDINGS_LAYER_ID = 'campus-demo-buildings-fill';
+  const BUILDINGS_OUTLINE_ID = 'campus-demo-buildings-outline';
+
   // Animation phases configuration - Updated for campus_v2.svg structure
   const PHASES = [
     { name: 'boundary', duration: 3000, label: 'Project Boundary' },
@@ -94,6 +110,322 @@
     }
   }
 
+  // Load saved transform from localStorage
+  function loadSavedTransform() {
+    try {
+      const saved = localStorage.getItem('campus-demo-transform');
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        svgTransform = { ...svgTransform, ...parsed };
+        console.log('Campus Demo: Loaded saved transform:', svgTransform);
+      }
+    } catch (e) {
+      console.warn('Campus Demo: Could not load saved transform:', e);
+    }
+  }
+
+  // Save transform to localStorage
+  function saveTransform() {
+    try {
+      localStorage.setItem('campus-demo-transform', JSON.stringify(svgTransform));
+      console.log('Campus Demo: Saved transform:', svgTransform);
+    } catch (e) {
+      console.warn('Campus Demo: Could not save transform:', e);
+    }
+  }
+
+  // Apply current transform to SVG
+  function applyTransform() {
+    if (!svgDoc) return;
+    const rotation = svgTransform.rotation * -90; // Convert to degrees (anticlockwise)
+    svgDoc.style.transform = `
+      translate(${svgTransform.translateX}px, ${svgTransform.translateY}px)
+      scale(${svgTransform.scale})
+      rotate(${rotation}deg)
+    `;
+    svgDoc.style.transformOrigin = 'center center';
+  }
+
+  // Create positioning controls panel
+  function createPositionControls() {
+    if (positionControls) return;
+    
+    loadSavedTransform();
+    
+    positionControls = document.createElement('div');
+    positionControls.id = 'campus-position-controls';
+    positionControls.style.cssText = `
+      position: fixed;
+      top: 20px;
+      right: 20px;
+      background: rgba(0, 0, 0, 0.85);
+      color: white;
+      padding: 16px;
+      border-radius: 12px;
+      font-family: system-ui, -apple-system, sans-serif;
+      font-size: 13px;
+      z-index: 200;
+      backdrop-filter: blur(10px);
+      border: 1px solid rgba(255,255,255,0.15);
+      min-width: 220px;
+      pointer-events: auto;
+    `;
+    
+    positionControls.innerHTML = `
+      <div style="font-weight: 600; margin-bottom: 12px; font-size: 14px;">SVG Position Controls</div>
+      
+      <div style="margin-bottom: 12px;">
+        <label style="display: block; margin-bottom: 4px; opacity: 0.7;">Rotation (90° steps)</label>
+        <div style="display: flex; gap: 8px; align-items: center;">
+          <button id="pos-rotate-ccw" style="padding: 6px 12px; cursor: pointer; border-radius: 4px; border: 1px solid #555; background: #333; color: white;">↺ -90°</button>
+          <span id="pos-rotation-val" style="min-width: 50px; text-align: center;">${svgTransform.rotation * -90}°</span>
+          <button id="pos-rotate-cw" style="padding: 6px 12px; cursor: pointer; border-radius: 4px; border: 1px solid #555; background: #333; color: white;">↻ +90°</button>
+        </div>
+      </div>
+      
+      <div style="margin-bottom: 12px;">
+        <label style="display: block; margin-bottom: 4px; opacity: 0.7;">Translate X: <span id="pos-x-val">${svgTransform.translateX}</span>px</label>
+        <input type="range" id="pos-translate-x" min="-500" max="500" value="${svgTransform.translateX}" style="width: 100%; cursor: pointer;">
+      </div>
+      
+      <div style="margin-bottom: 12px;">
+        <label style="display: block; margin-bottom: 4px; opacity: 0.7;">Translate Y: <span id="pos-y-val">${svgTransform.translateY}</span>px</label>
+        <input type="range" id="pos-translate-y" min="-500" max="500" value="${svgTransform.translateY}" style="width: 100%; cursor: pointer;">
+      </div>
+      
+      <div style="margin-bottom: 12px;">
+        <label style="display: block; margin-bottom: 4px; opacity: 0.7;">Scale: <span id="pos-scale-val">${svgTransform.scale.toFixed(2)}</span></label>
+        <input type="range" id="pos-scale" min="0.1" max="3" step="0.05" value="${svgTransform.scale}" style="width: 100%; cursor: pointer;">
+      </div>
+      
+      <div style="display: flex; gap: 8px; margin-top: 16px;">
+        <button id="pos-reset" style="flex: 1; padding: 8px; cursor: pointer; border-radius: 4px; border: 1px solid #555; background: #333; color: white;">Reset</button>
+        <button id="pos-save" style="flex: 1; padding: 8px; cursor: pointer; border-radius: 4px; border: none; background: #4CAF50; color: white;">Save</button>
+      </div>
+      
+      <div style="margin-top: 12px; opacity: 0.5; font-size: 11px;">Use arrow keys + Shift for fine control</div>
+    `;
+    
+    document.body.appendChild(positionControls);
+    
+    // Wire up event listeners
+    positionControls.querySelector('#pos-rotate-ccw').addEventListener('click', () => {
+      svgTransform.rotation = (svgTransform.rotation + 1) % 4;
+      positionControls.querySelector('#pos-rotation-val').textContent = `${svgTransform.rotation * -90}°`;
+      applyTransform();
+    });
+    
+    positionControls.querySelector('#pos-rotate-cw').addEventListener('click', () => {
+      svgTransform.rotation = (svgTransform.rotation - 1 + 4) % 4;
+      positionControls.querySelector('#pos-rotation-val').textContent = `${svgTransform.rotation * -90}°`;
+      applyTransform();
+    });
+    
+    positionControls.querySelector('#pos-translate-x').addEventListener('input', (e) => {
+      svgTransform.translateX = parseFloat(e.target.value);
+      positionControls.querySelector('#pos-x-val').textContent = svgTransform.translateX;
+      applyTransform();
+    });
+    
+    positionControls.querySelector('#pos-translate-y').addEventListener('input', (e) => {
+      svgTransform.translateY = parseFloat(e.target.value);
+      positionControls.querySelector('#pos-y-val').textContent = svgTransform.translateY;
+      applyTransform();
+    });
+    
+    positionControls.querySelector('#pos-scale').addEventListener('input', (e) => {
+      svgTransform.scale = parseFloat(e.target.value);
+      positionControls.querySelector('#pos-scale-val').textContent = svgTransform.scale.toFixed(2);
+      applyTransform();
+    });
+    
+    positionControls.querySelector('#pos-reset').addEventListener('click', () => {
+      svgTransform = { translateX: 0, translateY: 0, scale: 1, rotation: 0 };
+      positionControls.querySelector('#pos-translate-x').value = 0;
+      positionControls.querySelector('#pos-translate-y').value = 0;
+      positionControls.querySelector('#pos-scale').value = 1;
+      positionControls.querySelector('#pos-x-val').textContent = '0';
+      positionControls.querySelector('#pos-y-val').textContent = '0';
+      positionControls.querySelector('#pos-scale-val').textContent = '1.00';
+      positionControls.querySelector('#pos-rotation-val').textContent = '0°';
+      applyTransform();
+    });
+    
+    positionControls.querySelector('#pos-save').addEventListener('click', () => {
+      saveTransform();
+      const btn = positionControls.querySelector('#pos-save');
+      const originalText = btn.textContent;
+      btn.textContent = 'Saved!';
+      btn.style.background = '#2E7D32';
+      setTimeout(() => {
+        btn.textContent = originalText;
+        btn.style.background = '#4CAF50';
+      }, 1000);
+    });
+    
+    // Apply initial transform
+    applyTransform();
+  }
+
+  // Remove positioning controls
+  function removePositionControls() {
+    if (positionControls && positionControls.parentNode) {
+      positionControls.parentNode.removeChild(positionControls);
+      positionControls = null;
+    }
+  }
+
+  // Handle keyboard shortcuts for fine position control
+  function handlePositionKeydown(e) {
+    if (!active || !e.shiftKey) return;
+    
+    const step = e.ctrlKey ? 10 : 1; // Ctrl for larger steps
+    let handled = false;
+    
+    switch (e.key) {
+      case 'ArrowUp':
+        svgTransform.translateY -= step;
+        handled = true;
+        break;
+      case 'ArrowDown':
+        svgTransform.translateY += step;
+        handled = true;
+        break;
+      case 'ArrowLeft':
+        if (e.altKey) {
+          // Alt+Shift+Left = rotate anticlockwise
+          svgTransform.rotation = (svgTransform.rotation + 1) % 4;
+        } else {
+          svgTransform.translateX -= step;
+        }
+        handled = true;
+        break;
+      case 'ArrowRight':
+        if (e.altKey) {
+          // Alt+Shift+Right = rotate clockwise
+          svgTransform.rotation = (svgTransform.rotation - 1 + 4) % 4;
+        } else {
+          svgTransform.translateX += step;
+        }
+        handled = true;
+        break;
+      case '+':
+      case '=':
+        svgTransform.scale = Math.min(3, svgTransform.scale + 0.05);
+        handled = true;
+        break;
+      case '-':
+      case '_':
+        svgTransform.scale = Math.max(0.1, svgTransform.scale - 0.05);
+        handled = true;
+        break;
+    }
+    
+    if (handled) {
+      e.preventDefault();
+      applyTransform();
+      updatePositionControlsUI();
+    }
+  }
+
+  // Update the controls UI to reflect current values
+  function updatePositionControlsUI() {
+    if (!positionControls) return;
+    positionControls.querySelector('#pos-translate-x').value = svgTransform.translateX;
+    positionControls.querySelector('#pos-translate-y').value = svgTransform.translateY;
+    positionControls.querySelector('#pos-scale').value = svgTransform.scale;
+    positionControls.querySelector('#pos-x-val').textContent = svgTransform.translateX;
+    positionControls.querySelector('#pos-y-val').textContent = svgTransform.translateY;
+    positionControls.querySelector('#pos-scale-val').textContent = svgTransform.scale.toFixed(2);
+    positionControls.querySelector('#pos-rotation-val').textContent = `${svgTransform.rotation * -90}°`;
+  }
+
+  // Load and display buildings overlay on map
+  async function addBuildingsOverlay() {
+    if (buildingsLayerAdded) return;
+    if (typeof window.map === 'undefined') {
+      console.warn('Campus Demo: Map not available for buildings overlay');
+      return;
+    }
+    
+    const map = window.map;
+    
+    try {
+      const response = await fetch('media/building-footprints.geojson');
+      if (!response.ok) {
+        console.warn('Campus Demo: Building footprints file not found');
+        return;
+      }
+      
+      const geojson = await response.json();
+      
+      // Add source if it doesn't exist
+      if (!map.getSource(BUILDINGS_SOURCE_ID)) {
+        map.addSource(BUILDINGS_SOURCE_ID, {
+          type: 'geojson',
+          data: geojson
+        });
+      }
+      
+      // Add fill layer - very light overlay
+      if (!map.getLayer(BUILDINGS_LAYER_ID)) {
+        map.addLayer({
+          id: BUILDINGS_LAYER_ID,
+          type: 'fill',
+          source: BUILDINGS_SOURCE_ID,
+          paint: {
+            'fill-color': '#8899aa',
+            'fill-opacity': 0.08  // Very light - just a hint of buildings
+          }
+        });
+      }
+      
+      // Add outline layer - very subtle
+      if (!map.getLayer(BUILDINGS_OUTLINE_ID)) {
+        map.addLayer({
+          id: BUILDINGS_OUTLINE_ID,
+          type: 'line',
+          source: BUILDINGS_SOURCE_ID,
+          paint: {
+            'line-color': '#667788',
+            'line-width': 0.5,
+            'line-opacity': 0.15  // Very subtle outline
+          }
+        });
+      }
+      
+      buildingsLayerAdded = true;
+      console.log('Campus Demo: Buildings overlay added');
+      
+    } catch (error) {
+      console.warn('Campus Demo: Failed to load buildings overlay:', error);
+    }
+  }
+
+  // Remove buildings overlay from map
+  function removeBuildingsOverlay() {
+    if (!buildingsLayerAdded) return;
+    if (typeof window.map === 'undefined') return;
+    
+    const map = window.map;
+    
+    try {
+      if (map.getLayer(BUILDINGS_OUTLINE_ID)) {
+        map.removeLayer(BUILDINGS_OUTLINE_ID);
+      }
+      if (map.getLayer(BUILDINGS_LAYER_ID)) {
+        map.removeLayer(BUILDINGS_LAYER_ID);
+      }
+      if (map.getSource(BUILDINGS_SOURCE_ID)) {
+        map.removeSource(BUILDINGS_SOURCE_ID);
+      }
+      buildingsLayerAdded = false;
+      console.log('Campus Demo: Buildings overlay removed');
+    } catch (error) {
+      console.warn('Campus Demo: Error removing buildings overlay:', error);
+    }
+  }
+
   function createContainer() {
     if (container) return;
     container = document.createElement('div');
@@ -149,6 +481,10 @@
       
       container.appendChild(svgDoc);
       svgLoaded = true;
+      
+      // Apply any saved transform
+      loadSavedTransform();
+      applyTransform();
       
       console.log('Campus Demo: SVG loaded (campus_v2.svg)');
       console.log('  Layer structure:');
@@ -1000,6 +1336,9 @@
 
     createContainer();
     await loadSVG();
+    
+    // Add buildings overlay on map
+    await addBuildingsOverlay();
 
     // Reset animation state
     animationPhase = -1; // Start before first phase
@@ -1012,8 +1351,20 @@
     // Create phase indicator
     createPhaseIndicator();
 
-    // Add keyboard listener
+    // Create position controls (only if enabled for calibration)
+    if (SHOW_POSITION_CONTROLS) {
+      createPositionControls();
+    } else {
+      // Still load saved transform and apply it
+      loadSavedTransform();
+      applyTransform();
+    }
+
+    // Add keyboard listeners
     document.addEventListener('keydown', handleKeydown);
+    if (SHOW_POSITION_CONTROLS) {
+      document.addEventListener('keydown', handlePositionKeydown);
+    }
 
     channel.postMessage({ type: 'animation_state', animationId: 'campus-demo-btn', isActive: true });
     rafId = requestAnimationFrame(animate);
@@ -1026,8 +1377,11 @@
     
     channel.postMessage({ type: 'animation_state', animationId: 'campus-demo-btn', isActive: false });
     
-    // Remove keyboard listener
+    // Remove keyboard listeners
     document.removeEventListener('keydown', handleKeydown);
+    if (SHOW_POSITION_CONTROLS) {
+      document.removeEventListener('keydown', handlePositionKeydown);
+    }
     
     if (rafId) {
       cancelAnimationFrame(rafId);
@@ -1036,6 +1390,12 @@
 
     // Remove phase indicator
     removePhaseIndicator();
+
+    // Remove position controls
+    removePositionControls();
+
+    // Remove buildings overlay
+    removeBuildingsOverlay();
 
     // Remove container and SVG
     if (container && container.parentNode) {
