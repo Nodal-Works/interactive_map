@@ -7,6 +7,10 @@
     <link rel="stylesheet" href="style.css" />
     <link href="https://fonts.googleapis.com/icon?family=Material+Icons" rel="stylesheet">
     <style>
+        *, *::before, *::after {
+            box-sizing: border-box;
+        }
+        
         body {
             background: #1a1a1a;
             color: #e0e0e0;
@@ -17,6 +21,8 @@
             overflow: hidden;
             font-family: system-ui, -apple-system, sans-serif;
             font-size: 1.25rem;
+            margin: 0;
+            padding: 0;
         }
 
         header {
@@ -55,6 +61,15 @@
             grid-template-rows: 1fr 1fr;
             gap: 1.5rem;
             background: #1a1a1a;
+            position: relative;
+        }
+
+        /* Debug - ensure sections are visible */
+        #legend-section,
+        #dashboard-section,
+        #metadata-section {
+            position: relative;
+            z-index: 1;
         }
 
         .panel-section {
@@ -63,6 +78,7 @@
             border-radius: 10px;
             box-shadow: 0 2px 4px rgba(0,0,0,0.3);
             border: 1px solid #3a3a3a;
+            overflow: auto;
         }
 
         .control-group {
@@ -190,8 +206,13 @@
             background: #1a1a1a;
             border-radius: 8px;
             z-index: 10;
-            position: relative;
+            position: absolute;
+            inset: 0;
             padding: 2rem;
+        }
+
+        #welcome-screen.hidden {
+            display: none !important;
         }
 
         .welcome-logo {
@@ -519,6 +540,263 @@
             margin-top: 0.25rem;
             font-style: italic;
         }
+
+        /* Sun Study - Weather App Layout */
+        #main-panel.sun-study-mode {
+            grid-template-columns: 1fr;
+            grid-template-rows: minmax(360px, 1fr) auto;
+        }
+
+        #main-panel.sun-study-mode .sun-study-hidden {
+            display: none !important;
+        }
+
+        #main-panel.sun-study-mode .sun-study-hero {
+            grid-column: 1 / -1 !important;
+            grid-row: 1 !important;
+            padding: 1.25rem;
+            display: flex !important;
+            flex-direction: column;
+            min-height: 350px;
+        }
+
+        #main-panel.sun-study-mode .sun-study-hero #dashboard-title {
+            flex-shrink: 0;
+        }
+
+        #main-panel.sun-study-mode .sun-study-hero #dashboard-content {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            min-height: 0;
+        }
+
+        #main-panel.sun-study-mode .sun-study-bottom {
+            grid-column: 1 / -1 !important;
+            grid-row: 2 !important;
+            padding: 1rem 1.25rem 1.5rem;
+            display: block !important;
+        }
+
+        .sun-sky-card {
+            position: relative;
+            width: 100%;
+            flex: 1;
+            min-height: 320px;
+            border-radius: 18px;
+            overflow: hidden;
+            border: 1px solid #2f3647;
+            background: #0b1020;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.35);
+        }
+
+        .sun-sky {
+            --sky-top: #0b1020;
+            --sky-mid: #1b2b55;
+            --sky-bottom: #2b3b6b;
+            --sun-x: 50%;
+            --sun-y: 70%;
+            --sun-opacity: 1;
+            position: relative;
+            width: 100%;
+            height: 100%;
+            background: linear-gradient(180deg, var(--sky-top) 0%, var(--sky-mid) 45%, var(--sky-bottom) 100%);
+            transition: background 0.6s ease;
+        }
+
+        .sun-sky::after {
+            content: '';
+            position: absolute;
+            inset: 0;
+            background: radial-gradient(circle at 50% 80%, rgba(255,255,255,0.12), transparent 55%);
+            pointer-events: none;
+        }
+
+        .sun-orb {
+            position: absolute;
+            width: 80px;
+            height: 80px;
+            left: var(--sun-x);
+            top: var(--sun-y);
+            transform: translate(-50%, -50%);
+            border-radius: 50%;
+            background: radial-gradient(circle, #fff7cc 0%, #ffd36a 50%, #ffb347 100%);
+            box-shadow: 0 0 40px rgba(255, 200, 100, 0.6);
+            opacity: var(--sun-opacity);
+            /* No transition - direct positioning for smooth slider interaction */
+        }
+
+        .sun-orb::after {
+            content: '';
+            position: absolute;
+            inset: -30px;
+            background: radial-gradient(circle, rgba(255, 200, 100, 0.35) 0%, transparent 70%);
+            border-radius: 50%;
+            filter: blur(2px);
+        }
+
+        .sun-path {
+            position: absolute;
+            inset: 0;
+            pointer-events: none;
+        }
+
+        .sun-horizon {
+            position: absolute;
+            left: 0;
+            right: 0;
+            bottom: 18%;
+            height: 2px;
+            background: linear-gradient(90deg, transparent 0%, rgba(255,255,255,0.35) 25%, rgba(255,255,255,0.35) 75%, transparent 100%);
+        }
+
+        .sun-cloud {
+            position: absolute;
+            top: 20%;
+            width: 180px;
+            height: 60px;
+            background: rgba(255,255,255,0.16);
+            border-radius: 50px;
+            filter: blur(1px);
+            animation: cloudDrift 30s linear infinite;
+        }
+
+        .sun-cloud::before,
+        .sun-cloud::after {
+            content: '';
+            position: absolute;
+            background: rgba(255,255,255,0.18);
+            border-radius: 50%;
+        }
+
+        .sun-cloud::before {
+            width: 80px;
+            height: 80px;
+            left: 20px;
+            top: -30px;
+        }
+
+        .sun-cloud::after {
+            width: 60px;
+            height: 60px;
+            left: 90px;
+            top: -20px;
+        }
+
+        .sun-cloud.cloud-2 {
+            top: 35%;
+            width: 220px;
+            height: 70px;
+            opacity: 0.6;
+            animation-duration: 38s;
+        }
+
+        @keyframes cloudDrift {
+            0% { transform: translateX(-220px); }
+            100% { transform: translateX(120vw); }
+        }
+
+        .sun-time-center {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            text-align: center;
+            color: #f8fafc;
+            z-index: 2;
+            backdrop-filter: blur(6px);
+            background: rgba(15, 23, 42, 0.35);
+            padding: 1rem 1.5rem;
+            border-radius: 16px;
+            border: 1px solid rgba(148, 163, 184, 0.3);
+        }
+
+        .sun-time-center .sun-time {
+            font-size: 3rem;
+            font-weight: 700;
+            letter-spacing: 0.05em;
+        }
+
+        .sun-time-center .sun-date {
+            font-size: 1rem;
+            color: #cbd5f5;
+            margin-top: 0.25rem;
+        }
+
+        .sunrise-label,
+        .sunset-label {
+            position: absolute;
+            bottom: 10%;
+            font-size: 0.9rem;
+            color: #e2e8f0;
+            background: rgba(15, 23, 42, 0.35);
+            padding: 0.35rem 0.6rem;
+            border-radius: 10px;
+            border: 1px solid rgba(148, 163, 184, 0.2);
+        }
+
+        .sunrise-label {
+            left: 8%;
+        }
+
+        .sunset-label {
+            right: 8%;
+        }
+
+        .sun-study-bottom-grid {
+            display: grid;
+            grid-template-columns: 2.2fr 1fr 1.2fr;
+            gap: 1rem;
+        }
+
+        .sun-compact-card {
+            background: #232a3b;
+            border: 1px solid #2f3647;
+            border-radius: 14px;
+            padding: 1rem;
+            box-shadow: 0 4px 10px rgba(0,0,0,0.25);
+        }
+
+        .sun-compact-title {
+            font-size: 0.9rem;
+            letter-spacing: 0.08em;
+            text-transform: uppercase;
+            color: #94a3b8;
+            font-weight: 600;
+            margin-bottom: 0.75rem;
+        }
+
+        .sun-compact-row {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 0.75rem;
+            margin-bottom: 0.75rem;
+        }
+
+        .sun-compact-row label,
+        .sun-compact-row span {
+            font-size: 0.95rem;
+            color: #e2e8f0;
+        }
+
+        .sun-compact-legend {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 0.5rem;
+        }
+
+        .sun-compact-legend .legend-item {
+            background: #1b2232;
+            border: 1px solid #2b3244;
+            padding: 0.5rem;
+        }
+
+        @media (max-width: 1200px) {
+            .sun-study-bottom-grid {
+                grid-template-columns: 1fr;
+            }
+        }
     </style>
 </head>
 <body>
@@ -604,7 +882,7 @@
             </div>
         </div>
 
-        <section class="panel-section" style="grid-column: 1; grid-row: 1;">
+        <section id="legend-section" class="panel-section" style="grid-column: 1; grid-row: 1;">
             <h2 id="legend-title">Legend</h2>
             <div id="legend-content">
                 <p>Select a simulation to view its legend.</p>
@@ -645,7 +923,7 @@
         </section>
 
 
-        <section class="panel-section" style="grid-column: 2; grid-row: 1;">
+        <section id="dashboard-section" class="panel-section" style="grid-column: 2; grid-row: 1;">
             <h2 id="dashboard-title">Dashboard</h2>
             <div id="dashboard-content">
                 <p>No active data.</p>
@@ -661,7 +939,7 @@
             </div>
         </section>
 
-        <section class="panel-section" style="grid-column: 1 / -1; grid-row: 2;">
+        <section id="metadata-section" class="panel-section" style="grid-column: 1 / -1; grid-row: 2;">
             <h2>Metadata</h2>
             <div id="metadata-content">
                 <div class="metadata-item">

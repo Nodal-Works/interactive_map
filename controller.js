@@ -60,6 +60,421 @@ let fccDemoState = {
     stats: null
 };
 
+// Sun Study UI state
+let sunStudyState = {
+    time: 12,
+    date: new Date().toISOString().split('T')[0],
+    altitude: null
+};
+
+function setSunStudyLayout(isActive) {
+    const mainPanel = document.getElementById('main-panel');
+    const legendSection = document.getElementById('legend-section');
+    const dashboardSection = document.getElementById('dashboard-section');
+    const metadataSection = document.getElementById('metadata-section');
+    const metadataTitle = metadataSection?.querySelector('h2');
+
+    if (!mainPanel || !legendSection || !dashboardSection || !metadataSection) {
+        console.warn('[SunStudy] Missing elements for layout switch');
+        return;
+    }
+
+    if (isActive) {
+        mainPanel.classList.add('sun-study-mode');
+        legendSection.classList.add('sun-study-hidden');
+        dashboardSection.classList.add('sun-study-hero');
+        metadataSection.classList.add('sun-study-bottom');
+        if (metadataTitle) metadataTitle.textContent = 'Sun Study Controls';
+    } else {
+        mainPanel.classList.remove('sun-study-mode');
+        legendSection.classList.remove('sun-study-hidden');
+        dashboardSection.classList.remove('sun-study-hero');
+        metadataSection.classList.remove('sun-study-bottom');
+        if (metadataTitle) metadataTitle.textContent = 'Metadata';
+        
+        // Restore default content when exiting sun study mode
+        const dashboardContent = document.getElementById('dashboard-content');
+        const legendContent = document.getElementById('legend-content');
+        const dashboardTitle = document.getElementById('dashboard-title');
+        const legendTitle = document.getElementById('legend-title');
+        const metadataContent = document.getElementById('metadata-content');
+        
+        if (dashboardTitle) dashboardTitle.textContent = 'Dashboard';
+        if (legendTitle) legendTitle.textContent = 'Legend';
+        if (dashboardContent) dashboardContent.innerHTML = '<p>No active data.</p>';
+        if (legendContent) legendContent.innerHTML = '<p>Select a simulation to view its legend.</p>';
+        if (metadataContent) {
+            metadataContent.innerHTML = `
+                <div class="metadata-item">
+                    <div class="metadata-label">Current View</div>
+                    <div class="metadata-value" id="meta-view">Default</div>
+                </div>
+                <div class="metadata-item">
+                    <div class="metadata-label">Active Layer</div>
+                    <div class="metadata-value" id="meta-layer">None</div>
+                </div>
+                <div class="metadata-item">
+                    <div class="metadata-label">Description</div>
+                    <div class="metadata-value" id="meta-desc">Interactive map of the district. Use controls to toggle layers.</div>
+                </div>
+            `;
+        }
+    }
+}
+
+function lerp(a, b, t) {
+    return a + (b - a) * t;
+}
+
+function lerpColor(c1, c2, t) {
+    return [
+        Math.round(lerp(c1[0], c2[0], t)),
+        Math.round(lerp(c1[1], c2[1], t)),
+        Math.round(lerp(c1[2], c2[2], t))
+    ];
+}
+
+function getSkyPalette(time, sunrise = 6, sunset = 18, maxAltitude = 56) {
+    const nightTop = [11, 16, 32];
+    const nightMid = [27, 43, 85];
+    const nightBottom = [43, 59, 107];
+
+    const dawnTop = [32, 44, 88];
+    const dawnMid = [102, 120, 191];
+    const dawnBottom = [255, 183, 111];
+
+    // Adjust day colors based on sun altitude
+    // Low sun (winter): warmer, less saturated blue, more golden
+    // High sun (summer): deeper blue, brighter
+    const altitudeRatio = Math.min(1, Math.max(0, maxAltitude / MAX_POSSIBLE_ALTITUDE));
+    
+    // Summer day colors (high sun)
+    const summerDayTop = [64, 139, 255];    // Bright blue
+    const summerDayMid = [125, 190, 255];   // Light blue
+    const summerDayBottom = [255, 224, 168]; // Warm horizon
+    
+    // Winter day colors (low sun) - more muted, warmer tones
+    const winterDayTop = [85, 130, 200];     // Pale blue
+    const winterDayMid = [150, 175, 210];    // Grayish blue
+    const winterDayBottom = [255, 210, 150]; // Golden horizon
+    
+    // Interpolate between winter and summer based on altitude
+    const dayTop = lerpColor(winterDayTop, summerDayTop, altitudeRatio);
+    const dayMid = lerpColor(winterDayMid, summerDayMid, altitudeRatio);
+    const dayBottom = lerpColor(winterDayBottom, summerDayBottom, altitudeRatio);
+
+    const duskTop = [36, 52, 97];
+    const duskMid = [255, 130, 92];
+    const duskBottom = [253, 206, 138];
+
+    // Calculate transition times based on actual sunrise/sunset
+    const dawnStart = sunrise - 1;      // Dawn begins 1 hour before sunrise
+    const dawnEnd = sunrise + 1;        // Dawn ends 1 hour after sunrise
+    const duskStart = sunset - 1;       // Dusk begins 1 hour before sunset
+    const duskEnd = sunset + 1;         // Dusk ends 1 hour after sunset
+    const solarNoon = (sunrise + sunset) / 2;
+
+    const clampTime = Math.max(0, Math.min(24, time));
+    let t;
+
+    // Night (before dawn)
+    if (clampTime < dawnStart) {
+        return { top: nightTop, mid: nightMid, bottom: nightBottom };
+    }
+    // Dawn transition (night -> dawn colors)
+    if (clampTime < sunrise) {
+        t = (clampTime - dawnStart) / (sunrise - dawnStart);
+        return {
+            top: lerpColor(nightTop, dawnTop, t),
+            mid: lerpColor(nightMid, dawnMid, t),
+            bottom: lerpColor(nightBottom, dawnBottom, t)
+        };
+    }
+    // Morning (dawn -> day colors)
+    if (clampTime < solarNoon) {
+        t = (clampTime - sunrise) / (solarNoon - sunrise);
+        return {
+            top: lerpColor(dawnTop, dayTop, t),
+            mid: lerpColor(dawnMid, dayMid, t),
+            bottom: lerpColor(dawnBottom, dayBottom, t)
+        };
+    }
+    // Afternoon (day -> dusk colors)
+    if (clampTime < duskStart) {
+        t = (clampTime - solarNoon) / (duskStart - solarNoon);
+        return {
+            top: lerpColor(dayTop, dayTop, t), // Stay day colors
+            mid: lerpColor(dayMid, dayMid, t),
+            bottom: lerpColor(dayBottom, dayBottom, t)
+        };
+    }
+    // Dusk transition (day -> dusk colors)
+    if (clampTime < sunset) {
+        t = (clampTime - duskStart) / (sunset - duskStart);
+        return {
+            top: lerpColor(dayTop, duskTop, t),
+            mid: lerpColor(dayMid, duskMid, t),
+            bottom: lerpColor(dayBottom, duskBottom, t)
+        };
+    }
+    // Evening (dusk -> night colors)
+    if (clampTime < duskEnd) {
+        t = (clampTime - sunset) / (duskEnd - sunset);
+        return {
+            top: lerpColor(duskTop, nightTop, t),
+            mid: lerpColor(duskMid, nightMid, t),
+            bottom: lerpColor(duskBottom, nightBottom, t)
+        };
+    }
+    // Night (after dusk)
+    return { top: nightTop, mid: nightMid, bottom: nightBottom };
+}
+
+function formatSunDate(dateStr) {
+    const d = new Date(dateStr);
+    if (Number.isNaN(d.getTime())) return '';
+    return d.toLocaleDateString(undefined, {
+        weekday: 'short',
+        month: 'short',
+        day: 'numeric',
+        year: 'numeric'
+    });
+}
+
+// Calculate sunrise and sunset times for a given date and location
+// Uses Gothenburg, Sweden coordinates (same as sun-study.js)
+function calculateSunriseSunset(dateStr) {
+    const LATITUDE = 57.68839377903814;
+    const date = new Date(dateStr);
+    
+    // Day of year calculation
+    const start = new Date(date.getFullYear(), 0, 0);
+    const diff = date - start;
+    const oneDay = 1000 * 60 * 60 * 24;
+    const dayOfYear = Math.floor(diff / oneDay);
+    
+    // Solar declination
+    const declination = 23.45 * Math.sin((360 / 365) * (dayOfYear - 81) * Math.PI / 180);
+    
+    // Convert to radians
+    const latRad = LATITUDE * Math.PI / 180;
+    const declRad = declination * Math.PI / 180;
+    
+    // Hour angle at sunrise/sunset (when altitude = 0)
+    // cos(hourAngle) = -tan(lat) * tan(decl)
+    const cosHourAngle = -Math.tan(latRad) * Math.tan(declRad);
+    
+    // Handle polar day/night
+    if (cosHourAngle < -1) {
+        // Polar day - sun never sets
+        return { sunrise: 0, sunset: 24, isPolarDay: true, isPolarNight: false };
+    } else if (cosHourAngle > 1) {
+        // Polar night - sun never rises
+        return { sunrise: 12, sunset: 12, isPolarDay: false, isPolarNight: true };
+    }
+    
+    const hourAngle = Math.acos(cosHourAngle) * 180 / Math.PI;
+    const sunriseHour = 12 - hourAngle / 15;
+    const sunsetHour = 12 + hourAngle / 15;
+    
+    return { 
+        sunrise: sunriseHour, 
+        sunset: sunsetHour,
+        isPolarDay: false,
+        isPolarNight: false
+    };
+}
+
+function formatTimeHHMM(decimalHours) {
+    const h = Math.floor(decimalHours);
+    const m = Math.floor((decimalHours - h) * 60);
+    return `${h.toString().padStart(2, '0')}:${m.toString().padStart(2, '0')}`;
+}
+
+// Calculate sun altitude using the same formula as sun-study.js
+// This ensures perfect synchronization between controller and main view
+function calculateSunAltitude(dateStr, timeOfDay) {
+    const LATITUDE = 57.68839377903814; // Gothenburg, Sweden
+    const date = new Date(dateStr);
+    
+    // Day of year calculation
+    const start = new Date(date.getFullYear(), 0, 0);
+    const diff = date - start;
+    const oneDay = 1000 * 60 * 60 * 24;
+    const dayOfYear = Math.floor(diff / oneDay);
+    
+    // Solar declination (same formula as sun-study.js)
+    const declination = 23.45 * Math.sin((360 / 365) * (dayOfYear - 81) * Math.PI / 180);
+    const hourAngle = (timeOfDay - 12.0) * 15;
+    
+    const latRad = LATITUDE * Math.PI / 180;
+    const declRad = declination * Math.PI / 180;
+    const hourRad = hourAngle * Math.PI / 180;
+    
+    const sinAlt = Math.sin(latRad) * Math.sin(declRad) + 
+                   Math.cos(latRad) * Math.cos(declRad) * Math.cos(hourRad);
+    const altitude = Math.asin(sinAlt) * 180 / Math.PI;
+    
+    return altitude;
+}
+
+// Calculate max sun altitude for a given date (occurs at solar noon)
+function getMaxSunAltitude(dateStr) {
+    return calculateSunAltitude(dateStr, 12);
+}
+
+// Maximum possible sun altitude at this latitude (summer solstice)
+// At 57.7°N: 90 - 57.7 + 23.45 ≈ 55.75 degrees
+const MAX_POSSIBLE_ALTITUDE = 56;
+
+// Generate SVG path for the sun's arc based on actual altitude calculations
+function generateSunArcPath(dateStr, sunrise, sunset) {
+    const points = [];
+    const horizonY = 78;
+    const maxAltitude = getMaxSunAltitude(dateStr);
+    // Scale peak height relative to maximum possible altitude (summer solstice)
+    // This makes winter arcs lower and summer arcs higher
+    const maxPeakHeight = 55; // Maximum visual height (summer solstice)
+    const peakHeight = (maxAltitude / MAX_POSSIBLE_ALTITUDE) * maxPeakHeight;
+    
+    // Generate points along the visible arc (sunrise to sunset)
+    const numPoints = 24;
+    for (let i = 0; i <= numPoints; i++) {
+        const t = i / numPoints;
+        const time = sunrise + t * (sunset - sunrise);
+        const altitude = calculateSunAltitude(dateStr, time);
+        
+        // Map time to X position (10% at sunrise, 90% at sunset)
+        const x = 10 + t * 80;
+        
+        // Map altitude directly to Y position based on absolute altitude
+        // Not normalized to daily max - use absolute scale
+        const y = horizonY - (altitude / MAX_POSSIBLE_ALTITUDE) * maxPeakHeight;
+        
+        points.push({ x, y });
+    }
+    
+    if (points.length < 2) return 'M10 78 L90 78';
+    
+    // Create smooth cubic bezier path
+    let path = `M${points[0].x.toFixed(1)} ${points[0].y.toFixed(1)}`;
+    
+    for (let i = 1; i < points.length - 1; i++) {
+        const p0 = points[i - 1];
+        const p1 = points[i];
+        const p2 = points[i + 1];
+        
+        // Calculate control points for smooth curve
+        const cp1x = p0.x + (p1.x - p0.x) * 0.5;
+        const cp1y = p0.y + (p1.y - p0.y) * 0.5;
+        const cp2x = p1.x - (p2.x - p0.x) * 0.15;
+        const cp2y = p1.y - (p2.y - p0.y) * 0.15;
+        
+        path += ` S${cp2x.toFixed(1)} ${cp2y.toFixed(1)} ${p1.x.toFixed(1)} ${p1.y.toFixed(1)}`;
+    }
+    
+    // End at last point
+    const last = points[points.length - 1];
+    path += ` L${last.x.toFixed(1)} ${last.y.toFixed(1)}`;
+    
+    return path;
+}
+
+function updateSunStudySky(timeValue, dateValue, altitudeValue) {
+    const sky = document.getElementById('sun-sky');
+    const timeLabel = document.getElementById('sun-time-label');
+    const dateLabel = document.getElementById('sun-date-label');
+    const sunriseLabel = document.getElementById('sunrise-time');
+    const sunsetLabel = document.getElementById('sunset-time');
+    if (!sky) return;
+
+    const time = typeof timeValue === 'number' ? timeValue : sunStudyState.time;
+    const date = dateValue || sunStudyState.date;
+
+    sunStudyState.time = time;
+    sunStudyState.date = date;
+    if (altitudeValue !== undefined) sunStudyState.altitude = altitudeValue;
+
+    // Calculate actual sunrise/sunset for the date
+    const sunTimes = calculateSunriseSunset(date);
+    const sunrise = sunTimes.sunrise;
+    const sunset = sunTimes.sunset;
+    
+    // Update sunrise/sunset labels
+    if (sunriseLabel) sunriseLabel.textContent = formatTimeHHMM(sunrise);
+    if (sunsetLabel) sunsetLabel.textContent = formatTimeHHMM(sunset);
+
+    // Calculate sun altitude using the same formula as sun-study.js
+    const calculatedAltitude = calculateSunAltitude(date, time);
+    const maxAltitude = getMaxSunAltitude(date);
+    
+    // Use the altitude from sun-study.js if available, otherwise use our calculation
+    const altitude = (typeof sunStudyState.altitude === 'number') 
+        ? sunStudyState.altitude 
+        : calculatedAltitude;
+    
+    const horizonY = 78;
+    const maxPeakHeight = 55; // Maximum visual height at summer solstice
+    let sunX, sunY, sunOpacity;
+    
+    // Night duration for calculating night-time position
+    const nightDuration = 24 - sunset + sunrise;
+    
+    if (time >= sunrise && time <= sunset) {
+        // Daytime: sun follows the visible arc from left to right
+        const dayProgress = (time - sunrise) / (sunset - sunrise);
+        sunX = 10 + dayProgress * 80; // 10% to 90%
+        
+        // Y position from actual altitude using absolute scale
+        // This ensures February sun stays low, summer sun goes high
+        sunY = horizonY - (Math.max(0, altitude) / MAX_POSSIBLE_ALTITUDE) * maxPeakHeight;
+        sunOpacity = 1;
+    } else {
+        // Nighttime: sun is below the horizon and invisible
+        // Still calculate position for continuity if needed later
+        
+        let nightProgress;
+        if (time > sunset) {
+            nightProgress = (time - sunset) / nightDuration;
+        } else {
+            nightProgress = (24 - sunset + time) / nightDuration;
+        }
+        
+        // Position below horizon (not visible anyway)
+        sunX = 90 - nightProgress * 80; // 90% -> 10% (right to left)
+        sunY = horizonY + 20; // Below horizon
+        
+        // Sun is invisible after sunset
+        sunOpacity = 0;
+    }
+
+    // Update sky colors based on time and actual sunrise/sunset
+    const maxAltitudeForDate = getMaxSunAltitude(date);
+    const palette = getSkyPalette(time, sunrise, sunset, maxAltitudeForDate);
+    sky.style.setProperty('--sky-top', `rgb(${palette.top.join(',')})`);
+    sky.style.setProperty('--sky-mid', `rgb(${palette.mid.join(',')})`);
+    sky.style.setProperty('--sky-bottom', `rgb(${palette.bottom.join(',')})`);
+    sky.style.setProperty('--sun-x', `${sunX}%`);
+    sky.style.setProperty('--sun-y', `${sunY}%`);
+    sky.style.setProperty('--sun-opacity', `${sunOpacity}`);
+
+    // Update the SVG arc path to match the actual calculated sun path
+    const sunPathSvg = sky.querySelector('.sun-path path');
+    if (sunPathSvg) {
+        const arcPath = generateSunArcPath(date, sunrise, sunset);
+        sunPathSvg.setAttribute('d', arcPath);
+    }
+
+    if (timeLabel) {
+        const h = Math.floor(time);
+        const m = Math.floor((time - h) * 60);
+        timeLabel.textContent = `${h.toString().padStart(2, '0')}:${m.toString().padStart(2, '0')}`;
+    }
+    if (dateLabel) {
+        dateLabel.textContent = formatSunDate(date);
+    }
+}
+
 // Animation layer tracking - tracks active animations and their order
 // Animation buttons are buttons that toggle visualizations on/off
 const ANIMATION_BUTTONS = [
@@ -98,6 +513,9 @@ function setAnimationState(targetId, isActive) {
         }
     } else {
         activeAnimations = activeAnimations.filter(id => id !== targetId);
+        if (targetId === 'sun-study-btn') {
+            setSunStudyLayout(false);
+        }
         // Reset campus demo legend when it's deactivated
         if (targetId === 'campus-demo-btn') {
             resetCampusDemoLegend();
@@ -150,6 +568,7 @@ function showWelcome() {
     syncAnimationButtonStates();
     // Also clear function button selections
     document.querySelectorAll('.control-btn.function-btn').forEach(b => b.classList.remove('selected'));
+    setSunStudyLayout(false);
     startTour();
 }
 
@@ -202,6 +621,16 @@ function updateDashboard(targetId) {
     const legendContent = document.getElementById('legend-content');
     const dashboardTitle = document.getElementById('dashboard-title');
     const legendTitle = document.getElementById('legend-title');
+    const mainPanel = document.getElementById('main-panel');
+
+    // Check if already in sun study mode to avoid duplicate setup
+    if (targetId === 'sun-study-btn' && mainPanel && mainPanel.classList.contains('sun-study-mode')) {
+        return;
+    }
+
+    if (targetId !== 'sun-study-btn') {
+        setSunStudyLayout(false);
+    }
 
     // Reset titles by default
     if (dashboardTitle) dashboardTitle.textContent = 'Dashboard';
@@ -635,118 +1064,119 @@ function updateDashboard(targetId) {
             </div>
         `;
     } else if (targetId === 'sun-study-btn') {
+        setSunStudyLayout(true);
+
+        if (dashboardTitle) dashboardTitle.textContent = 'Sun Study Sky';
+        if (legendTitle) legendTitle.textContent = 'Sun Study';
+
+        const timeLabel = `${Math.floor(sunStudyState.time).toString().padStart(2, '0')}:${Math.floor((sunStudyState.time % 1) * 60).toString().padStart(2, '0')}`;
+
         dashboardContent.innerHTML = `
-            <div class="dashboard-container">
-                <div class="dashboard-card">
-                    <div class="dashboard-section-title">
-                        <span class="material-icons" style="font-size: 18px;">tune</span>
-                        Controls
+            <div class="sun-sky-card">
+                <div id="sun-sky" class="sun-sky">
+                    <svg class="sun-path" viewBox="0 0 100 100" preserveAspectRatio="none">
+                        <path d="M10 70 Q50 10 90 70" stroke="rgba(255,255,255,0.35)" stroke-width="0.6" fill="none" stroke-dasharray="2 2" />
+                    </svg>
+                    <div class="sun-cloud"></div>
+                    <div class="sun-cloud cloud-2"></div>
+                    <div id="sun-orb" class="sun-orb"></div>
+                    <div class="sun-horizon"></div>
+                    <div class="sun-time-center">
+                        <div id="sun-time-label" class="sun-time">${timeLabel}</div>
+                        <div id="sun-date-label" class="sun-date">${formatSunDate(sunStudyState.date)}</div>
                     </div>
-                    
-                    <div class="control-row">
-                        <label class="control-label">Date</label>
-                        <input type="date" id="sun-date" class="modern-date" value="${new Date().toISOString().split('T')[0]}">
-                    </div>
-
-                    <div class="control-row">
-                        <label class="control-label">Time</label>
-                        <input type="range" id="sun-time" class="modern-range" min="0" max="24" step="0.25" value="12">
-                        <span id="time-display" class="control-value">12:00</span>
-                    </div>
-
-                    <div class="control-row">
-                        <label class="control-label">Shadow Opacity</label>
-                        <input type="range" id="shadow-opacity" class="modern-range" min="0.1" max="1.0" step="0.1" value="0.8">
-                    </div>
-
-                    <div class="control-row">
-                        <label class="control-label">Animation Speed</label>
-                        <input type="range" id="sun-speed" class="modern-range" min="0.5" max="5" step="0.5" value="2">
-                        <span id="speed-display" class="control-value">2x</span>
-                    </div>
-
-                    <div class="action-grid">
-                        <button id="sun-animate-btn" class="modern-btn primary">
-                            <span class="material-icons">play_arrow</span> Animate Day
-                        </button>
-                        <button id="false-color-btn" class="modern-btn">
-                            <span class="material-icons">palette</span> False Color
-                        </button>
-                        <button id="toggle-trees-btn" class="modern-btn" style="grid-column: span 2;">
-                            <span class="material-icons">park</span> Toggle Trees
-                        </button>
-                    </div>
-                </div>
-
-                <div class="dashboard-card">
-                    <div class="dashboard-section-title">
-                        <span class="material-icons" style="font-size: 18px;">analytics</span>
-                        Analysis Data
-                    </div>
-                    <div class="control-row">
-                        <span class="control-label">Sun Altitude</span>
-                        <span id="altitude-display" class="control-value">--</span>
-                    </div>
-                    <div class="control-row">
-                        <span class="control-label">Sun Azimuth</span>
-                        <span id="azimuth-display" class="control-value">--</span>
-                    </div>
-                    <div class="control-row">
-                        <span class="control-label">Trees Layer</span>
-                        <span id="trees-status-display" class="control-value">Off</span>
-                    </div>
-                </div>
-
-                <div class="dashboard-card">
-                    <div class="dashboard-section-title">
-                        <span class="material-icons" style="font-size: 18px;">school</span>
-                        Educational Context
-                    </div>
-                    <div class="info-box" style="margin-bottom: 1rem;">
-                        <div class="info-title">Methodology</div>
-                        <p class="info-text">
-                            Renders accurate shadows using <strong>Three.js</strong> based on astronomical calculations for Gothenburg's latitude. 
-                            Uses <strong>SSAO</strong> (Screen Space Ambient Occlusion) for depth perception.
-                        </p>
-                    </div>
-                    <div class="info-box">
-                        <div class="info-title">Application</div>
-                        <p class="info-text">
-                            Used by architects to optimize <strong>natural light</strong>, design energy-efficient buildings, 
-                            and ensure public spaces receive adequate sunlight (solar access analysis).
-                        </p>
-                    </div>
+                    <div class="sunrise-label">Sunrise <span id="sunrise-time">06:00</span></div>
+                    <div class="sunset-label">Sunset <span id="sunset-time">18:00</span></div>
                 </div>
             </div>
         `;
-        
-        legendContent.innerHTML = `
-            <div class="dashboard-card">
-                <div class="dashboard-section-title">Legend</div>
-                <div style="display: flex; flex-direction: column; gap: 0.5rem;">
-                    <div class="legend-item">
-                        <div class="legend-color" style="background: rgba(0,0,0,0.5);"></div>
-                        <span class="legend-label">Shadow Cast</span>
+
+        if (legendContent) legendContent.innerHTML = '';
+
+        const metadataContent = document.getElementById('metadata-content');
+        if (metadataContent) {
+            metadataContent.innerHTML = `
+                <div class="sun-study-bottom-grid">
+                    <div class="sun-compact-card">
+                        <div class="sun-compact-title">Controls</div>
+                        <div class="sun-compact-row">
+                            <label>Date</label>
+                            <input type="date" id="sun-date" class="modern-date" value="${sunStudyState.date}">
+                        </div>
+                        <div class="sun-compact-row">
+                            <label>Time</label>
+                            <input type="range" id="sun-time" class="modern-range" min="0" max="24" step="0.25" value="${sunStudyState.time}">
+                            <span id="time-display" class="control-value">${timeLabel}</span>
+                        </div>
+                        <div class="sun-compact-row">
+                            <label>Shadow Opacity</label>
+                            <input type="range" id="shadow-opacity" class="modern-range" min="0.1" max="1.0" step="0.1" value="0.8">
+                        </div>
+                        <div class="sun-compact-row">
+                            <label>Speed</label>
+                            <input type="range" id="sun-speed" class="modern-range" min="0.5" max="5" step="0.5" value="2">
+                            <span id="speed-display" class="control-value">2x</span>
+                        </div>
+                        <div class="action-grid" style="grid-template-columns: repeat(3, 1fr);">
+                            <button id="sun-animate-btn" class="modern-btn primary">
+                                <span class="material-icons">play_arrow</span>
+                                Animate
+                            </button>
+                            <button id="false-color-btn" class="modern-btn">
+                                <span class="material-icons">palette</span>
+                                False
+                            </button>
+                            <button id="toggle-trees-btn" class="modern-btn">
+                                <span class="material-icons">park</span>
+                                Trees
+                            </button>
+                        </div>
                     </div>
-                    <div class="legend-item">
-                        <div class="legend-color" style="background: linear-gradient(to right, #f5d866, #ff6626, #f23319);"></div>
-                        <span class="legend-label">Sun Exposure (False Color)</span>
+
+                    <div class="sun-compact-card">
+                        <div class="sun-compact-title">Live Sun</div>
+                        <div class="sun-compact-row">
+                            <span>Altitude</span>
+                            <span id="altitude-display" class="control-value">--</span>
+                        </div>
+                        <div class="sun-compact-row">
+                            <span>Azimuth</span>
+                            <span id="azimuth-display" class="control-value">--</span>
+                        </div>
+                        <div class="sun-compact-row">
+                            <span>Trees</span>
+                            <span id="trees-status-display" class="control-value">Off</span>
+                        </div>
                     </div>
-                    <div class="legend-item">
-                        <div class="legend-color" style="background: #26409a;"></div>
-                        <span class="legend-label">Building/Terrain Shadow</span>
-                    </div>
-                    <div class="legend-item">
-                        <div class="legend-color" style="background: #268040;"></div>
-                        <span class="legend-label">Tree Shadow Only</span>
-                    </div>
-                    <div class="legend-item">
-                        <div class="legend-color" style="background: #8c268c;"></div>
-                        <span class="legend-label">Combined Shadow</span>
+
+                    <div class="sun-compact-card">
+                        <div class="sun-compact-title">Legend</div>
+                        <div class="sun-compact-legend">
+                            <div class="legend-item">
+                                <div class="legend-color" style="background: rgba(0,0,0,0.5);"></div>
+                                <span class="legend-label">Shadow Cast</span>
+                            </div>
+                            <div class="legend-item">
+                                <div class="legend-color" style="background: linear-gradient(to right, #f5d866, #ff6626, #f23319);"></div>
+                                <span class="legend-label">Sun Exposure</span>
+                            </div>
+                            <div class="legend-item">
+                                <div class="legend-color" style="background: #26409a;"></div>
+                                <span class="legend-label">Building/Terrain</span>
+                            </div>
+                            <div class="legend-item">
+                                <div class="legend-color" style="background: #268040;"></div>
+                                <span class="legend-label">Tree Shadow</span>
+                            </div>
+                            <div class="legend-item">
+                                <div class="legend-color" style="background: #8c268c;"></div>
+                                <span class="legend-label">Combined</span>
+                            </div>
+                        </div>
                     </div>
                 </div>
-            </div>
-        `;
+            `;
+        }
 
         // Attach event listeners for Sun Study controls
         const dateInput = document.getElementById('sun-date');
@@ -766,36 +1196,54 @@ function updateDashboard(targetId) {
             });
         };
 
-        dateInput.addEventListener('change', (e) => sendControl('set_date', e.target.value));
+        if (dateInput) {
+            dateInput.addEventListener('change', (e) => {
+                sunStudyState.date = e.target.value;
+                updateSunStudySky(sunStudyState.time, sunStudyState.date);
+                sendControl('set_date', e.target.value);
+            });
+        }
         
-        timeInput.addEventListener('input', (e) => {
-            const val = parseFloat(e.target.value);
-            const h = Math.floor(val);
-            const m = Math.floor((val - h) * 60);
-            timeDisplay.textContent = `${h.toString().padStart(2, '0')}:${m.toString().padStart(2, '0')}`;
-            sendControl('set_time', val);
-        });
+        if (timeInput && timeDisplay) {
+            timeInput.addEventListener('input', (e) => {
+                const val = parseFloat(e.target.value);
+                const h = Math.floor(val);
+                const m = Math.floor((val - h) * 60);
+                timeDisplay.textContent = `${h.toString().padStart(2, '0')}:${m.toString().padStart(2, '0')}`;
+                sunStudyState.time = val;
+                updateSunStudySky(val, sunStudyState.date);
+                sendControl('set_time', val);
+            });
+        }
 
-        opacityInput.addEventListener('input', (e) => sendControl('set_opacity', e.target.value));
+        if (opacityInput) {
+            opacityInput.addEventListener('input', (e) => sendControl('set_opacity', e.target.value));
+        }
         
-        animateBtn.addEventListener('click', () => {
-            animateBtn.classList.toggle('active');
-            const isActive = animateBtn.classList.contains('active');
-            animateBtn.innerHTML = isActive 
-                ? '<span class="material-icons">pause</span> Pause' 
-                : '<span class="material-icons">play_arrow</span> Animate Day';
-            sendControl('toggle_animation');
-        });
+        if (animateBtn) {
+            animateBtn.addEventListener('click', () => {
+                animateBtn.classList.toggle('active');
+                const isActive = animateBtn.classList.contains('active');
+                animateBtn.innerHTML = isActive 
+                    ? '<span class="material-icons">pause</span> Pause'
+                    : '<span class="material-icons">play_arrow</span> Animate';
+                sendControl('toggle_animation');
+            });
+        }
 
-        speedInput.addEventListener('input', (e) => {
-            speedDisplay.textContent = e.target.value + 'x';
-            sendControl('set_speed', e.target.value);
-        });
+        if (speedInput && speedDisplay) {
+            speedInput.addEventListener('input', (e) => {
+                speedDisplay.textContent = e.target.value + 'x';
+                sendControl('set_speed', e.target.value);
+            });
+        }
 
-        falseColorBtn.addEventListener('click', () => {
-            falseColorBtn.classList.toggle('active');
-            sendControl('toggle_false_color');
-        });
+        if (falseColorBtn) {
+            falseColorBtn.addEventListener('click', () => {
+                falseColorBtn.classList.toggle('active');
+                sendControl('toggle_false_color');
+            });
+        }
 
         const toggleTreesBtn = document.getElementById('toggle-trees-btn');
         if (toggleTreesBtn) {
@@ -804,6 +1252,13 @@ function updateDashboard(targetId) {
                 sendControl('toggle_trees');
             });
         }
+
+        // Update sky visualization
+        updateSunStudySky(sunStudyState.time, sunStudyState.date);
+        
+        // Sync initial date and time to sun-study.js
+        sendControl('set_date', sunStudyState.date);
+        sendControl('set_time', sunStudyState.time);
 
     } else if (targetId === 'cfd-simulation-btn') {
         dashboardContent.innerHTML = `
@@ -1460,6 +1915,7 @@ channel.onmessage = (event) => {
         // Only update if elements exist (i.e., Sun Study dashboard is active)
         if (altDisplay) altDisplay.textContent = data.altitude.toFixed(1);
         if (azDisplay) azDisplay.textContent = data.azimuth.toFixed(1);
+        updateSunStudySky(sunStudyState.time, sunStudyState.date, data.altitude);
     } else if (data.type === MSG_TYPES.SUN_TIME_UPDATE) {
         const timeSlider = document.getElementById('sun-time');
         const timeDisplay = document.getElementById('time-display');
@@ -1469,6 +1925,8 @@ channel.onmessage = (event) => {
             const m = Math.floor((data.time - h) * 60);
             timeDisplay.textContent = `${h.toString().padStart(2, '0')}:${m.toString().padStart(2, '0')}`;
         }
+        sunStudyState.time = data.time;
+        updateSunStudySky(data.time, sunStudyState.date);
     } else if (data.type === 'trees_state') {
         // Update trees toggle button and status display
         const toggleTreesBtn = document.getElementById('toggle-trees-btn');
@@ -2733,9 +3191,20 @@ function highlightControllerLegendItem(propertyValue) {
 
 function updateMetadata(layerId) {
     welcomeScreen.classList.add('hidden');
+    
+    // Sun Study uses custom layout - skip standard metadata update
+    if (layerId === 'sun-study-btn') {
+        return;
+    }
+    
     const metaLayer = document.getElementById('meta-layer');
     const metaDesc = document.getElementById('meta-desc');
     const legendContent = document.getElementById('legend-content');
+    
+    // Guard against null elements (can happen if layout was modified)
+    if (!metaLayer || !metaDesc || !legendContent) {
+        return;
+    }
     
     let name = 'None';
     let desc = 'Interactive map of the district. Use controls to toggle layers.';

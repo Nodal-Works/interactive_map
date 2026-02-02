@@ -2,6 +2,7 @@
 
 An interactive mixed-reality urban visualisation platform built for the ACE MR Studio at Chalmers University of Technology. The application provides multiple data visualisation layers for urban planning, environmental analysis, and stakeholder engagement.
 
+![Demo](./media/demo.gif)
 ![Main Map View](./media/screenshots/controller-main.png)
 
 ---
