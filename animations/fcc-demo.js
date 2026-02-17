@@ -2,185 +2,164 @@
 // Plays VR recording video synchronized with isovist movement along recorded path
 // Version: 1.0
 
-(function() {
-  if (typeof window.map === 'undefined') {
-    console.warn('FCC Demo: Map not ready yet, will initialize when available');
+class FCCDemoAnimation {
+  constructor(map) {
+    this.map = map;
+    this.channel = new BroadcastChannel('map_controller_channel');
+    
+    this.fccDemoActive = false;
+    this.pathCoordinates = [];
+    this.totalPathLength = 0;
+    this.segmentLengths = [];
+    this.cumulativeLengths = [];
+    
+    this.currentProgress = 0;
+    this.isPlaying = false;
+    this.playbackSpeed = 1.0;
+    this.animationFrameId = null;
+    this.lastTimestamp = null;
+    
+    this.videoDuration = 20;
+    
+    this.MAX_VIEW_DISTANCE = 200;
+    this.RAY_COUNT = 360;
+    this.HUMAN_FOV = 120;
+    this.USE_HUMAN_FOV = true;
+    
+    this.obstacles = [];
+    this.treeObstacles = [];
+    this.INCLUDE_TREES = true;
+    
+    this.lastBroadcastPosition = null;
+    this.lastBroadcastHeading = null;
+    this.BROADCAST_MIN_DISTANCE = 2;
+    this.BROADCAST_MIN_HEADING_CHANGE = 10;
+    
+    this.setupChannelListener();
   }
 
-  const channel = new BroadcastChannel('map_controller_channel');
-  
-  let fccDemoActive = false;
-  let pathCoordinates = []; // Loaded from VR-movement.geojson
-  let totalPathLength = 0; // Total path length in meters
-  let segmentLengths = []; // Length of each segment
-  let cumulativeLengths = []; // Cumulative distance at each point
-  
-  // Playback state
-  let currentProgress = 0; // 0-1 progress along path
-  let isPlaying = false;
-  let playbackSpeed = 1.0; // Multiplier for playback speed
-  let animationFrameId = null;
-  let lastTimestamp = null;
-  
-  // Video duration sync
-  let videoDuration = 20; // Default 20 seconds, updated from video metadata
-  
-  // Isovist settings (mirrors isovist.js)
-  let MAX_VIEW_DISTANCE = 200;
-  const RAY_COUNT = 360;
-  let HUMAN_FOV = 120;
-  let USE_HUMAN_FOV = true;
-  
-  // Obstacle data (loaded from building footprints)
-  let obstacles = [];
-  let treeObstacles = [];
-  let INCLUDE_TREES = true;
-  
-  // Street View position broadcast throttling
-  let lastBroadcastPosition = null;
-  let lastBroadcastHeading = null;
-  const BROADCAST_MIN_DISTANCE = 2; // meters between broadcasts
-  const BROADCAST_MIN_HEADING_CHANGE = 10; // degrees between heading broadcasts
-  
-  // Listen for control messages from controller
-  channel.onmessage = (event) => {
-    const data = event.data;
-    if (data.type === 'fcc_demo_control') {
-      switch (data.action) {
-        case 'play':
-          startPlayback();
-          break;
-        case 'pause':
-          pausePlayback();
-          break;
-        case 'seek':
-          seekTo(parseFloat(data.value));
-          break;
-        case 'set_speed':
-          playbackSpeed = parseFloat(data.value);
-          break;
-        case 'set_video_duration':
-          videoDuration = parseFloat(data.value);
-          break;
-        case 'toggle':
-          toggleFCCDemo();
-          break;
+  setupChannelListener() {
+    this.channel.onmessage = (event) => {
+      const data = event.data;
+      if (data.type === 'fcc_demo_control') {
+        switch (data.action) {
+          case 'play':
+            this.startPlayback();
+            break;
+          case 'pause':
+            this.pausePlayback();
+            break;
+          case 'seek':
+            this.seekTo(parseFloat(data.value));
+            break;
+          case 'set_speed':
+            this.playbackSpeed = parseFloat(data.value);
+            break;
+          case 'set_video_duration':
+            this.videoDuration = parseFloat(data.value);
+            break;
+          case 'toggle':
+            this.toggle();
+            break;
+        }
       }
-    }
-  };
-  
-  // Initialize FCC Demo mode
-  function initFCCDemo() {
-    const btn = document.getElementById('fcc-demo-btn');
-    if (!btn) return;
-    
-    btn.addEventListener('click', toggleFCCDemo);
+    };
   }
-  
-  function toggleFCCDemo() {
-    fccDemoActive = !fccDemoActive;
+
+  start() {
+    this.toggle();
+  }
+
+  stop() {
+    if (this.fccDemoActive) {
+      this.toggle();
+    }
+  }
+
+  toggle() {
+    this.fccDemoActive = !this.fccDemoActive;
     const btn = document.getElementById('fcc-demo-btn');
     
-    if (fccDemoActive) {
+    if (this.fccDemoActive) {
       if (btn) {
         btn.classList.add('toggled-off');
         btn.style.background = '#0078d4';
         btn.style.color = '#fff';
       }
-      activateFCCDemo();
-      showToast('FCC Demo activated - Use controller to play flythrough');
+      this.activateFCCDemo();
+      this.showToast('FCC Demo activated - Use controller to play flythrough');
     } else {
       if (btn) {
         btn.classList.remove('toggled-off');
         btn.style.background = '';
         btn.style.color = '';
       }
-      deactivateFCCDemo();
-      showToast('FCC Demo deactivated');
+      this.deactivateFCCDemo();
+      this.showToast('FCC Demo deactivated');
     }
   }
-  
-  async function activateFCCDemo() {
-    // Broadcast state to controller
-    channel.postMessage({ 
+
+  async activateFCCDemo() {
+    this.channel.postMessage({ 
       type: 'animation_state', 
       animationId: 'fcc-demo-btn', 
       isActive: true 
     });
     
-    // Hide street life animation canvas
     const streetLifeCanvas = document.getElementById('street-life-canvas');
     if (streetLifeCanvas) {
       streetLifeCanvas.style.display = 'none';
     }
     
-    // Hide trafik (tram/bus) canvas
     const trafikCanvas = document.getElementById('trafik-canvas');
     if (trafikCanvas) {
       trafikCanvas.style.display = 'none';
     }
     
-    // Load path from GeoJSON
-    await loadPathData();
+    await this.loadPathData();
+    this.loadBuildingObstacles();
+    await this.loadTreeObstacles();
+    this.addMapLayers();
+    this.seekTo(0);
     
-    // Load building obstacles
-    loadBuildingObstacles();
-    
-    // Load tree obstacles
-    await loadTreeObstacles();
-    
-    // Add map layers for visualization
-    addMapLayers();
-    
-    // Set initial position
-    seekTo(0);
-    
-    // Notify controller that demo is ready
-    channel.postMessage({
+    this.channel.postMessage({
       type: 'fcc_demo_ready',
       data: {
-        pathLength: totalPathLength,
-        pointCount: pathCoordinates.length
+        pathLength: this.totalPathLength,
+        pointCount: this.pathCoordinates.length
       }
     });
   }
-  
-  function deactivateFCCDemo() {
-    // Broadcast state to controller
-    channel.postMessage({ 
+
+  deactivateFCCDemo() {
+    this.channel.postMessage({ 
       type: 'animation_state', 
       animationId: 'fcc-demo-btn', 
       isActive: false 
     });
     
-    // Show street life animation canvas again
     const streetLifeCanvas = document.getElementById('street-life-canvas');
     if (streetLifeCanvas) {
       streetLifeCanvas.style.display = 'block';
     }
     
-    // Show trafik (tram/bus) canvas again
     const trafikCanvas = document.getElementById('trafik-canvas');
     if (trafikCanvas) {
       trafikCanvas.style.display = 'block';
     }
     
-    // Stop playback
-    pausePlayback();
+    this.pausePlayback();
+    this.removeMapLayers();
     
-    // Remove map layers
-    removeMapLayers();
-    
-    // Reset state
-    currentProgress = 0;
-    pathCoordinates = [];
-    obstacles = [];
-    treeObstacles = [];
-    lastBroadcastPosition = null;
-    lastBroadcastHeading = null;
+    this.currentProgress = 0;
+    this.pathCoordinates = [];
+    this.obstacles = [];
+    this.treeObstacles = [];
+    this.lastBroadcastPosition = null;
+    this.lastBroadcastHeading = null;
   }
-  
-  async function loadPathData() {
+
+  async loadPathData() {
     try {
       const response = await fetch('media/VR-movement.geojson');
       const geojson = await response.json();
@@ -188,64 +167,61 @@
       if (geojson.features && geojson.features.length > 0) {
         const feature = geojson.features[0];
         if (feature.geometry.type === 'LineString') {
-          pathCoordinates = feature.geometry.coordinates;
+          this.pathCoordinates = feature.geometry.coordinates;
           
-          // Calculate segment lengths and total path length
-          segmentLengths = [];
-          cumulativeLengths = [0];
-          totalPathLength = 0;
+          this.segmentLengths = [];
+          this.cumulativeLengths = [0];
+          this.totalPathLength = 0;
           
-          for (let i = 1; i < pathCoordinates.length; i++) {
-            const segLength = distance(pathCoordinates[i-1], pathCoordinates[i]);
-            segmentLengths.push(segLength);
-            totalPathLength += segLength;
-            cumulativeLengths.push(totalPathLength);
+          for (let i = 1; i < this.pathCoordinates.length; i++) {
+            const segLength = this.distance(this.pathCoordinates[i-1], this.pathCoordinates[i]);
+            this.segmentLengths.push(segLength);
+            this.totalPathLength += segLength;
+            this.cumulativeLengths.push(this.totalPathLength);
           }
           
-          console.log(`FCC Demo: Loaded path with ${pathCoordinates.length} points, ${totalPathLength.toFixed(1)}m total`);
+          console.log(`FCC Demo: Loaded path with ${this.pathCoordinates.length} points, ${this.totalPathLength.toFixed(1)}m total`);
         }
       }
     } catch (e) {
       console.error('FCC Demo: Failed to load path data:', e);
     }
   }
-  
-  function loadBuildingObstacles() {
-    // Check if building footprints are already loaded on the map
-    const source = map.getSource('building-footprints');
+
+  loadBuildingObstacles() {
+    const source = this.map.getSource('building-footprints');
     if (source && source._data) {
-      processGeoJSON(source._data);
+      this.processGeoJSON(source._data);
       return;
     }
     
-    // Try to fetch from file
     fetch('media/building-footprints.geojson')
       .then(res => res.json())
-      .then(data => processGeoJSON(data))
+      .then(data => this.processGeoJSON(data))
       .catch(e => console.warn('FCC Demo: Could not load building footprints:', e));
   }
-  
-  function processGeoJSON(geojson) {
-    obstacles = [];
+
+  processGeoJSON(geojson) {
+    this.obstacles = [];
     if (!geojson.features) return;
     
     geojson.features.forEach(feature => {
       if (feature.geometry.type === 'Polygon') {
-        addObstacle(feature.geometry.coordinates[0], feature.properties);
+        this.addObstacle(feature.geometry.coordinates[0], feature.properties);
       } else if (feature.geometry.type === 'MultiPolygon') {
         feature.geometry.coordinates.forEach(polygon => {
-          addObstacle(polygon[0], feature.properties);
+          this.addObstacle(polygon[0], feature.properties);
         });
       }
     });
     
-    console.log(`FCC Demo: Loaded ${obstacles.length} building obstacles`);
+    console.log(`FCC Demo: Loaded ${this.obstacles.length} building obstacles`);
   }
-  
-  function addObstacle(ring, properties = {}) {
+
+  addObstacle(ring, properties = {}) {
     const lons = ring.map(c => c[0]);
     const lats = ring.map(c => c[1]);
-    obstacles.push({
+    this.obstacles.push({
       ring: ring,
       bbox: {
         minLon: Math.min(...lons),
@@ -256,9 +232,9 @@
       properties: properties
     });
   }
-  
-  async function loadTreeObstacles() {
-    treeObstacles = [];
+
+  async loadTreeObstacles() {
+    this.treeObstacles = [];
     
     try {
       const response = await fetch('media/trees.geojson');
@@ -271,7 +247,7 @@
             const height = feature.properties?.height || 10;
             const radius = 2 + Math.random() * 1.5 + height * 0.3;
             
-            treeObstacles.push({
+            this.treeObstacles.push({
               center: coords,
               radius: radius,
               height: height,
@@ -280,18 +256,16 @@
             });
           }
         });
-        console.log(`FCC Demo: Loaded ${treeObstacles.length} tree obstacles`);
+        console.log(`FCC Demo: Loaded ${this.treeObstacles.length} tree obstacles`);
       }
     } catch (e) {
       console.warn('FCC Demo: Could not load trees:', e);
     }
   }
-  
-  function addMapLayers() {
-    // Add ALL buildings layer (background, lower opacity)
-    if (!map.getSource('fcc-demo-all-buildings')) {
-      // Create features from obstacles
-      const buildingFeatures = obstacles.map(obs => ({
+
+  addMapLayers() {
+    if (!this.map.getSource('fcc-demo-all-buildings')) {
+      const buildingFeatures = this.obstacles.map(obs => ({
         type: 'Feature',
         geometry: {
           type: 'Polygon',
@@ -300,12 +274,12 @@
         properties: obs.properties
       }));
       
-      map.addSource('fcc-demo-all-buildings', {
+      this.map.addSource('fcc-demo-all-buildings', {
         type: 'geojson',
         data: { type: 'FeatureCollection', features: buildingFeatures }
       });
       
-      map.addLayer({
+      this.map.addLayer({
         id: 'fcc-demo-all-buildings-fill',
         type: 'fill',
         source: 'fcc-demo-all-buildings',
@@ -315,7 +289,7 @@
         }
       });
       
-      map.addLayer({
+      this.map.addLayer({
         id: 'fcc-demo-all-buildings-outline',
         type: 'line',
         source: 'fcc-demo-all-buildings',
@@ -327,13 +301,11 @@
       });
     }
     
-    // Add ALL trees layer (background, lower opacity)
-    if (!map.getSource('fcc-demo-all-trees')) {
-      // Create circle features for all trees
-      const treeFeatures = treeObstacles.map(tree => {
+    if (!this.map.getSource('fcc-demo-all-trees')) {
+      const treeFeatures = this.treeObstacles.map(tree => {
         const circleCoords = [];
         for (let a = 0; a <= 360; a += 30) {
-          circleCoords.push(destination(tree.center, tree.radius, a));
+          circleCoords.push(this.destination(tree.center, tree.radius, a));
         }
         circleCoords.push(circleCoords[0]);
         
@@ -347,12 +319,12 @@
         };
       });
       
-      map.addSource('fcc-demo-all-trees', {
+      this.map.addSource('fcc-demo-all-trees', {
         type: 'geojson',
         data: { type: 'FeatureCollection', features: treeFeatures }
       });
       
-      map.addLayer({
+      this.map.addLayer({
         id: 'fcc-demo-all-trees-fill',
         type: 'fill',
         source: 'fcc-demo-all-trees',
@@ -362,7 +334,7 @@
         }
       });
       
-      map.addLayer({
+      this.map.addLayer({
         id: 'fcc-demo-all-trees-outline',
         type: 'line',
         source: 'fcc-demo-all-trees',
@@ -374,20 +346,19 @@
       });
     }
     
-    // Add path line layer
-    if (!map.getSource('fcc-demo-path')) {
-      map.addSource('fcc-demo-path', {
+    if (!this.map.getSource('fcc-demo-path')) {
+      this.map.addSource('fcc-demo-path', {
         type: 'geojson',
         data: {
           type: 'Feature',
           geometry: {
             type: 'LineString',
-            coordinates: pathCoordinates
+            coordinates: this.pathCoordinates
           }
         }
       });
       
-      map.addLayer({
+      this.map.addLayer({
         id: 'fcc-demo-path-line',
         type: 'line',
         source: 'fcc-demo-path',
@@ -400,14 +371,13 @@
       });
     }
     
-    // Add isovist polygon layer
-    if (!map.getSource('fcc-demo-isovist')) {
-      map.addSource('fcc-demo-isovist', {
+    if (!this.map.getSource('fcc-demo-isovist')) {
+      this.map.addSource('fcc-demo-isovist', {
         type: 'geojson',
         data: { type: 'FeatureCollection', features: [] }
       });
       
-      map.addLayer({
+      this.map.addLayer({
         id: 'fcc-demo-isovist-fill',
         type: 'fill',
         source: 'fcc-demo-isovist',
@@ -417,7 +387,7 @@
         }
       });
       
-      map.addLayer({
+      this.map.addLayer({
         id: 'fcc-demo-isovist-line',
         type: 'line',
         source: 'fcc-demo-isovist',
@@ -429,14 +399,13 @@
       });
     }
     
-    // Add viewer position marker
-    if (!map.getSource('fcc-demo-viewer')) {
-      map.addSource('fcc-demo-viewer', {
+    if (!this.map.getSource('fcc-demo-viewer')) {
+      this.map.addSource('fcc-demo-viewer', {
         type: 'geojson',
         data: { type: 'FeatureCollection', features: [] }
       });
       
-      map.addLayer({
+      this.map.addLayer({
         id: 'fcc-demo-viewer-point',
         type: 'circle',
         source: 'fcc-demo-viewer',
@@ -448,7 +417,7 @@
         }
       });
       
-      map.addLayer({
+      this.map.addLayer({
         id: 'fcc-demo-viewer-direction',
         type: 'line',
         source: 'fcc-demo-viewer',
@@ -461,14 +430,13 @@
       });
     }
     
-    // Add viewed buildings layer
-    if (!map.getSource('fcc-demo-viewed-buildings')) {
-      map.addSource('fcc-demo-viewed-buildings', {
+    if (!this.map.getSource('fcc-demo-viewed-buildings')) {
+      this.map.addSource('fcc-demo-viewed-buildings', {
         type: 'geojson',
         data: { type: 'FeatureCollection', features: [] }
       });
       
-      map.addLayer({
+      this.map.addLayer({
         id: 'fcc-demo-viewed-buildings-fill',
         type: 'fill',
         source: 'fcc-demo-viewed-buildings',
@@ -479,14 +447,13 @@
       });
     }
     
-    // Add viewed trees layer
-    if (!map.getSource('fcc-demo-viewed-trees')) {
-      map.addSource('fcc-demo-viewed-trees', {
+    if (!this.map.getSource('fcc-demo-viewed-trees')) {
+      this.map.addSource('fcc-demo-viewed-trees', {
         type: 'geojson',
         data: { type: 'FeatureCollection', features: [] }
       });
       
-      map.addLayer({
+      this.map.addLayer({
         id: 'fcc-demo-viewed-trees-fill',
         type: 'fill',
         source: 'fcc-demo-viewed-trees',
@@ -497,8 +464,8 @@
       });
     }
   }
-  
-  function removeMapLayers() {
+
+  removeMapLayers() {
     const layers = [
       'fcc-demo-all-buildings-fill',
       'fcc-demo-all-buildings-outline',
@@ -524,94 +491,85 @@
     ];
     
     layers.forEach(id => {
-      if (map.getLayer(id)) map.removeLayer(id);
+      if (this.map.getLayer(id)) this.map.removeLayer(id);
     });
     
     sources.forEach(id => {
-      if (map.getSource(id)) map.removeSource(id);
+      if (this.map.getSource(id)) this.map.removeSource(id);
     });
   }
-  
-  function startPlayback() {
-    if (isPlaying) return;
-    isPlaying = true;
-    lastTimestamp = performance.now();
-    animationFrameId = requestAnimationFrame(playbackLoop);
+
+  startPlayback() {
+    if (this.isPlaying) return;
+    this.isPlaying = true;
+    this.lastTimestamp = performance.now();
+    this.animationFrameId = requestAnimationFrame((t) => this.playbackLoop(t));
     
-    channel.postMessage({
+    this.channel.postMessage({
       type: 'fcc_demo_playback_state',
       isPlaying: true
     });
   }
-  
-  function pausePlayback() {
-    isPlaying = false;
-    if (animationFrameId) {
-      cancelAnimationFrame(animationFrameId);
-      animationFrameId = null;
+
+  pausePlayback() {
+    this.isPlaying = false;
+    if (this.animationFrameId) {
+      cancelAnimationFrame(this.animationFrameId);
+      this.animationFrameId = null;
     }
     
-    channel.postMessage({
+    this.channel.postMessage({
       type: 'fcc_demo_playback_state',
       isPlaying: false
     });
   }
-  
-  function playbackLoop(timestamp) {
-    if (!isPlaying || !fccDemoActive) return;
+
+  playbackLoop(timestamp) {
+    if (!this.isPlaying || !this.fccDemoActive) return;
     
-    const deltaTime = (timestamp - lastTimestamp) / 1000; // seconds
-    lastTimestamp = timestamp;
+    const deltaTime = (timestamp - this.lastTimestamp) / 1000;
+    this.lastTimestamp = timestamp;
     
-    // Progress based on video duration
-    const progressIncrement = (deltaTime * playbackSpeed) / videoDuration;
-    currentProgress = Math.min(1, currentProgress + progressIncrement);
+    const progressIncrement = (deltaTime * this.playbackSpeed) / this.videoDuration;
+    this.currentProgress = Math.min(1, this.currentProgress + progressIncrement);
     
-    // Update visualization
-    updateVisualization();
+    this.updateVisualization();
     
-    // Broadcast progress to controller for video sync
-    channel.postMessage({
+    this.channel.postMessage({
       type: 'fcc_demo_progress',
-      progress: currentProgress,
-      time: currentProgress * videoDuration
+      progress: this.currentProgress,
+      time: this.currentProgress * this.videoDuration
     });
     
-    // Continue if not at end
-    if (currentProgress < 1) {
-      animationFrameId = requestAnimationFrame(playbackLoop);
+    if (this.currentProgress < 1) {
+      this.animationFrameId = requestAnimationFrame((t) => this.playbackLoop(t));
     } else {
-      pausePlayback();
+      this.pausePlayback();
     }
   }
-  
-  function seekTo(progress) {
-    currentProgress = Math.max(0, Math.min(1, progress));
+
+  seekTo(progress) {
+    this.currentProgress = Math.max(0, Math.min(1, progress));
     
-    // Reset broadcast state to force immediate update
-    lastBroadcastPosition = null;
-    lastBroadcastHeading = null;
+    this.lastBroadcastPosition = null;
+    this.lastBroadcastHeading = null;
     
-    updateVisualization();
+    this.updateVisualization();
     
-    // Broadcast to controller
-    channel.postMessage({
+    this.channel.postMessage({
       type: 'fcc_demo_progress',
-      progress: currentProgress,
-      time: currentProgress * videoDuration
+      progress: this.currentProgress,
+      time: this.currentProgress * this.videoDuration
     });
   }
-  
-  function updateVisualization() {
-    if (pathCoordinates.length < 2) return;
+
+  updateVisualization() {
+    if (this.pathCoordinates.length < 2) return;
     
-    // Get position and look direction along path
-    const { position, direction } = getPositionAlongPath(currentProgress);
+    const { position, direction } = this.getPositionAlongPath(this.currentProgress);
     
-    // Broadcast position for Street View (throttled)
-    broadcastStreetViewPosition(position, direction);
+    this.broadcastStreetViewPosition(position, direction);
     
-    // Update viewer marker
     const viewerFeatures = {
       type: 'FeatureCollection',
       features: [
@@ -622,9 +580,8 @@
       ]
     };
     
-    // Add direction line
     if (direction) {
-      const directionEnd = destination(position, 30, direction);
+      const directionEnd = this.destination(position, 30, direction);
       viewerFeatures.features.push({
         type: 'Feature',
         geometry: {
@@ -634,58 +591,55 @@
       });
     }
     
-    if (map.getSource('fcc-demo-viewer')) {
-      map.getSource('fcc-demo-viewer').setData(viewerFeatures);
+    if (this.map.getSource('fcc-demo-viewer')) {
+      this.map.getSource('fcc-demo-viewer').setData(viewerFeatures);
     }
     
-    // Calculate and update isovist
-    if (obstacles.length > 0 || treeObstacles.length > 0) {
-      const result = calculateIsovist(position, direction);
+    if (this.obstacles.length > 0 || this.treeObstacles.length > 0) {
+      const result = this.calculateIsovist(position, direction);
       
-      if (map.getSource('fcc-demo-isovist')) {
-        map.getSource('fcc-demo-isovist').setData({
+      if (this.map.getSource('fcc-demo-isovist')) {
+        this.map.getSource('fcc-demo-isovist').setData({
           type: 'FeatureCollection',
           features: [result.polygon]
         });
       }
       
-      if (map.getSource('fcc-demo-viewed-buildings')) {
-        map.getSource('fcc-demo-viewed-buildings').setData({
+      if (this.map.getSource('fcc-demo-viewed-buildings')) {
+        this.map.getSource('fcc-demo-viewed-buildings').setData({
           type: 'FeatureCollection',
           features: result.viewedBuildings
         });
       }
       
-      if (map.getSource('fcc-demo-viewed-trees')) {
-        map.getSource('fcc-demo-viewed-trees').setData({
+      if (this.map.getSource('fcc-demo-viewed-trees')) {
+        this.map.getSource('fcc-demo-viewed-trees').setData({
           type: 'FeatureCollection',
           features: result.viewedTrees
         });
       }
       
-      // Broadcast stats to controller
-      channel.postMessage({
+      this.channel.postMessage({
         type: 'fcc_demo_stats',
         data: result.stats
       });
     }
   }
-  
-  // Broadcast position to controller for Street View (throttled)
-  function broadcastStreetViewPosition(position, heading) {
+
+  broadcastStreetViewPosition(position, heading) {
     if (!position) return;
     
     const currentHeading = heading || 0;
-    const positionChanged = !lastBroadcastPosition || 
-      distance([lastBroadcastPosition.lng, lastBroadcastPosition.lat], position) > BROADCAST_MIN_DISTANCE;
-    const headingChanged = lastBroadcastHeading === null || 
-      Math.abs(currentHeading - lastBroadcastHeading) > BROADCAST_MIN_HEADING_CHANGE;
+    const positionChanged = !this.lastBroadcastPosition || 
+      this.distance([this.lastBroadcastPosition.lng, this.lastBroadcastPosition.lat], position) > this.BROADCAST_MIN_DISTANCE;
+    const headingChanged = this.lastBroadcastHeading === null || 
+      Math.abs(currentHeading - this.lastBroadcastHeading) > this.BROADCAST_MIN_HEADING_CHANGE;
     
     if (positionChanged || headingChanged) {
-      lastBroadcastPosition = { lng: position[0], lat: position[1] };
-      lastBroadcastHeading = currentHeading;
+      this.lastBroadcastPosition = { lng: position[0], lat: position[1] };
+      this.lastBroadcastHeading = currentHeading;
       
-      channel.postMessage({
+      this.channel.postMessage({
         type: 'street_view_position',
         position: {
           lng: position[0],
@@ -695,86 +649,78 @@
       });
     }
   }
-  
-  function getPositionAlongPath(progress) {
-    if (pathCoordinates.length < 2) {
-      return { position: pathCoordinates[0] || [0, 0], direction: 0 };
+
+  getPositionAlongPath(progress) {
+    if (this.pathCoordinates.length < 2) {
+      return { position: this.pathCoordinates[0] || [0, 0], direction: 0 };
     }
     
-    const targetDistance = progress * totalPathLength;
+    const targetDistance = progress * this.totalPathLength;
     
-    // Find the segment containing this distance
     let segmentIndex = 0;
-    for (let i = 0; i < cumulativeLengths.length - 1; i++) {
-      if (targetDistance >= cumulativeLengths[i] && targetDistance <= cumulativeLengths[i + 1]) {
+    for (let i = 0; i < this.cumulativeLengths.length - 1; i++) {
+      if (targetDistance >= this.cumulativeLengths[i] && targetDistance <= this.cumulativeLengths[i + 1]) {
         segmentIndex = i;
         break;
       }
     }
     
-    // Interpolate within segment
-    const segmentStart = cumulativeLengths[segmentIndex];
-    const segmentEnd = cumulativeLengths[segmentIndex + 1];
+    const segmentStart = this.cumulativeLengths[segmentIndex];
+    const segmentEnd = this.cumulativeLengths[segmentIndex + 1];
     const segmentProgress = segmentEnd > segmentStart 
       ? (targetDistance - segmentStart) / (segmentEnd - segmentStart)
       : 0;
     
-    const p1 = pathCoordinates[segmentIndex];
-    const p2 = pathCoordinates[segmentIndex + 1] || p1;
+    const p1 = this.pathCoordinates[segmentIndex];
+    const p2 = this.pathCoordinates[segmentIndex + 1] || p1;
     
     const position = [
       p1[0] + (p2[0] - p1[0]) * segmentProgress,
       p1[1] + (p2[1] - p1[1]) * segmentProgress
     ];
     
-    // Direction is bearing to next point
-    const direction = calculateBearing(p1, p2);
+    const direction = this.calculateBearing(p1, p2);
     
     return { position, direction };
   }
-  
-  function calculateIsovist(origin, lookDirection) {
+
+  calculateIsovist(origin, lookDirection) {
     const rays = [];
     const viewedObstacleIndices = new Set();
     const viewedTreeIndices = new Set();
     
-    // Ray casting parameters
     let startAngle, endAngle, angleStep;
     
-    if (USE_HUMAN_FOV && lookDirection !== null) {
-      const halfFOV = (HUMAN_FOV / 2) * Math.PI / 180;
+    if (this.USE_HUMAN_FOV && lookDirection !== null) {
+      const halfFOV = (this.HUMAN_FOV / 2) * Math.PI / 180;
       const viewAngle = lookDirection * Math.PI / 180;
       startAngle = viewAngle - halfFOV;
       endAngle = viewAngle + halfFOV;
-      angleStep = (endAngle - startAngle) / RAY_COUNT;
+      angleStep = (endAngle - startAngle) / this.RAY_COUNT;
     } else {
       startAngle = 0;
       endAngle = 2 * Math.PI;
-      angleStep = (2 * Math.PI) / RAY_COUNT;
+      angleStep = (2 * Math.PI) / this.RAY_COUNT;
     }
     
-    // Stats tracking
     let openRays = 0;
     let buildingRays = 0;
     let treeRays = 0;
     const buildingTypeRays = {};
     
-    // Cast rays
     for (let angle = startAngle; angle < endAngle; angle += angleStep) {
       const bearing = (angle * 180 / Math.PI + 360) % 360;
-      const maxPoint = destination(origin, MAX_VIEW_DISTANCE, bearing);
+      const maxPoint = this.destination(origin, this.MAX_VIEW_DISTANCE, bearing);
       
-      let closestDist = MAX_VIEW_DISTANCE;
+      let closestDist = this.MAX_VIEW_DISTANCE;
       let hitType = 'open';
       let hitObstacleIdx = -1;
       let hitTreeIdx = -1;
       let hitBuildingType = null;
       
-      // Check building intersections
-      for (let i = 0; i < obstacles.length; i++) {
-        const obs = obstacles[i];
+      for (let i = 0; i < this.obstacles.length; i++) {
+        const obs = this.obstacles[i];
         
-        // Bounding box check
         const rayBbox = {
           minLon: Math.min(origin[0], maxPoint[0]),
           maxLon: Math.max(origin[0], maxPoint[0]),
@@ -787,12 +733,11 @@
           continue;
         }
         
-        // Check each edge of the obstacle
         const ring = obs.ring;
         for (let j = 0; j < ring.length - 1; j++) {
-          const intersection = lineIntersection(origin, maxPoint, ring[j], ring[j + 1]);
+          const intersection = this.lineIntersection(origin, maxPoint, ring[j], ring[j + 1]);
           if (intersection) {
-            const dist = distance(origin, intersection);
+            const dist = this.distance(origin, intersection);
             if (dist < closestDist) {
               closestDist = dist;
               hitType = 'building';
@@ -803,11 +748,10 @@
         }
       }
       
-      // Check tree intersections
-      if (INCLUDE_TREES) {
-        for (let i = 0; i < treeObstacles.length; i++) {
-          const tree = treeObstacles[i];
-          const treeDist = rayCircleIntersection(origin, maxPoint, tree.center, tree.radius);
+      if (this.INCLUDE_TREES) {
+        for (let i = 0; i < this.treeObstacles.length; i++) {
+          const tree = this.treeObstacles[i];
+          const treeDist = this.rayCircleIntersection(origin, maxPoint, tree.center, tree.radius);
           
           if (treeDist !== null && treeDist < closestDist) {
             closestDist = treeDist;
@@ -818,11 +762,9 @@
         }
       }
       
-      // Record ray result
-      const hitPoint = destination(origin, closestDist, bearing);
+      const hitPoint = this.destination(origin, closestDist, bearing);
       rays.push(hitPoint);
       
-      // Track stats
       if (hitType === 'open') {
         openRays++;
       } else if (hitType === 'building') {
@@ -835,7 +777,6 @@
       }
     }
     
-    // Build isovist polygon
     const polygonCoords = [origin, ...rays, origin];
     const polygon = {
       type: 'Feature',
@@ -845,27 +786,24 @@
       }
     };
     
-    // Build viewed buildings features
     const viewedBuildings = [];
     viewedObstacleIndices.forEach(idx => {
       viewedBuildings.push({
         type: 'Feature',
         geometry: {
           type: 'Polygon',
-          coordinates: [obstacles[idx].ring]
+          coordinates: [this.obstacles[idx].ring]
         },
-        properties: obstacles[idx].properties
+        properties: this.obstacles[idx].properties
       });
     });
     
-    // Build viewed trees features (as circles)
     const viewedTrees = [];
     viewedTreeIndices.forEach(idx => {
-      const tree = treeObstacles[idx];
-      // Create approximate circle
+      const tree = this.treeObstacles[idx];
       const circleCoords = [];
       for (let a = 0; a <= 360; a += 30) {
-        circleCoords.push(destination(tree.center, tree.radius, a));
+        circleCoords.push(this.destination(tree.center, tree.radius, a));
       }
       circleCoords.push(circleCoords[0]);
       
@@ -892,16 +830,14 @@
     
     return { polygon, viewedBuildings, viewedTrees, stats };
   }
-  
-  // Ray-circle intersection helper
-  function rayCircleIntersection(rayStart, rayEnd, circleCenter, radiusMeters) {
+
+  rayCircleIntersection(rayStart, rayEnd, circleCenter, radiusMeters) {
     const dx = rayEnd[0] - rayStart[0];
     const dy = rayEnd[1] - rayStart[1];
     
     const fx = rayStart[0] - circleCenter[0];
     const fy = rayStart[1] - circleCenter[1];
     
-    // Convert radius from meters to approximate degrees
     const radiusDeg = radiusMeters / 111320;
     
     const a = dx * dx + dy * dy;
@@ -924,14 +860,13 @@
         rayStart[0] + t * dx,
         rayStart[1] + t * dy
       ];
-      return distance(rayStart, hitPoint);
+      return this.distance(rayStart, hitPoint);
     }
     
     return null;
   }
-  
-  // Geometric helpers
-  function calculateBearing(from, to) {
+
+  calculateBearing(from, to) {
     const lon1 = from[0] * Math.PI / 180;
     const lat1 = from[1] * Math.PI / 180;
     const lon2 = to[0] * Math.PI / 180;
@@ -942,9 +877,9 @@
     
     return ((Math.atan2(y, x) * 180 / Math.PI) + 360) % 360;
   }
-  
-  function destination(origin, distanceMeters, bearingDegrees) {
-    const R = 6371000; // Earth radius in meters
+
+  destination(origin, distanceMeters, bearingDegrees) {
+    const R = 6371000;
     const d = distanceMeters / R;
     const brng = bearingDegrees * Math.PI / 180;
     
@@ -956,9 +891,9 @@
     
     return [lon2 * 180 / Math.PI, lat2 * 180 / Math.PI];
   }
-  
-  function distance(point1, point2) {
-    const R = 6371000; // Earth radius in meters
+
+  distance(point1, point2) {
+    const R = 6371000;
     const lat1 = point1[1] * Math.PI / 180;
     const lat2 = point2[1] * Math.PI / 180;
     const dLat = (point2[1] - point1[1]) * Math.PI / 180;
@@ -971,8 +906,8 @@
     
     return R * c;
   }
-  
-  function lineIntersection(p1, p2, p3, p4) {
+
+  lineIntersection(p1, p2, p3, p4) {
     const x1 = p1[0], y1 = p1[1];
     const x2 = p2[0], y2 = p2[1];
     const x3 = p3[0], y3 = p3[1];
@@ -990,34 +925,14 @@
     
     return null;
   }
-  
-  // Toast helper
-  function showToast(msg) {
+
+  showToast(msg) {
     if (typeof window.showToast === 'function') {
       window.showToast(msg);
     } else {
       console.log('FCC Demo:', msg);
     }
   }
-  
-  // Initialize when map is ready
-  if (window.map && window.map.loaded()) {
-    initFCCDemo();
-  } else {
-    const checkMap = setInterval(() => {
-      if (window.map && window.map.loaded()) {
-        clearInterval(checkMap);
-        initFCCDemo();
-      }
-    }, 100);
-    
-    // Fallback
-    setTimeout(() => {
-      clearInterval(checkMap);
-      if (window.map) {
-        window.map.on('load', initFCCDemo);
-      }
-    }, 5000);
-  }
-  
-})();
+}
+
+export { FCCDemoAnimation };
