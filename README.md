@@ -1,9 +1,43 @@
 # ACE MR Studio – Interactive Map
 
+> **⚠️ This repository has been refactored to React + TypeScript!**  
+> See [REFACTORING.md](./REFACTORING.md) for details on the new architecture.
+
 An interactive mixed-reality urban visualisation platform built for the ACE MR Studio at Chalmers University of Technology. The application provides multiple data visualisation layers for urban planning, environmental analysis, and stakeholder engagement.
 
-![Demo](./media/demo.gif)
-![Main Map View](./media/screenshots/controller-main.png)
+![Demo](./public/media/demo.gif)
+![Main Map View](./public/media/screenshots/controller-main.png)
+
+---
+
+## 🚀 Quick Start
+
+### Development
+```bash
+npm install
+npm run dev
+```
+
+The app will be available at `http://localhost:3000`.
+
+### Production Build
+```bash
+npm run build
+npm run preview
+```
+
+---
+
+## ✨ New Architecture
+
+This application now uses:
+- ⚛️ **React** - Component-based UI
+- 🔷 **TypeScript** - Type safety and better DX
+- ⚡ **Vite** - Fast build tool with HMR
+- 🗺️ **MapLibre GL JS** - Modern map rendering
+- 🎨 **Three.js** - 3D graphics (for sun study)
+
+See [REFACTORING.md](./REFACTORING.md) for the complete migration guide.
 
 ---
 
@@ -99,7 +133,7 @@ Animated glowing paths along the street network. Streets are colour-coded by typ
 
 Spatial audio visualisation with simulated bird sound sensors placed around the map. Plays audio samples from local bird species (Thrush Nightingale, European Pied Flycatcher, Black Redstart) with visual feedback showing active sensors and playback status.
 
-![Bird Sounds](./media/screenshots/bird-sounds.png)
+![Bird Sounds](./public/media/screenshots/bird-sounds.png)
 
 ### 🎓 Campus Demo
 
@@ -113,42 +147,50 @@ Synchronised VR flythrough with isovist visualisation. Plays a VR recording vide
 
 ## Controller Interface
 
-A secondary controller screen provides a touch-friendly interface for operating the visualisations remotely. It communicates with the main display via the BroadcastChannel API.
+> **Note:** The controller interface is being migrated to React. The legacy version is available in `legacy/controller.html`.
+
+A secondary controller screen provides a touch-friendly interface for operating the visualisations remotely. It communicates with the main display via the EventBus system.
 
 | Controller Main | Stormwater Dashboard |
 |-----------------|---------------------|
-| ![Controller Main](./media/screenshots/controller-main.png) | ![Stormwater](./media/screenshots/controller-stormwater.png) |
+| ![Controller Main](./public/media/screenshots/controller-main.png) | ![Stormwater](./public/media/screenshots/controller-stormwater.png) |
 
 | Sun Study Controls | Credits |
 |-------------------|---------|
-| ![Sun Study](./media/screenshots/controller-sun-study.png) | ![Credits](./media/screenshots/controller-credits.png) |
+| ![Sun Study](./public/media/screenshots/controller-sun-study.png) | ![Credits](./public/media/screenshots/controller-credits.png) |
 
 ---
 
-## How to Run
+## Project Structure (New)
 
-### Launcher (recommended)
-
-Open the app using the launcher: [launcher.html](launcher.html). You can double-click the file in Finder or open it directly in your browser.
-
-> **Note:** In most cases the app runs directly from `launcher.html`. If you encounter local file or CORS issues when loading assets (GeoTIFF, STL, or fetch requests), start a simple local server as a fallback:
-
-```bash
-# From the repository root (fallback only)
-# Use python3 on macOS/Linux, or python on Windows:
-python3 -m http.server 8000
-
-# If python3 doesn't work, try:
-python -m http.server 8000
-
-# Then open http://localhost:8000/launcher.html
+```
+├── src/                   # React application source
+│   ├── animations/        # Animation components
+│   ├── components/        # UI components (Map, Sidebars, etc.)
+│   ├── contexts/          # React contexts (AppContext)
+│   ├── hooks/             # Custom hooks (useAnimation)
+│   ├── types/             # TypeScript type definitions
+│   ├── utils/             # Utility functions (EventBus, helpers)
+│   ├── App.tsx            # Main app component
+│   └── main.tsx           # Application entry point
+├── public/                # Static assets
+│   ├── media/             # Images, videos, GeoJSON, STL files
+│   └── map-calibration.json
+├── legacy/                # Original vanilla JS files (backup)
+│   ├── index.html
+│   ├── main.js
+│   ├── controller.js
+│   └── animations/
+├── package.json           # npm dependencies
+├── tsconfig.json          # TypeScript configuration
+├── vite.config.ts         # Vite build configuration
+├── index.html             # React app entry point
+└── REFACTORING.md         # Migration guide
 ```
 
-> **TODO:** Camera-based calibration is currently disabled—see [calibration/README.md](calibration/README.md) for notes. Re-enable when fixed.
+### Old Project Structure (Legacy)
 
----
-
-## Project Structure
+The original structure is preserved in the `legacy/` folder:
 
 ```
 ├── launcher.html          # Launcher / recommended entry point
