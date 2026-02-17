@@ -127,7 +127,24 @@ A secondary controller screen provides a touch-friendly interface for operating 
 
 ## How to Run
 
-### Launcher (recommended)
+### For TypeScript Development
+
+The project now uses a modern TypeScript modular architecture. See [TYPESCRIPT_ARCHITECTURE.md](TYPESCRIPT_ARCHITECTURE.md) for details.
+
+```bash
+# Install dependencies
+npm install
+
+# Build TypeScript
+npm run build
+
+# Development mode (build + serve)
+npm run dev
+
+# Then open http://localhost:8000/index-ts.html
+```
+
+### Launcher (recommended for production)
 
 Open the app using the launcher: [launcher.html](launcher.html). You can double-click the file in Finder or open it directly in your browser.
 
