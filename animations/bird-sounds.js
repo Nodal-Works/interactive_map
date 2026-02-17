@@ -467,20 +467,5 @@ class BirdSoundsLayer {
   }
 }
 
-// Initialize when map is ready
-// Assuming 'map' is available globally from main.js
-if (typeof map !== 'undefined') {
-  // Wait for map load if needed, or just init
-  if (map.loaded()) {
-     new BirdSoundsLayer(map);
-  } else {
-     map.on('load', () => new BirdSoundsLayer(map));
-  }
-} else {
-  // Fallback if script loads before main.js (shouldn't happen based on index.html order)
-  window.addEventListener('load', () => {
-    if (typeof map !== 'undefined') {
-       new BirdSoundsLayer(map);
-    }
-  });
-}
+// Export the class for module usage
+export { BirdSoundsLayer };

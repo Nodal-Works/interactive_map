@@ -1133,41 +1133,5 @@ class StormwaterFlowAnimation {
   }
 }
 
-// Initialize animation when DOM is ready
-let stormwaterFlowAnimation = null;
-
-function initStormwaterFlow() {
-  const canvas = document.getElementById('stormwater-canvas');
-  
-  if (!canvas) {
-    console.error('Stormwater canvas not found');
-    return;
-  }
-  
-  // Wait for map to be initialized
-  const checkMap = setInterval(() => {
-    if (window.map) {
-      clearInterval(checkMap);
-      
-      stormwaterFlowAnimation = new StormwaterFlowAnimation(window.map, canvas);
-      
-      // Set up button handler
-      const btn = document.getElementById('stormwater-btn');
-      if (btn) {
-        btn.addEventListener('click', () => {
-          stormwaterFlowAnimation.toggle();
-          btn.classList.toggle('active');
-        });
-      }
-      
-      console.log('Stormwater flow animation initialized (dynamic DEM processing)');
-    }
-  }, 100);
-}
-
-// Initialize when page loads
-if (document.readyState === 'loading') {
-  document.addEventListener('DOMContentLoaded', initStormwaterFlow);
-} else {
-  initStormwaterFlow();
-}
+// Export the class for module usage
+export { StormwaterFlowAnimation };
