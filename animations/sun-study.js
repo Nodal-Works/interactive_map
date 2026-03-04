@@ -628,7 +628,11 @@ class SunStudy {
       premultipliedAlpha: false,
       powerPreference: 'high-performance' // Request high-performance GPU
     });
-    this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2)); // Cap pixel ratio for performance
+    
+    // Force pixel ratio to 1. 
+    // High-res retina displays will otherwise try to render everything at 4K, killing 2GB GPUs.
+    this.renderer.setPixelRatio(1); 
+    
     this.renderer.setSize(width, height);
     this.renderer.setClearColor(0x000000, 0);
     this.renderer.shadowMap.enabled = true;
