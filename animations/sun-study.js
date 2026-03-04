@@ -703,7 +703,7 @@ class SunStudy {
     this.sunLight = new THREE.DirectionalLight(0xffffff, 1.5);
     this.sunLight.castShadow = true;
     
-    // Adjusted resolution for lower-end GPUs (from 8192)
+    // Adjusted resolution shadow map - optimized for 2GB GPU
     this.sunLight.shadow.mapSize.width = 2048;
     this.sunLight.shadow.mapSize.height = 2048;
     // VSM uses blurSamples instead of radius for softness
