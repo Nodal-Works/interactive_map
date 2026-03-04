@@ -3,7 +3,7 @@
 // Uses Sweden location (Gothenburg area) for accurate sun positioning
 // Supports dual model system (buildings + trees) with multi-source shadow discrimination
 
-let THREE, STLLoader, GLTFLoader, EffectComposer, RenderPass, SSAOPass, SMAAPass, OutputPass;
+let THREE, STLLoader, GLTFLoader, EffectComposer, RenderPass, SSAOPass, SMAAPass, OutputPass, BufferGeometryUtils;
 
 async function loadDependencies() {
   THREE = await import('three');
@@ -11,6 +11,8 @@ async function loadDependencies() {
   STLLoader = stlModule.STLLoader;
   const gltfModule = await import('three/addons/loaders/GLTFLoader.js');
   GLTFLoader = gltfModule.GLTFLoader;
+  
+  BufferGeometryUtils = await import('three/addons/utils/BufferGeometryUtils.js');
   
   const composerModule = await import('three/addons/postprocessing/EffectComposer.js');
   EffectComposer = composerModule.EffectComposer;
@@ -1013,9 +1015,6 @@ class SunStudy {
         console.log('GLB raw bounds - size:', rawSize, 'center:', rawCenter);
         console.log('Buildings center for reference:', this.buildingsCenter);
         
-        // Create a group to hold all tree meshes
-        this.meshTrees = new THREE.Group();
-        
         // Tree material - green tint to distinguish. 
         // Optimization for trees: disabled transparency and double-sided rendering to drastically reduce overdraw
         this.standardMaterialTrees = new THREE.MeshStandardMaterial({
@@ -1028,11 +1027,26 @@ class SunStudy {
           depthWrite: true
         });
         
+        // Optimization: Merging all individual tree meshes into ONE single massive geometry.
+        // This takes thousands of draw calls down to exactly 1 draw call, massively relieving the CPU!
+        const treeGeometries = [];
+        
         // Traverse the GLTF scene and process all meshes
         gltf.scene.traverse((child) => {
           if (child.isMesh) {
             // Clone geometry to modify it
-            const geometry = child.geometry.clone();
+            let geometry = child.geometry.clone();
+            
+            // To successfully merge geometries, we need to make sure they don't have incompatible attributes
+            // Many GLB exports contain normals, tangents, uvs, etc. For our shadow purpose, we only strictly need position and normal.
+            const validAttributes = ['position', 'normal'];
+            const attributesToDelete = [];
+            for (const attributeName in geometry.attributes) {
+                if (!validAttributes.includes(attributeName)) {
+                    attributesToDelete.push(attributeName);
+                }
+            }
+            attributesToDelete.forEach(attr => geometry.deleteAttribute(attr));
             
             // Apply the mesh's world matrix to the geometry
             child.updateWorldMatrix(true, false);
@@ -1045,24 +1059,26 @@ class SunStudy {
               positions[i + 2] = -positions[i + 2];  // Negate Z only
             }
             geometry.attributes.position.needsUpdate = true;
-            geometry.computeBoundingBox();  // Update bounding box after modifying positions
-            geometry.computeVertexNormals();
             
-            const mesh = new THREE.Mesh(geometry, this.standardMaterialTrees);
-            mesh.castShadow = true;
-            // Optimization: Trees don't need to receive shadows from each other or buildings 
-            // if we are just dropping them on top to cast shadows down.
-            mesh.receiveShadow = false; 
-            
-            // Optimization: prevent processing of trees entirely if they zoom off-camera
-            mesh.matrixAutoUpdate = false;
-            mesh.updateMatrix();
-            
-            this.meshTrees.add(mesh);
-          }
-        });
+            treeGeometries.push(geometry);
+          } // <- Fixed syntax here closing the if
+        }); // <- Fixed syntax here closing the traverse
         
-        // Compute bounding box for the entire group
+        if (treeGeometries.length === 0) {
+            console.warn("No meshes found in trees GLB!");
+            return;
+        }
+        
+        const mergedGeometry = BufferGeometryUtils.mergeGeometries(treeGeometries, false);
+        mergedGeometry.computeBoundingBox();
+        mergedGeometry.computeVertexNormals();
+        
+        // Instead of a Group, meshTrees is now just a single massive optimized Mesh
+        this.meshTrees = new THREE.Mesh(mergedGeometry, this.standardMaterialTrees);
+        this.meshTrees.castShadow = true;
+        this.meshTrees.receiveShadow = false;
+        
+        // Compute bounding box for the new combined mesh
         const box = new THREE.Box3().setFromObject(this.meshTrees);
         const size = new THREE.Vector3();
         const center = new THREE.Vector3();
@@ -1074,9 +1090,7 @@ class SunStudy {
         // Use the BUILDINGS center for alignment since both models share the same world origin
         // This ensures perfect alignment between buildings and trees
         const alignCenter = this.buildingsCenter || center;
-        this.meshTrees.children.forEach(child => {
-          child.geometry.translate(-alignCenter.x, -alignCenter.y, -alignCenter.z);
-        });
+        this.meshTrees.geometry.translate(-alignCenter.x, -alignCenter.y, -alignCenter.z);
         console.log('Trees centered using buildings center:', alignCenter);
         
         // Debug: Final bounds after centering
