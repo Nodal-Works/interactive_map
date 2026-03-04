@@ -1420,14 +1420,13 @@ function startStreetLifeAnimation() {
     
     startSpawning();
     
-    // Spawn first emergency vehicle after 1 second, then continue regular schedule
-    setTimeout(() => {
-      if (isStreetLifeAnimating) {
-        console.log('🚨 Attempting to spawn first emergency vehicle...');
-        spawnEmergencyVehicle();
-        scheduleEmergencySpawn();
-      }
-    }, 1000);
+    // Emergency vehicles disabled - users found them distracting
+    // setTimeout(() => {
+    //   if (isStreetLifeAnimating) {
+    //     spawnEmergencyVehicle();
+    //     scheduleEmergencySpawn();
+    //   }
+    // }, 1000);
     
     animateStreetLife();
     
