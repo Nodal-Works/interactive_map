@@ -803,7 +803,11 @@ class SunStudy {
         this.channel.postMessage({ type: 'sun_position', altitude: altitude, azimuth: azimuth });
     }
     
-    const distance = 500;
+    // Sun distance must be larger than the scene radius so the shadow camera
+    // is always OUTSIDE the scene. At 500 the sun was inside the scene at low 
+    // winter angles, causing buildings on the sun's side to fall behind the 
+    // shadow camera and lose their shadows entirely.
+    const distance = 2000;
     const altRad = Math.max(0.05, altitude * Math.PI / 180);
     const adjustedAz = azimuth - this.mapBearing;
     const azRad = (adjustedAz - 180) * Math.PI / 180;
