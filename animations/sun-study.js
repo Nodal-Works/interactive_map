@@ -119,6 +119,9 @@ class SunStudy {
     `;
     document.body.appendChild(this.canvas);
     
+    // 2D overlay canvas for compass rose and sun path
+    this.initOverlayCanvas();
+    
     // Control panel moved to remote controller
     // this.createControlPanel();
     
@@ -593,6 +596,261 @@ class SunStudy {
       this.meshTrees.visible = true;
     }
   }
+  
+  // ==================== 2D OVERLAY SYSTEM ====================
+  // Compass rose + sun path arc drawn on a separate 2D canvas
+  // sitting on top of the WebGL canvas
+  
+  initOverlayCanvas() {
+    this.overlayCanvas = document.createElement('canvas');
+    this.overlayCanvas.id = 'sun-study-overlay';
+    this.overlayCanvas.style.cssText = `
+      position: fixed;
+      left: 60px;
+      right: 60px;
+      top: 0;
+      bottom: 0;
+      width: calc(100% - 120px);
+      height: 100%;
+      z-index: 401;
+      display: none;
+      pointer-events: none;
+    `;
+    document.body.appendChild(this.overlayCanvas);
+    this.overlayCtx = this.overlayCanvas.getContext('2d');
+  }
+  
+  resizeOverlay() {
+    if (!this.overlayCanvas) return;
+    const w = window.innerWidth - 120;
+    const h = window.innerHeight;
+    const dpr = window.devicePixelRatio || 1;
+    this.overlayCanvas.width = w * dpr;
+    this.overlayCanvas.height = h * dpr;
+    this.overlayCtx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  }
+  
+  drawOverlays() {
+    if (!this.overlayCtx || !this.overlayCanvas) return;
+    const w = this.overlayCanvas.width / (window.devicePixelRatio || 1);
+    const h = this.overlayCanvas.height / (window.devicePixelRatio || 1);
+    this.overlayCtx.clearRect(0, 0, w, h);
+    this.drawCompassRose(this.overlayCtx, w, h);
+    this.drawSunPath(this.overlayCtx, w, h);
+  }
+  
+  drawCompassRose(ctx, w, h) {
+    const size = 45;
+    const cx = w - size - 25;
+    const cy = h - size - 25;
+    
+    const bearingRad = this.mapBearing * Math.PI / 180;
+    // North in screen coords: screen-up is -PI/2, rotated by -bearing
+    const northAngle = -Math.PI / 2 - bearingRad;
+    
+    ctx.save();
+    ctx.translate(cx, cy);
+    
+    // Background circle
+    ctx.beginPath();
+    ctx.arc(0, 0, size, 0, Math.PI * 2);
+    ctx.fillStyle = 'rgba(0, 0, 0, 0.45)';
+    ctx.fill();
+    ctx.strokeStyle = 'rgba(255, 255, 255, 0.4)';
+    ctx.lineWidth = 1;
+    ctx.stroke();
+    
+    const directions = [
+      { label: 'N', angle: 0, color: '#ff5555', bold: true },
+      { label: 'E', angle: Math.PI / 2, color: 'rgba(255,255,255,0.85)', bold: false },
+      { label: 'S', angle: Math.PI, color: 'rgba(255,255,255,0.85)', bold: false },
+      { label: 'W', angle: -Math.PI / 2, color: 'rgba(255,255,255,0.85)', bold: false }
+    ];
+    
+    for (const dir of directions) {
+      const angle = northAngle + dir.angle;
+      const lineLen = size * 0.6;
+      const labelDist = size * 0.82;
+      
+      // Tick line
+      ctx.beginPath();
+      ctx.moveTo(lineLen * 0.2 * Math.cos(angle), lineLen * 0.2 * Math.sin(angle));
+      ctx.lineTo(lineLen * Math.cos(angle), lineLen * Math.sin(angle));
+      ctx.strokeStyle = dir.color;
+      ctx.lineWidth = dir.bold ? 2.5 : 1.5;
+      ctx.stroke();
+      
+      // Arrow for North
+      if (dir.bold) {
+        const tipX = lineLen * Math.cos(angle);
+        const tipY = lineLen * Math.sin(angle);
+        const arrowSize = 6;
+        const perpAngle = angle + Math.PI / 2;
+        ctx.beginPath();
+        ctx.moveTo(tipX + arrowSize * 0.8 * Math.cos(angle), tipY + arrowSize * 0.8 * Math.sin(angle));
+        ctx.lineTo(tipX - arrowSize * 0.5 * Math.cos(angle) + arrowSize * 0.4 * Math.cos(perpAngle),
+                   tipY - arrowSize * 0.5 * Math.sin(angle) + arrowSize * 0.4 * Math.sin(perpAngle));
+        ctx.lineTo(tipX - arrowSize * 0.5 * Math.cos(angle) - arrowSize * 0.4 * Math.cos(perpAngle),
+                   tipY - arrowSize * 0.5 * Math.sin(angle) - arrowSize * 0.4 * Math.sin(perpAngle));
+        ctx.closePath();
+        ctx.fillStyle = dir.color;
+        ctx.fill();
+      }
+      
+      // Label
+      ctx.font = dir.bold ? 'bold 14px sans-serif' : '11px sans-serif';
+      ctx.fillStyle = dir.color;
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText(dir.label, labelDist * Math.cos(angle), labelDist * Math.sin(angle));
+    }
+    
+    // Center dot
+    ctx.beginPath();
+    ctx.arc(0, 0, 2.5, 0, Math.PI * 2);
+    ctx.fillStyle = 'rgba(255,255,255,0.7)';
+    ctx.fill();
+    
+    ctx.restore();
+  }
+  
+  drawSunPath(ctx, w, h) {
+    const cx = w / 2;
+    const cy = h / 2;
+    const maxRadius = Math.min(w, h) * 0.43;
+    
+    const bearingRad = this.mapBearing * Math.PI / 180;
+    const northAngle = -Math.PI / 2 - bearingRad;
+    
+    // Compute sun positions throughout the day
+    const pathPoints = [];
+    for (let hour = 0; hour <= 24; hour += 0.25) {
+      const { altitude, azimuth } = this.calculateSunPosition(this.date, hour, this.latitude);
+      if (altitude > 0) {
+        const azRad = azimuth * Math.PI / 180;
+        const screenAngle = northAngle + azRad;
+        pathPoints.push({
+          x: cx + maxRadius * Math.cos(screenAngle),
+          y: cy + maxRadius * Math.sin(screenAngle),
+          hour, altitude, azimuth
+        });
+      }
+    }
+    
+    if (pathPoints.length < 2) return;
+    
+    // --- Sun path arc (dashed golden line) ---
+    ctx.beginPath();
+    ctx.moveTo(pathPoints[0].x, pathPoints[0].y);
+    for (let i = 1; i < pathPoints.length; i++) {
+      ctx.lineTo(pathPoints[i].x, pathPoints[i].y);
+    }
+    ctx.strokeStyle = 'rgba(255, 200, 50, 0.45)';
+    ctx.lineWidth = 2;
+    ctx.setLineDash([6, 4]);
+    ctx.stroke();
+    ctx.setLineDash([]);
+    
+    // --- Hour markers every 2 hours ---
+    for (const pt of pathPoints) {
+      if (pt.hour % 2 === 0 && pt.hour >= 4 && pt.hour <= 22) {
+        ctx.beginPath();
+        ctx.arc(pt.x, pt.y, 3, 0, Math.PI * 2);
+        ctx.fillStyle = 'rgba(255, 200, 50, 0.65)';
+        ctx.fill();
+        
+        // Label offset outward from center
+        const labelAngle = Math.atan2(pt.y - cy, pt.x - cx);
+        const labelDist = 16;
+        const lx = pt.x + labelDist * Math.cos(labelAngle);
+        const ly = pt.y + labelDist * Math.sin(labelAngle);
+        ctx.font = '10px sans-serif';
+        ctx.fillStyle = 'rgba(255, 255, 255, 0.75)';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillText(`${Math.floor(pt.hour)}:00`, lx, ly);
+      }
+    }
+    
+    // --- Sunrise / sunset labels ---
+    const sunrise = pathPoints[0];
+    const sunset = pathPoints[pathPoints.length - 1];
+    const fmtTime = (h) => {
+      const hr = Math.floor(h);
+      const mn = Math.round((h - hr) * 60);
+      return `${hr}:${mn.toString().padStart(2, '0')}`;
+    };
+    
+    ctx.font = '10px sans-serif';
+    ctx.fillStyle = 'rgba(255, 150, 50, 0.85)';
+    ctx.textAlign = 'center';
+    const srAngle = Math.atan2(sunrise.y - cy, sunrise.x - cx);
+    ctx.fillText(`\u2197 ${fmtTime(sunrise.hour)}`,
+      sunrise.x + 22 * Math.cos(srAngle), sunrise.y + 22 * Math.sin(srAngle));
+    const ssAngle = Math.atan2(sunset.y - cy, sunset.x - cx);
+    ctx.fillText(`\u2198 ${fmtTime(sunset.hour)}`,
+      sunset.x + 22 * Math.cos(ssAngle), sunset.y + 22 * Math.sin(ssAngle));
+    
+    // --- Current sun position ---
+    const { altitude, azimuth } = this.calculateSunPosition(this.date, this.timeOfDay, this.latitude);
+    if (altitude <= 0) return;
+    
+    const azRad = azimuth * Math.PI / 180;
+    const screenAngle = northAngle + azRad;
+    const sx = cx + maxRadius * Math.cos(screenAngle);
+    const sy = cy + maxRadius * Math.sin(screenAngle);
+    
+    // Direction line from center to sun
+    ctx.beginPath();
+    ctx.moveTo(cx, cy);
+    ctx.lineTo(sx, sy);
+    ctx.strokeStyle = 'rgba(255, 200, 50, 0.2)';
+    ctx.lineWidth = 1;
+    ctx.setLineDash([4, 4]);
+    ctx.stroke();
+    ctx.setLineDash([]);
+    
+    // Sun glow
+    const glow = ctx.createRadialGradient(sx, sy, 0, sx, sy, 22);
+    glow.addColorStop(0, 'rgba(255, 200, 50, 0.35)');
+    glow.addColorStop(1, 'rgba(255, 200, 50, 0)');
+    ctx.beginPath();
+    ctx.arc(sx, sy, 22, 0, Math.PI * 2);
+    ctx.fillStyle = glow;
+    ctx.fill();
+    
+    // Sun disc
+    ctx.beginPath();
+    ctx.arc(sx, sy, 8, 0, Math.PI * 2);
+    ctx.fillStyle = '#ffcc33';
+    ctx.fill();
+    ctx.strokeStyle = '#ff9900';
+    ctx.lineWidth = 2;
+    ctx.stroke();
+    
+    // Sun rays
+    for (let i = 0; i < 8; i++) {
+      const rayAngle = (i / 8) * Math.PI * 2;
+      ctx.beginPath();
+      ctx.moveTo(sx + 11 * Math.cos(rayAngle), sy + 11 * Math.sin(rayAngle));
+      ctx.lineTo(sx + 16 * Math.cos(rayAngle), sy + 16 * Math.sin(rayAngle));
+      ctx.strokeStyle = '#ffcc33';
+      ctx.lineWidth = 1.5;
+      ctx.stroke();
+    }
+    
+    // Time label near sun
+    const timeHour = Math.floor(this.timeOfDay);
+    const timeMin = Math.round((this.timeOfDay - timeHour) * 60);
+    const timeLabel = `${timeHour}:${timeMin.toString().padStart(2, '0')}`;
+    ctx.font = 'bold 12px sans-serif';
+    ctx.fillStyle = '#ffcc33';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'bottom';
+    ctx.fillText(timeLabel, sx, sy - 22);
+  }
+  
+  // ==================== END OVERLAY SYSTEM ====================
   
   applyManualAdjustments() {
     if (!this.mesh || !this.baseScale) return;
@@ -1230,6 +1488,7 @@ class SunStudy {
       this.fitCameraToModel();
     }
     
+    this.resizeOverlay();
     this.shadowMapsDirty = true;
   }
   
@@ -1257,6 +1516,9 @@ class SunStudy {
     } else {
       this.renderer.render(this.scene, this.camera);
     }
+    
+    // Draw 2D overlays (compass rose + sun path)
+    this.drawOverlays();
   }
   
   async toggle() {
@@ -1283,6 +1545,7 @@ class SunStudy {
     }
     
     this.canvas.style.display = 'block';
+    if (this.overlayCanvas) this.overlayCanvas.style.display = 'block';
     this.shadowMapsDirty = true; // Force update on show
     
     setTimeout(() => {
@@ -1293,6 +1556,7 @@ class SunStudy {
   
   hide() {
     this.canvas.style.display = 'none';
+    if (this.overlayCanvas) this.overlayCanvas.style.display = 'none';
     // this.controlPanel.style.display = 'none'; // Panel moved to controller
     this.isAnimating = false;
     
