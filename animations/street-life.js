@@ -194,12 +194,15 @@ function parseStreetPaths(geojson) {
       const segmentAngles = []; // Pre-calculate angles too!
       
       for (let i = 0; i < coordinates.length - 1; i++) {
-        const dx = coordinates[i + 1][0] - coordinates[i][0];
+        // Scale longitude by cos(latitude) to correct for Mercator projection.
+        // Without this, diagonal roads appear rotated ~10-15° at high latitudes.
+        const cosLat = Math.cos(coordinates[i][1] * Math.PI / 180);
+        const dx = (coordinates[i + 1][0] - coordinates[i][0]) * cosLat;
         const dy = coordinates[i + 1][1] - coordinates[i][1];
         const segLen = Math.sqrt(dx * dx + dy * dy);
         totalLength += segLen;
         cumulativeLengths.push(totalLength);
-        // Pre-calculate segment angle
+        // Pre-calculate segment angle (now Mercator-corrected)
         segmentAngles.push(Math.atan2(dy, dx));
       }
       
