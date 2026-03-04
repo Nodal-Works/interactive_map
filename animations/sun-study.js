@@ -703,12 +703,12 @@ class SunStudy {
     this.sunLight = new THREE.DirectionalLight(0xffffff, 1.5);
     this.sunLight.castShadow = true;
     
-    // Higher resolution shadow map - use maximum supported
-    this.sunLight.shadow.mapSize.width = 8192;
-    this.sunLight.shadow.mapSize.height = 8192;
+    // Adjusted resolution for lower-end GPUs (from 8192)
+    this.sunLight.shadow.mapSize.width = 2048;
+    this.sunLight.shadow.mapSize.height = 2048;
     // VSM uses blurSamples instead of radius for softness
-    this.sunLight.shadow.blurSamples = 25;
-    this.sunLight.shadow.radius = 4;
+    this.sunLight.shadow.blurSamples = 8;
+    this.sunLight.shadow.radius = 2;
     
     // Shadow camera settings - will be updated dynamically with sun position
     this.sunLight.shadow.camera.near = 0.5;
