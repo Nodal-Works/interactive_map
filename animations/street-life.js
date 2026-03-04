@@ -20,6 +20,14 @@ document.body.appendChild(streetLifeCanvas);
 
 const streetLifeCtx = streetLifeCanvas.getContext('2d');
 
+// Offscreen canvas for static layers (streetlights + buildings) — only redrawn on map move
+let staticLayerCanvas = null;
+let staticLayerCtx = null;
+let staticLayerDirty = true; // Flag to redraw static layer
+let lastMapCenter = null;
+let lastMapZoom = null;
+let lastMapBearing = null;
+
 // Animation state
 let streetLifeAnimationFrame = null;
 let isStreetLifeAnimating = false;
@@ -45,11 +53,11 @@ const AUDIO_FADE_STEPS = 30; // Smooth fade steps
 
 // Configuration
 const CONFIG = {
-  maxCars: 50,
-  maxBuses: 12,
-  maxBicycles: 30,
-  maxTaxis: 15,
-  maxPedestrians: 1500,   // High density crowds
+  maxCars: 35,
+  maxBuses: 8,
+  maxBicycles: 20,
+  maxTaxis: 10,
+  maxPedestrians: 400,   // Reduced for GPU performance (still visually dense)
   carSpeed: 0.002,       // Progress per frame along path
   busSpeed: 0.0012,      // Buses are slower
   bicycleSpeed: 0.0015,  // Cyclists between cars and pedestrians
@@ -194,12 +202,15 @@ function parseStreetPaths(geojson) {
       const segmentAngles = []; // Pre-calculate angles too!
       
       for (let i = 0; i < coordinates.length - 1; i++) {
-        const dx = coordinates[i + 1][0] - coordinates[i][0];
+        // Scale longitude by cos(latitude) to correct for Mercator projection.
+        // Without this, diagonal roads appear rotated ~10-15° at high latitudes.
+        const cosLat = Math.cos(coordinates[i][1] * Math.PI / 180);
+        const dx = (coordinates[i + 1][0] - coordinates[i][0]) * cosLat;
         const dy = coordinates[i + 1][1] - coordinates[i][1];
         const segLen = Math.sqrt(dx * dx + dy * dy);
         totalLength += segLen;
         cumulativeLengths.push(totalLength);
-        // Pre-calculate segment angle
+        // Pre-calculate segment angle (now Mercator-corrected)
         segmentAngles.push(Math.atan2(dy, dx));
       }
       
@@ -937,42 +948,72 @@ function drawDataComet(ctx, pos, angle, color, direction = 1) {
   ctx.restore();
 }
 
-// FIXED: Main draw function with Correct Rotation
+// Check if the map camera has moved (used to invalidate static layer cache)
+function hasMapMoved() {
+  const center = map.getCenter();
+  const zoom = map.getZoom();
+  const bearing = map.getBearing();
+  
+  if (!lastMapCenter || 
+      Math.abs(center.lng - lastMapCenter.lng) > 0.000001 ||
+      Math.abs(center.lat - lastMapCenter.lat) > 0.000001 ||
+      Math.abs(zoom - lastMapZoom) > 0.001 ||
+      Math.abs(bearing - lastMapBearing) > 0.01) {
+    lastMapCenter = { lng: center.lng, lat: center.lat };
+    lastMapZoom = zoom;
+    lastMapBearing = bearing;
+    return true;
+  }
+  return false;
+}
+
+// Render static layers (streetlights + buildings) to offscreen canvas
+function renderStaticLayer(width, height) {
+  if (!staticLayerCanvas) {
+    staticLayerCanvas = document.createElement('canvas');
+    staticLayerCtx = staticLayerCanvas.getContext('2d');
+  }
+  staticLayerCanvas.width = width;
+  staticLayerCanvas.height = height;
+  staticLayerCtx.clearRect(0, 0, width, height);
+  
+  staticLayerCtx.globalCompositeOperation = 'lighter';
+  drawStreetlights(staticLayerCtx, width, height);
+  drawBuildings(staticLayerCtx, width, height);
+  
+  staticLayerDirty = false;
+}
+
+// Main draw function — optimized for lower-end GPUs
 function drawStreetLife() {
   const width = streetLifeCanvas.width;
   const height = streetLifeCanvas.height;
   
-  // 1. CLEAR CANVAS (No motion blur)
+  // 1. CLEAR CANVAS
   streetLifeCtx.clearRect(0, 0, width, height);
   
   // 2. PREPARE FOR DRAWING
   streetLifeCtx.globalCompositeOperation = 'source-over';
   
-  // GET MAP BEARING (Critical for Headlight Alignment)
-  // Convert map bearing from degrees to radians
+  // GET MAP BEARING
   const mapBearing = (map.getBearing() || 0) * (Math.PI / 180);
   
-  // --- DRAW STREETLIGHTS FIRST (Background layer of light) ---
+  // --- DRAW STATIC LAYERS (cached offscreen canvas) ---
+  // Only re-render streetlights + buildings when the map camera moves
+  if (staticLayerDirty || hasMapMoved()) {
+    renderStaticLayer(width, height);
+  }
   streetLifeCtx.globalCompositeOperation = 'lighter';
-  drawStreetlights(streetLifeCtx, width, height);
-  
-  // --- DRAW BUILDINGS (Subtle ambient glow) ---
-  drawBuildings(streetLifeCtx, width, height);
+  streetLifeCtx.drawImage(staticLayerCanvas, 0, 0);
   
   // --- DRAW VEHICLES ---
-  // Keep lighter mode for neon glow
   vehicles.forEach(v => {
     const point = getPointAlongPath(v.path, v.progress);
     if (!point) return;
     const pos = projectToStreetLifeCanvas(point.lng, point.lat);
     
-    // Optimization: Skip off-screen
     if (!isOnScreen(pos, width, height)) return;
     
-    // --- THE ANGLE FIX ---
-    // 1. point.angle is Math (Counter-Clockwise from East).
-    // 2. Screen Y is flipped vs Geo Y (Lat), so we negate (-point.angle).
-    // 3. We add the Map Bearing to rotate with the camera.
     const screenAngle = -point.angle + mapBearing;
     
     if (v.type === 'car') {
@@ -998,28 +1039,39 @@ function drawStreetLife() {
     }
   }
   
-  // --- DRAW PEDESTRIANS ---
-  streetLifeCtx.globalCompositeOperation = 'source-over'; // Solid dots
+  // --- DRAW PEDESTRIANS (batched by color for minimal state changes) ---
+  streetLifeCtx.globalCompositeOperation = 'source-over';
   
+  // Group pedestrians by color and draw each group in one path
+  const pedsByColor = {};
   pedestrians.forEach(p => {
     const point = getPointAlongPath(p.path, p.progress);
     if (!point) return;
     
-    // Organic Offset - rotate wobble with map bearing too
     const offsetMag = Math.sin(p.wobblePhase) * 1.5;
     const perpAngle = -point.angle + mapBearing + Math.PI / 2;
     const offsetX = Math.cos(perpAngle) * offsetMag;
     const offsetY = Math.sin(perpAngle) * offsetMag;
     
     const pos = projectToStreetLifeCanvas(point.lng, point.lat);
-    
     if (!isOnScreen(pos, width, height)) return;
     
-    streetLifeCtx.fillStyle = p.color;
-    streetLifeCtx.beginPath();
-    streetLifeCtx.arc(pos.x + offsetX, pos.y + offsetY, 1.5, 0, Math.PI * 2);
-    streetLifeCtx.fill();
+    if (!pedsByColor[p.color]) pedsByColor[p.color] = [];
+    pedsByColor[p.color].push(pos.x + offsetX, pos.y + offsetY);
   });
+  
+  // One beginPath + fill per color group instead of per pedestrian
+  const PI2 = Math.PI * 2;
+  for (const color in pedsByColor) {
+    const coords = pedsByColor[color];
+    streetLifeCtx.fillStyle = color;
+    streetLifeCtx.beginPath();
+    for (let i = 0; i < coords.length; i += 2) {
+      streetLifeCtx.moveTo(coords[i] + 1.5, coords[i + 1]);
+      streetLifeCtx.arc(coords[i], coords[i + 1], 1.5, 0, PI2);
+    }
+    streetLifeCtx.fill();
+  }
   
   // Reset for next frame
   streetLifeCtx.globalCompositeOperation = 'source-over';
@@ -1119,6 +1171,8 @@ function loadBuildingFootprints() {
       });
       
       console.log(`✓ Loaded ${buildings.length} building footprints for glow effect`);
+      // Invalidate static layer cache so buildings get drawn
+      staticLayerDirty = true;
     })
     .catch(err => {
       console.warn('Street Life: Could not load building footprints:', err);
@@ -1191,59 +1245,41 @@ function drawBuildings(ctx, width, height) {
   ctx.restore();
 }
 
-// FIXED: Robust Drawing Function (Always draws facing Right/East)
+// GPU-optimized vehicle drawing — NO shadowBlur, fewer gradients
 function drawFastLight(ctx, pos, angle, color, length, width, direction = 1) {
   ctx.save();
   ctx.translate(pos.x, pos.y);
   
-  // 1. ROTATION
-  // Add Math.PI to rotate headlights 180 degrees (flip front/back)
-  // If direction is -1 (Reverse), we flip it another 180 degrees.
   const finalAngle = direction === 1 ? angle + Math.PI : angle;
   ctx.rotate(finalAngle);
   
-  // 2. DRAW FACING RIGHT (0 Radians)
-  
-  // Headlight Glow Halo (Large soft radial glow)
-  const glowRadius = length * 0.6;
-  const headlightGlow = ctx.createRadialGradient(length * 0.3, 0, 0, length * 0.3, 0, glowRadius);
-  headlightGlow.addColorStop(0, 'rgba(255, 255, 220, 0.5)');
-  headlightGlow.addColorStop(0.3, 'rgba(255, 255, 200, 0.2)');
-  headlightGlow.addColorStop(1, 'rgba(255, 255, 200, 0)');
-  ctx.fillStyle = headlightGlow;
-  ctx.beginPath();
-  ctx.arc(length * 0.3, 0, glowRadius, 0, Math.PI * 2);
-  ctx.fill();
-  
-  // Headlight Beam (Facing Right ->) - Brighter volumetric cone
+  // Headlight Beam (single gradient cone — replaces halo + beam)
   const beamGrad = ctx.createLinearGradient(1, 0, length, 0);
-  beamGrad.addColorStop(0, 'rgba(255, 255, 220, 0.6)');
-  beamGrad.addColorStop(0.5, 'rgba(255, 255, 200, 0.3)');
+  beamGrad.addColorStop(0, 'rgba(255, 255, 220, 0.5)');
   beamGrad.addColorStop(1, 'rgba(255, 255, 200, 0)');
   ctx.fillStyle = beamGrad;
   ctx.beginPath();
-  ctx.moveTo(1, 0); // Nose of car
-  ctx.lineTo(length, -width/2); // Top right flare
-  ctx.lineTo(length, width/2);  // Bottom right flare
-  ctx.lineTo(1, 0);
+  ctx.moveTo(1, 0);
+  ctx.lineTo(length, -width / 2);
+  ctx.lineTo(length, width / 2);
   ctx.closePath();
   ctx.fill();
   
-  // Body (Core) - Bright center point, scales with vehicle size
+  // Body core — colored dot, NO shadowBlur
   const coreSize = Math.max(2.5, width / 3);
-  ctx.fillStyle = '#ffffff';
-  ctx.shadowColor = color;
-  ctx.shadowBlur = coreSize * 3;
+  ctx.fillStyle = color;
   ctx.beginPath();
-  ctx.arc(0, 0, coreSize, 0, Math.PI * 2);
+  ctx.arc(0, 0, coreSize + 1, 0, Math.PI * 2);
   ctx.fill();
-  ctx.shadowBlur = 0;
+  ctx.fillStyle = '#ffffff';
+  ctx.beginPath();
+  ctx.arc(0, 0, coreSize * 0.6, 0, Math.PI * 2);
+  ctx.fill();
   
-  // Taillight (Facing Left <-) - smaller, longer trail
-  const tailLen = 18;
+  // Taillight — simple gradient trail, no shadowBlur
+  const tailLen = 14;
   const tailGrad = ctx.createLinearGradient(-2, 0, -2 - tailLen, 0);
-  tailGrad.addColorStop(0, 'rgba(255, 60, 60, 0.6)');
-  tailGrad.addColorStop(0.4, 'rgba(255, 0, 0, 0.25)');
+  tailGrad.addColorStop(0, 'rgba(255, 60, 60, 0.5)');
   tailGrad.addColorStop(1, 'rgba(255, 0, 0, 0)');
   ctx.fillStyle = tailGrad;
   ctx.beginPath();
@@ -1254,14 +1290,11 @@ function drawFastLight(ctx, pos, angle, color, length, width, direction = 1) {
   ctx.closePath();
   ctx.fill();
   
-  // Taillight core (small)
+  // Taillight core dot
   ctx.fillStyle = '#ff4444';
-  ctx.shadowColor = '#ff0000';
-  ctx.shadowBlur = 6;
   ctx.beginPath();
-  ctx.arc(-2, 0, 1.5, 0, Math.PI * 2);
+  ctx.arc(-2, 0, 1.2, 0, Math.PI * 2);
   ctx.fill();
-  ctx.shadowBlur = 0;
   
   ctx.restore();
 }
@@ -1288,11 +1321,11 @@ function startSpawning() {
   if (spawnTimer) clearInterval(spawnTimer);
   
   // Initial spawn burst - populate the city immediately
-  for (let i = 0; i < 30; i++) spawnCar();
-  for (let i = 0; i < 10; i++) spawnTaxi();
-  for (let i = 0; i < 8; i++) spawnBus();
-  for (let i = 0; i < 20; i++) spawnBicycle();
-  for (let i = 0; i < 200; i++) spawnPedestrian(); // Dense crowd
+  for (let i = 0; i < 20; i++) spawnCar();
+  for (let i = 0; i < 6; i++) spawnTaxi();
+  for (let i = 0; i < 5; i++) spawnBus();
+  for (let i = 0; i < 12; i++) spawnBicycle();
+  for (let i = 0; i < 100; i++) spawnPedestrian();
   
   // Continuous spawning (auto-replenish handles most of it now)
   spawnTimer = setInterval(() => {
@@ -1418,16 +1451,18 @@ function startStreetLifeAnimation() {
     emergencyVehicle = null;
     buildingFlickerStates = [];
     
+    // Invalidate static layer cache on start
+    staticLayerDirty = true;
+    
     startSpawning();
     
-    // Spawn first emergency vehicle after 1 second, then continue regular schedule
-    setTimeout(() => {
-      if (isStreetLifeAnimating) {
-        console.log('🚨 Attempting to spawn first emergency vehicle...');
-        spawnEmergencyVehicle();
-        scheduleEmergencySpawn();
-      }
-    }, 1000);
+    // Emergency vehicles disabled - users found them distracting
+    // setTimeout(() => {
+    //   if (isStreetLifeAnimating) {
+    //     spawnEmergencyVehicle();
+    //     scheduleEmergencySpawn();
+    //   }
+    // }, 1000);
     
     animateStreetLife();
     
@@ -1577,6 +1612,7 @@ if (document.readyState === 'loading') {
 window.addEventListener('resize', () => {
   if (isStreetLifeAnimating) {
     resizeStreetLifeCanvas();
+    staticLayerDirty = true;
   }
 });
 
