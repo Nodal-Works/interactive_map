@@ -1320,12 +1320,17 @@ function updateDashboard(targetId) {
                         </button>
                     </div>
                 </div>
+            </div>
+        `;
 
-                <div class="dashboard-card">
-                    <div class="dashboard-section-title">
-                        <span class="material-icons" style="font-size: 18px;">school</span>
-                        Educational Context
-                    </div>
+        // Set metadata to Educational Context for CFD
+        const metadataContent = document.getElementById('metadata-content');
+        const metadataSection = metadataContent?.parentElement;
+        if (metadataSection) {
+            const metadataTitle = metadataSection.querySelector('h2');
+            if (metadataTitle) metadataTitle.textContent = 'Educational Context';
+            metadataContent.innerHTML = `
+                <div class="dashboard-card" style="border: none; background: transparent; padding: 0;">
                     <div class="info-box" style="margin-bottom: 1rem; border-left-color: #10b981;">
                         <div class="info-title">Methodology</div>
                         <p class="info-text">
@@ -1339,8 +1344,8 @@ function updateDashboard(targetId) {
                         </p>
                     </div>
                 </div>
-            </div>
-        `;
+            `;
+        }
         
         legendContent.innerHTML = `
             <div class="dashboard-card">
