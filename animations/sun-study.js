@@ -1016,14 +1016,15 @@ class SunStudy {
         // Create a group to hold all tree meshes
         this.meshTrees = new THREE.Group();
         
-        // Tree material - green tint to distinguish
+        // Tree material - green tint to distinguish. 
+        // Optimization for trees: disabled transparency and double-sided rendering to drastically reduce overdraw
         this.standardMaterialTrees = new THREE.MeshStandardMaterial({
           color: 0x4a7c4e,
           roughness: 0.9,
           metalness: 0.0,
-          side: THREE.DoubleSide,
-          transparent: true,
-          opacity: 0.9,
+          side: THREE.FrontSide, // FrontSide is twice as fast as DoubleSide
+          transparent: false,    // Shadows without transparency saves huge amounts of fill rate
+          opacity: 1.0,
           depthWrite: true
         });
         
@@ -1049,7 +1050,14 @@ class SunStudy {
             
             const mesh = new THREE.Mesh(geometry, this.standardMaterialTrees);
             mesh.castShadow = true;
-            mesh.receiveShadow = true;
+            // Optimization: Trees don't need to receive shadows from each other or buildings 
+            // if we are just dropping them on top to cast shadows down.
+            mesh.receiveShadow = false; 
+            
+            // Optimization: prevent processing of trees entirely if they zoom off-camera
+            mesh.matrixAutoUpdate = false;
+            mesh.updateMatrix();
+            
             this.meshTrees.add(mesh);
           }
         });
