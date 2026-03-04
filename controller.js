@@ -3780,7 +3780,10 @@ document.addEventListener('keydown', (e) => {
     // Check if campus demo button is active
     const campusDemoBtn = document.querySelector('.control-btn[data-target="campus-demo-btn"]');
     if (campusDemoBtn && campusDemoBtn.classList.contains('active')) {
-        if (e.key === 'ArrowRight' || e.key === ' ') {
+        if (e.key === ' ') {
+            e.preventDefault();
+            channel.postMessage({ type: 'campus_demo_control', action: 'autoplay' });
+        } else if (e.key === 'ArrowRight') {
             e.preventDefault();
             channel.postMessage({ type: 'campus_demo_control', action: 'next' });
         } else if (e.key === 'ArrowLeft') {
