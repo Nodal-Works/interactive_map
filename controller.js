@@ -4474,13 +4474,16 @@ async function initSamSegmentation() {
     // initial check
     checkSamServer();
 
-    // Bind Spacebar to trigger segmentation (when not typing in an input)
+    // Bind Spacebar to trigger segmentation (only when street-view is active)
     document.addEventListener('keydown', (e) => {
         if (e.code !== 'Space' && e.key !== ' ') return;
         // Ignore if modifier keys are held
         if (e.altKey || e.ctrlKey || e.metaKey || e.shiftKey) return;
         const active = document.activeElement;
         if (active && (active.tagName === 'INPUT' || active.tagName === 'TEXTAREA' || active.isContentEditable)) return;
+        // Only trigger when street-view is the active animation
+        const streetViewBtn = document.querySelector('.control-btn[data-target="street-view-btn"]');
+        if (!streetViewBtn || !streetViewBtn.classList.contains('active')) return;
         // Prevent page scroll
         e.preventDefault();
         // Only trigger if button exists
