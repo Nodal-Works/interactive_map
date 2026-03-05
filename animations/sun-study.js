@@ -722,16 +722,40 @@ class SunStudy {
     const bearingRad = this.mapBearing * Math.PI / 180;
     const northAngle = -Math.PI / 2 - bearingRad;
     
+    // Helper: Convert altitude to radius using stereographic projection
+    // altitude 0° (horizon) → maxRadius, altitude 90° (zenith) → 0
+    const altitudeToRadius = (alt) => maxRadius * (90 - alt) / 90;
+    
+    // --- Altitude reference rings (faint concentric circles) ---
+    for (const altDeg of [15, 30, 45, 60, 75]) {
+      const r = altitudeToRadius(altDeg);
+      ctx.beginPath();
+      ctx.arc(cx, cy, r, 0, Math.PI * 2);
+      ctx.strokeStyle = 'rgba(255, 255, 255, 0.08)';
+      ctx.lineWidth = 0.5;
+      ctx.stroke();
+      // Small label on the right side
+      if (altDeg % 30 === 0) {
+        ctx.font = '8px sans-serif';
+        ctx.fillStyle = 'rgba(255, 255, 255, 0.25)';
+        ctx.textAlign = 'left';
+        ctx.textBaseline = 'middle';
+        ctx.fillText(`${altDeg}°`, cx + r + 3, cy);
+      }
+    }
+    
     // Compute sun positions throughout the day
+    // Radius now depends on altitude: high sun → near center, low sun → near edge
     const pathPoints = [];
     for (let hour = 0; hour <= 24; hour += 0.25) {
       const { altitude, azimuth } = this.calculateSunPosition(this.date, hour, this.latitude);
       if (altitude > 0) {
+        const r = altitudeToRadius(altitude);
         const azRad = azimuth * Math.PI / 180;
         const screenAngle = northAngle + azRad;
         pathPoints.push({
-          x: cx + maxRadius * Math.cos(screenAngle),
-          y: cy + maxRadius * Math.sin(screenAngle),
+          x: cx + r * Math.cos(screenAngle),
+          y: cy + r * Math.sin(screenAngle),
           hour, altitude, azimuth
         });
       }
@@ -795,10 +819,11 @@ class SunStudy {
     const { altitude, azimuth } = this.calculateSunPosition(this.date, this.timeOfDay, this.latitude);
     if (altitude <= 0) return;
     
+    const sunR = altitudeToRadius(altitude);
     const azRad = azimuth * Math.PI / 180;
     const screenAngle = northAngle + azRad;
-    const sx = cx + maxRadius * Math.cos(screenAngle);
-    const sy = cy + maxRadius * Math.sin(screenAngle);
+    const sx = cx + sunR * Math.cos(screenAngle);
+    const sy = cy + sunR * Math.sin(screenAngle);
     
     // Direction line from center to sun
     ctx.beginPath();

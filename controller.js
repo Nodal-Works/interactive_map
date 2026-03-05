@@ -860,9 +860,9 @@ function updateDashboard(targetId) {
                     <div class="control-row">
                         <label class="control-label">Particles</label>
                         <select id="particle-count" class="modern-date" style="width: 100px;">
-                            <option value="300">Low</option>
-                            <option value="800" selected>Medium</option>
-                            <option value="1500">High</option>
+                            <option value="200" selected>Low</option>
+                            <option value="500">Medium</option>
+                            <option value="1000">High</option>
                         </select>
                     </div>
 
@@ -874,15 +874,15 @@ function updateDashboard(targetId) {
 
                     <div class="control-row">
                         <label class="control-label">Viscosity</label>
-                        <input type="range" id="viscosity" class="modern-range" min="0" max="1" step="0.1" value="0.5">
+                        <input type="range" id="viscosity" class="modern-range" min="0" max="1" step="0.1" value="0">
                     </div>
 
                     <div class="control-row">
                         <label class="control-label">Grid Resolution</label>
                         <select id="grid-resolution" class="modern-date" style="width: 100px;">
-                            <option value="100">100 (Fast)</option>
+                            <option value="100" selected>100 (Fast)</option>
                             <option value="150">150</option>
-                            <option value="200" selected>200 (Normal)</option>
+                            <option value="200">200 (Normal)</option>
                             <option value="250">250</option>
                             <option value="300">300 (High)</option>
                         </select>
