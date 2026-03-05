@@ -617,11 +617,20 @@ function updateStreetLifeEntities() {
     return p.progress >= 0 && p.progress <= 1;
   });
   
-  // Auto-replenish to keep the city busy
-  while (vehicles.filter(v => v.type === 'car').length < CONFIG.maxCars) spawnCar();
-  while (vehicles.filter(v => v.type === 'taxi').length < CONFIG.maxTaxis) spawnTaxi();
-  while (vehicles.filter(v => v.type === 'bus').length < CONFIG.maxBuses) spawnBus();
-  while (vehicles.filter(v => v.type === 'bicycle').length < CONFIG.maxBicycles) spawnBicycle();
+  // Auto-replenish to keep the city busy (O(1) type counting)
+  let carCount = 0, taxiCount = 0, busCount = 0, bicycleCount = 0;
+  for (let i = 0; i < vehicles.length; i++) {
+    switch (vehicles[i].type) {
+      case 'car': carCount++; break;
+      case 'taxi': taxiCount++; break;
+      case 'bus': busCount++; break;
+      case 'bicycle': bicycleCount++; break;
+    }
+  }
+  while (carCount < CONFIG.maxCars) { spawnCar(); carCount++; }
+  while (taxiCount < CONFIG.maxTaxis) { spawnTaxi(); taxiCount++; }
+  while (busCount < CONFIG.maxBuses) { spawnBus(); busCount++; }
+  while (bicycleCount < CONFIG.maxBicycles) { spawnBicycle(); bicycleCount++; }
   while (pedestrians.length < CONFIG.maxPedestrians) spawnPedestrian();
   
   // Update emergency vehicle
