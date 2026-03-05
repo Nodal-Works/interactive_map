@@ -988,7 +988,7 @@ class SunStudy {
     
     // Apply scale with multiplier
     const scale = this.baseScale * this.scaleMultiplier;
-    this.mesh.scale.set(scale, scale, -scale); // Flip Z axis (matches initial setup)
+    this.mesh.scale.set(scale, scale, scale);
     
     // Apply rotation (base rotation + offset)
     this.mesh.rotation.y = this.baseRotation + (this.rotationOffset * Math.PI / 180);
@@ -999,7 +999,7 @@ class SunStudy {
     
     // Apply same transforms to trees
     if (this.meshTrees) {
-      this.meshTrees.scale.set(scale, scale, -scale);
+      this.meshTrees.scale.set(scale, scale, scale);
       this.meshTrees.rotation.y = this.baseRotation + (this.rotationOffset * Math.PI / 180);
       this.meshTrees.position.x = this.offsetX;
       this.meshTrees.position.z = this.offsetZ;
@@ -1317,19 +1317,8 @@ class SunStudy {
     const distance = 2000;
     const altRad = Math.max(0.05, altitude * Math.PI / 180);
     
-    // Use the SAME screen-angle formula as the 2D sun path overlay.
-    // This ensures the 3D light direction matches the compass/overlay exactly.
-    // Previously used a different formula that was rotated 90° from the overlay,
-    // causing shadows to fall south instead of north at noon.
-    const bearingRad = this.mapBearing * Math.PI / 180;
-    const northAngle = -Math.PI / 2 - bearingRad;
-    const azimuthRad = azimuth * Math.PI / 180;
-    const screenAngle = northAngle + azimuthRad;
-    
-    // Map screen-angle to 3D world coordinates matching the camera orientation:
-    // Camera looks down -Y, with up ≈ -X and right ≈ -Z
-    // So: screen-right → -Z, screen-down → +X
     const distH = distance * Math.cos(altRad);
+    const azimuthRad = azimuth * Math.PI / 180;
     
     // Smooth horizon fade (like SunLight.js reference): instead of binary
     // on/off at altitude=0, fade intensity from 2° down to 0°.
@@ -1354,12 +1343,12 @@ class SunStudy {
       this.sunLight.intensity = fadeFactor * Math.min(2.5, 0.8 + Math.sin(altitude * Math.PI / 180) * 2.0);
     }
     
-    const sunX = distH * Math.sin(screenAngle);
+    // PURE WORLD SPACE: North is -Z, East is +X, South is +Z, West is -X.
+    // No screenAngle hack needed — the camera's "up" vector already handles
+    // the visual rotation from world space to screen space.
+    const sunX = distH * Math.sin(azimuthRad);
     const sunY = distance * Math.sin(altRad);
-    // Negate Z to compensate for the model Z-flip (scale.set(s, s, -s) from Rhino STL inversion)
-    // Without this, the sun light direction is in true world-space but the mirrored geometry
-    // causes shadows to fall on the wrong side relative to the 2D overlay.
-    const sunZ = distH * Math.cos(screenAngle);
+    const sunZ = -distH * Math.cos(azimuthRad);
     
     // Dirty flag check
     const threshold = 0.1;
@@ -1429,13 +1418,13 @@ class SunStudy {
       (geometry) => {
         console.log('STL loaded, vertices:', geometry.attributes.position.count);
         
-        // Swap Y and Z coordinates in the geometry (STL has Y/Z swapped)
+        // Convert Rhino Z-up to Three.js Y-up via -90° X rotation (right-handed)
         const positions = geometry.attributes.position.array;
         for (let i = 0; i < positions.length; i += 3) {
           const y = positions[i + 1];
           const z = positions[i + 2];
-          positions[i + 1] = z;  // New Y = old Z
-          positions[i + 2] = y;  // New Z = old Y
+          positions[i + 1] = z;   // New Y = old Z
+          positions[i + 2] = -y;  // New Z = negative old Y
         }
         geometry.attributes.position.needsUpdate = true;
         geometry.computeVertexNormals();
@@ -1515,24 +1504,21 @@ class SunStudy {
      * When loading additional meshes to align with the buildings (mesh.stl):
      * 
      * 1. FILE FORMAT DIFFERENCES:
-     *    - STL files (mesh.stl): Z-up convention, need Y/Z swap
-     *    - GLB/GLTF files: Already Y-up (Three.js convention), NO Y/Z swap needed
+     *    - STL files (mesh.stl): Z-up (Rhino), converted via -90° X rotation
+     *      (new Y = old Z, new Z = -old Y) to Three.js Y-up right-handed
+     *    - GLB/GLTF files: Already Y-up (Three.js convention), NO transform needed
      * 
      * 2. COORDINATE ALIGNMENT:
      *    - Both models must be exported from the same origin in the 3D software
      *    - The buildings center is stored in this.buildingsCenter after STL loads
      *    - Use this.buildingsCenter to center any additional meshes
      * 
-     * 3. Z-AXIS DIRECTION:
-     *    - If the new mesh appears mirrored/flipped, negate Z: positions[i+2] = -positions[i+2]
-     *    - This is needed when the export has opposite Z direction
-     * 
-     * 4. TRANSFORM ORDER (applied to mesh group):
-     *    - Scale: this.baseScale * this.scaleMultiplier (with Z negated: -scale for Z)
+     * 3. TRANSFORM ORDER (applied to mesh):
+     *    - Scale: this.baseScale * this.scaleMultiplier (uniform, no axis negation)
      *    - Rotation: this.baseRotation (-PI/2) + rotationOffset
      *    - Position: offsetX, 50 (Y height), offsetZ
      * 
-     * 5. DEBUGGING:
+     * 4. DEBUGGING:
      *    - Log raw bounds immediately after load
      *    - Log bounds after coordinate transforms
      *    - Compare center values with this.buildingsCenter
@@ -1592,12 +1578,7 @@ class SunStudy {
             child.updateWorldMatrix(true, false);
             geometry.applyMatrix4(child.matrixWorld);
             
-            // GLB is already Y-up (GLTF standard), no Y/Z swap needed
-            // Only negate Z to match the buildings' coordinate orientation
-            const positions = geometry.attributes.position.array;
-            for (let i = 0; i < positions.length; i += 3) {
-              positions[i + 2] = -positions[i + 2];  // Negate Z only
-            }
+            // GLB is already Y-up (GLTF standard), no coordinate transform needed
             geometry.attributes.position.needsUpdate = true;
             
             treeGeometries.push(geometry);
@@ -1647,7 +1628,7 @@ class SunStudy {
         // Apply same transforms as buildings
         if (this.baseScale) {
           const scale = this.baseScale * this.scaleMultiplier;
-          this.meshTrees.scale.set(scale, scale, -scale);
+          this.meshTrees.scale.set(scale, scale, scale);
           console.log('Trees scale applied:', scale);
         }
         this.meshTrees.rotation.y = this.baseRotation + (this.rotationOffset * Math.PI / 180);
@@ -1708,9 +1689,9 @@ class SunStudy {
     const scale = ((minCanvasDim * padding) / maxDim) * 2.0;
     
     // Apply scale
-    this.mesh.scale.set(scale * this.scaleMultiplier, scale * this.scaleMultiplier, -scale * this.scaleMultiplier);
+    this.mesh.scale.set(scale * this.scaleMultiplier, scale * this.scaleMultiplier, scale * this.scaleMultiplier);
     if (this.meshTrees) {
-      this.meshTrees.scale.set(scale * this.scaleMultiplier, scale * this.scaleMultiplier, -scale * this.scaleMultiplier);
+      this.meshTrees.scale.set(scale * this.scaleMultiplier, scale * this.scaleMultiplier, scale * this.scaleMultiplier);
     }
 
     this.baseScale = scale;
