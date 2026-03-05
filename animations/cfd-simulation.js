@@ -23,7 +23,7 @@
   windAudio.loop = true;
   
   // Simulation parameters
-  let GRID_RESOLUTION = 200; // Number of cells along longer dimension
+  let GRID_RESOLUTION = 100; // Number of cells along longer dimension
   const UPSTREAM_FACTOR = 1.0; // Extend domain 1x to the left (reduced for performance)
   const DOWNSTREAM_FACTOR = 0.5; // Extend domain 0.5x to the right (reduced for performance)
   const VERTICAL_PADDING_FACTOR = 0.2; // Extend domain 20% on top and bottom (reduced for performance)
@@ -44,7 +44,7 @@
   
   // Lattice Boltzmann parameters (tuned for stability)
   const Q = 9; // D2Q9 lattice (9 velocities in 2D)
-  let OMEGA = 1.2; // Base relaxation parameter (higher = lower viscosity)
+  let OMEGA = 0.8; // Base relaxation parameter (higher = lower viscosity)
   let WIND_SPEED = 0.05; // Inlet wind speed in lattice units (increased for better Reynolds number)
   const VISCOSITY = 0.05; // Kinematic viscosity (lower = more turbulent)
   const MAX_VELOCITY = 0.3; // Velocity clamp for stability
@@ -293,7 +293,26 @@
       }
     });
     
-    console.log('CFD: Buildings rasterized to screen-space grid');
+    // Fill interior holes in buildings caused by rasterization at coarse resolution.
+    // A non-obstacle cell surrounded on 3+ cardinal sides by obstacle cells is likely
+    // an interior hole and should be filled.
+    let holesFilled = 0;
+    for (let i = 1; i < NX - 1; i++) {
+      for (let j = 1; j < NY - 1; j++) {
+        if (!obstacle[i][j]) {
+          const neighborCount = (obstacle[i-1][j] ? 1 : 0) +
+                                (obstacle[i+1][j] ? 1 : 0) +
+                                (obstacle[i][j-1] ? 1 : 0) +
+                                (obstacle[i][j+1] ? 1 : 0);
+          if (neighborCount >= 3) {
+            obstacle[i][j] = true;
+            holesFilled++;
+          }
+        }
+      }
+    }
+    
+    console.log(`CFD: Buildings rasterized to screen-space grid (${holesFilled} interior holes filled)`);
   }
   
   async function loadTreeObstacles() {
@@ -660,59 +679,13 @@
       }
     }
     
-    // Draw velocity vectors (streamlines) at regular intervals
-    const vectorSpacing = Math.max(6, Math.floor(NX_VISIBLE / 25));
-    const vectorScale = cellSize * 3;
-    
-    ctx.strokeStyle = 'rgba(255, 255, 255, 0.6)';
-    ctx.lineWidth = 2;
-    
-    for (let i = visibleStartX + vectorSpacing; i < visibleEndX; i += vectorSpacing) {
-      for (let j = visibleStartY + vectorSpacing; j < visibleEndY; j += vectorSpacing) {
-        if (obstacle[i][j]) continue;
-        
-        const speed = Math.sqrt(ux[i][j] * ux[i][j] + uy[i][j] * uy[i][j]);
-        if (speed < 0.001) continue;
-        
-        // Map to canvas coordinates (subtract offsets)
-        const x = (i - X_OFFSET) * cellSize + cellSize / 2;
-        const y = (j - Y_OFFSET) * cellSize + cellSize / 2;
-        // Scale vectors by actual speed relative to DYNAMIC maximum
-        const speedRatio = Math.min(speed / Math.max(maxVelocitySmoothed * 0.5, 0.01), 1.5);
-        const vx = (ux[i][j] / speed) * vectorScale * speedRatio;
-        const vy = (uy[i][j] / speed) * vectorScale * speedRatio;
-        
-        // Draw arrow
-        ctx.beginPath();
-        ctx.moveTo(x, y);
-        ctx.lineTo(x + vx, y + vy);
-        ctx.stroke();
-        
-        // Arrow head
-        const angle = Math.atan2(vy, vx);
-        const headLen = 5;
-        ctx.beginPath();
-        ctx.moveTo(x + vx, y + vy);
-        ctx.lineTo(
-          x + vx - headLen * Math.cos(angle - Math.PI / 6),
-          y + vy - headLen * Math.sin(angle - Math.PI / 6)
-        );
-        ctx.moveTo(x + vx, y + vy);
-        ctx.lineTo(
-          x + vx - headLen * Math.cos(angle + Math.PI / 6),
-          y + vy - headLen * Math.sin(angle + Math.PI / 6)
-        );
-        ctx.stroke();
-      }
-    }
-    
     // Draw animated flow particles
     drawFlowParticles(time);
   }
   
   // Particle system for flow visualization
   let particles = [];
-  let NUM_PARTICLES = 1500; // Increased from 200 for more visible flow
+  let NUM_PARTICLES = 500; // Low default for performance
   let PARTICLE_SPEED_MULTIPLIER = 20; // Control particle movement speed (increased for faster flow)
   
   function initParticles() {
@@ -736,10 +709,24 @@
       if (i >= 0 && i < NX && j >= 0 && j < NY) {
         // Check if particle hit an obstacle
         if (obstacle[i][j]) {
-          // Bounce particle slightly away from obstacle
-          p.x -= ux[i][j] * PARTICLE_SPEED_MULTIPLIER * 2;
-          p.y -= uy[i][j] * PARTICLE_SPEED_MULTIPLIER * 2;
-          p.age += 2; // Age faster when hitting obstacles
+          // Push particle away from obstacle using nearest non-obstacle neighbor velocity
+          // The obstacle cell itself has zero velocity, so we need to find a valid neighbor
+          let pushX = 0, pushY = 0;
+          let found = false;
+          for (let di = -1; di <= 1 && !found; di++) {
+            for (let dj = -1; dj <= 1 && !found; dj++) {
+              const ni = i + di, nj = j + dj;
+              if (ni >= 0 && ni < NX && nj >= 0 && nj < NY && !obstacle[ni][nj]) {
+                pushX = di;
+                pushY = dj;
+                found = true;
+              }
+            }
+          }
+          // Push away from obstacle
+          p.x += pushX * 1.5;
+          p.y += pushY * 1.5;
+          p.age += 5; // Age much faster when stuck on obstacles
         } else {
           // Move particle with flow using bilinear interpolation for smoother motion
           const fracI = p.x - i;
@@ -762,9 +749,17 @@
                    fracI * fracJ * uy[i + 1][j + 1];
           }
           
+          const speed = Math.sqrt(velX * velX + velY * velY);
+          
           p.x += velX * PARTICLE_SPEED_MULTIPLIER;
           p.y += velY * PARTICLE_SPEED_MULTIPLIER;
-          p.age += 0.3;
+          
+          // Age faster in stagnation zones so particles get recycled
+          if (speed < WIND_SPEED * 0.1) {
+            p.age += 2.0; // Fast aging in near-zero velocity zones
+          } else {
+            p.age += 0.3;
+          }
         }
         
         // Only draw particles in the visible region
