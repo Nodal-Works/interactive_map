@@ -48,11 +48,27 @@ class SunStudy {
     this.treesLoaded = false;   // Whether tree model has been loaded
     this.buildingsCenter = null; // Stored center for aligning trees
     
-    // Performance: Dirty flags (kept for future use)
+    // Performance: Dirty flags
     this.shadowMapsDirty = true;
+    this.needsRender = true;        // WebGL scene needs re-render
+    this.overlayDirty = true;       // 2D overlay needs redraw
+    this.falseColorUniformsDirty = true; // False color uniforms need update
     this.lastSunPosition = { x: 0, y: 0, z: 0 };
     this.frameCount = 0;
     this.shadowUpdateInterval = 2;
+    
+    // Reusable objects to avoid per-frame allocations
+    this._tempColor = null;          // Reused in renderShadowMaps (lazy init after THREE loads)
+    this._cachedSunDir = null;       // Reused in updateFalseColorUniforms (lazy init after THREE loads)
+    this._shadowCombinedMatchesBuildings = false; // When true, skip PASS 2 (no trees)
+    
+    // Cached sun path points (invalidated on date change)
+    this._cachedSunPathDate = null;     // date string when cache was built
+    this._cachedSunPathPoints = null;   // array of {x,y,hour,altitude,azimuth}
+    
+    // Cached compass rose (offscreen canvas, invalidated on resize)
+    this._compassCanvas = null;
+    this._compassSize = 0;              // tracks canvas dimensions for invalidation
     
     // Cached matrices (for future dual shadow system)
     this.cachedShadowMatrixBuildings = null;
@@ -147,17 +163,23 @@ class SunStudy {
                 } else {
                     this.date = new Date(data.value);
                 }
+                this._cachedSunPathDate = null; // Invalidate sun path cache
                 this.updateSunPosition();
                 this.shadowMapsDirty = true;
+                this.needsRender = true;
+                this.overlayDirty = true;
                 break;
             case 'set_time':
                 this.timeOfDay = parseFloat(data.value);
                 this.updateSunPosition();
                 this.shadowMapsDirty = true;
+                this.needsRender = true;
+                this.overlayDirty = true;
                 break;
             case 'set_opacity':
                 this.shadowOpacity = parseFloat(data.value);
                 if (this.shadowMaterial) this.shadowMaterial.opacity = this.shadowOpacity;
+                this.needsRender = true;
                 break;
             case 'toggle_animation':
                 this.toggleAnimation();
@@ -219,10 +241,11 @@ class SunStudy {
       this.meshTrees.castShadow = this.treesVisible;
     }
     
-    // Mark shadow maps as needing update
+    // Mark all as needing update
     this.shadowMapsDirty = true;
-    
-    // Notify controller of state change
+    this.needsRender = true;
+    this.overlayDirty = true;
+    this.falseColorUniformsDirty = true;
     if (this.channel) {
       this.channel.postMessage({
         type: 'trees_state',
@@ -264,26 +287,29 @@ class SunStudy {
     const targetWidth = Math.floor((width * pixelRatio) / 2);
     const targetHeight = Math.floor((height * pixelRatio) / 2);
     
-    // Render targets for shadow passes (store shadow result as color)
+    // PERF: Use RedFormat (single channel) instead of RGBAFormat.
+    // Shadow maps only store a grayscale value, so we only need 1 channel.
+    // This cuts memory bandwidth by 4x for shadow texture reads.
     this.shadowTargetBuildings = new THREE.WebGLRenderTarget(targetWidth, targetHeight, {
       minFilter: THREE.LinearFilter,
       magFilter: THREE.LinearFilter,
-      format: THREE.RGBAFormat,
+      format: THREE.RedFormat,
       type: THREE.UnsignedByteType
     });
     
     this.shadowTargetCombined = new THREE.WebGLRenderTarget(targetWidth, targetHeight, {
       minFilter: THREE.LinearFilter,
       magFilter: THREE.LinearFilter,
-      format: THREE.RGBAFormat,
+      format: THREE.RedFormat,
       type: THREE.UnsignedByteType
     });
     
-    // Simple material that outputs shadow value as grayscale
-    this.shadowCaptureMaterial = new THREE.MeshStandardMaterial({
+    // PERF: Use MeshLambertMaterial instead of MeshStandardMaterial for shadow capture.
+    // We throw away all lighting output and only keep the shadow mask,
+    // so there's no point computing PBR (GGX BRDF, roughness, metalness).
+    // Lambert is the cheapest material that still participates in the shadow system.
+    this.shadowCaptureMaterial = new THREE.MeshLambertMaterial({
       color: 0xffffff,
-      roughness: 1.0,
-      metalness: 0.0,
       side: THREE.DoubleSide
     });
     
@@ -296,7 +322,7 @@ class SunStudy {
         `
       );
       
-      // Output shadow mask as grayscale color
+      // Output shadow mask as single-channel red value
       shader.fragmentShader = shader.fragmentShader.replace(
         '#include <dithering_fragment>',
         `
@@ -305,7 +331,7 @@ class SunStudy {
         #ifdef USE_SHADOWMAP
           shadowVal = getShadowMask();
         #endif
-        gl_FragColor = vec4(shadowVal, shadowVal, shadowVal, 1.0);
+        gl_FragColor = vec4(shadowVal, 0.0, 0.0, 1.0);
         `
       );
     };
@@ -348,9 +374,9 @@ class SunStudy {
             vec2( 0.34495938, 0.29387760 )
         );
 
+        // PERF: Shadow targets use RedFormat (single channel), so sample .r
         float getSoftShadowFast(sampler2D shadowMap, vec2 uv, float radius) {
             vec2 texelSize = vec2(1.0) / resolution;
-            float shadow = 0.0;
             
             // Random rotation based on screen coordinate
             float noise = fract(sin(dot(uv.xy, vec2(12.9898,78.233))) * 43758.5453);
@@ -358,11 +384,13 @@ class SunStudy {
             float c = cos(noise * 6.28);
             mat2 rot = mat2(c, -s, s, c);
             
-            for (int i = 0; i < 4; i++) {
-                vec2 offset = rot * poissonDisk[i] * texelSize * radius;
-                shadow += texture2D(shadowMap, uv + offset).r;
-            }
-            return shadow * 0.25; // Average of 4 samples
+            // PERF: Unrolled loop — avoids loop overhead on low-end GPUs
+            vec2 scaledTexel = texelSize * radius;
+            float shadow = texture2D(shadowMap, uv + rot * poissonDisk[0] * scaledTexel).r;
+            shadow += texture2D(shadowMap, uv + rot * poissonDisk[1] * scaledTexel).r;
+            shadow += texture2D(shadowMap, uv + rot * poissonDisk[2] * scaledTexel).r;
+            shadow += texture2D(shadowMap, uv + rot * poissonDisk[3] * scaledTexel).r;
+            return shadow * 0.25;
         }
         `
       );
@@ -437,7 +465,9 @@ class SunStudy {
     if (!this.mesh) return;
     
     this.isFalseColorMode = !this.isFalseColorMode;
-    this.shadowMapsDirty = true; // Force shadow map update on mode change
+    this.shadowMapsDirty = true;
+    this.needsRender = true;
+    this.falseColorUniformsDirty = true;
     
     if (this.isFalseColorMode) {
       if (!this.falseColorMaterial) {
@@ -461,18 +491,23 @@ class SunStudy {
   
   updateFalseColorUniforms() {
     if (!this.falseColorMaterial || !this.sunLight) return;
+    // PERF: Only update uniforms when something actually changed
+    if (!this.falseColorUniformsDirty) return;
+    this.falseColorUniformsDirty = false;
     
     const shader = this.falseColorMaterial.userData.shader;
     if (!shader || !shader.uniforms) return;
     
-    // Update sun direction
-    const sunDir = this.sunLight.position.clone().normalize();
-    if (sunDir.lengthSq() === 0) {
-      sunDir.set(0, 1, 0);
+    // PERF: Reuse a single Vector3 instead of clone()+normalize() every frame
+    // (avoids GC pressure from creating a new Vector3 each call)
+    if (!this._cachedSunDir) this._cachedSunDir = new THREE.Vector3();
+    this._cachedSunDir.copy(this.sunLight.position).normalize();
+    if (this._cachedSunDir.lengthSq() === 0) {
+      this._cachedSunDir.set(0, 1, 0);
     }
     
     if (shader.uniforms.sunDirection) {
-      shader.uniforms.sunDirection.value.copy(sunDir);
+      shader.uniforms.sunDirection.value.copy(this._cachedSunDir);
     }
     if (shader.uniforms.treesEnabled) {
       shader.uniforms.treesEnabled.value = this.treesVisible && this.treesLoaded;
@@ -481,7 +516,11 @@ class SunStudy {
       shader.uniforms.tShadowBuildings.value = this.shadowTargetBuildings.texture;
     }
     if (shader.uniforms.tShadowCombined && this.shadowTargetCombined) {
-      shader.uniforms.tShadowCombined.value = this.shadowTargetCombined.texture;
+      // PERF: When no trees were active, we skipped the combined render pass.
+      // Point the combined sampler at the buildings texture instead.
+      shader.uniforms.tShadowCombined.value = this._shadowCombinedMatchesBuildings
+        ? this.shadowTargetBuildings.texture
+        : this.shadowTargetCombined.texture;
     }
     if (shader.uniforms.resolution) {
       const pixelRatio = this.renderer ? this.renderer.getPixelRatio() : 1;
@@ -496,22 +535,30 @@ class SunStudy {
     // Two-pass shadow rendering for multi-source shadow discrimination
     // This method is called before the main render in false color mode
     
+    // PERF: Skip entirely if shadow maps haven't been invalidated
+    if (!this.shadowMapsDirty) return;
+    
     if (!this.meshBuildings || !this.sunLight || !this.renderer) return;
     if (!this.shadowTargetBuildings || !this.shadowTargetCombined) return;
     if (!this.shadowCaptureMaterial) return;
+    
+    this.shadowMapsDirty = false; // Clear flag before rendering
     
     const treesActive = this.treesVisible && this.treesLoaded && this.meshTrees;
     
     // Store original state
     const originalBuildingsMaterial = this.meshBuildings.material;
     const originalTreesMaterial = treesActive ? this.meshTrees.material : null;
-    const originalClearColor = this.renderer.getClearColor(new THREE.Color());
+    // PERF: Reuse a single Color object instead of allocating new THREE.Color() every call
+    if (!this._tempColor) this._tempColor = new THREE.Color();
+    const originalClearColor = this.renderer.getClearColor(this._tempColor);
     const originalClearAlpha = this.renderer.getClearAlpha();
     const originalShadowType = this.renderer.shadowMap.type;
     const originalBias = this.sunLight.shadow.bias;
     const originalNormalBias = this.sunLight.shadow.normalBias;
     
     // Use PCF shadows for shadow capture passes (cleaner than Basic, sharper than VSM)
+    const needsShadowTypeSwitch = (originalShadowType !== THREE.PCFShadowMap);
     this.renderer.shadowMap.type = THREE.PCFShadowMap;
     
     // Adjust bias to prevent shadow acne artifacts
@@ -528,6 +575,19 @@ class SunStudy {
       this.meshTrees.material = this.shadowCaptureMaterial;
     }
     
+    // PERF: Only dispose shadow map when shadow type actually changes.
+    // Previously this was done 3x per frame causing massive GPU alloc/dealloc thrashing.
+    if (needsShadowTypeSwitch && this.sunLight.shadow.map) {
+      this.sunLight.shadow.map.dispose();
+      this.sunLight.shadow.map = null;
+    }
+    
+    // PERF: Hide ground plane during shadow capture — it only receives shadows
+    // but doesn't cast any. Removing it from the render saves vertex processing
+    // and fragment shading for a 5000x5000 quad in each pass.
+    const groundWasVisible = this.groundPlane ? this.groundPlane.visible : false;
+    if (this.groundPlane) this.groundPlane.visible = false;
+    
     // ========== PASS 1: Buildings only ==========
     this.meshBuildings.castShadow = true;
     if (treesActive) {
@@ -535,11 +595,6 @@ class SunStudy {
       this.meshTrees.visible = false;      // Hide trees entirely
     }
     
-    // Force shadow map rebuild with new shadow type
-    if (this.sunLight.shadow.map) {
-      this.sunLight.shadow.map.dispose();
-      this.sunLight.shadow.map = null;
-    }
     this.sunLight.shadow.needsUpdate = true;
     
     // Render to buildings shadow target
@@ -552,22 +607,19 @@ class SunStudy {
       this.meshTrees.castShadow = true;   // Enable tree shadows
       this.meshTrees.visible = true;      // Show trees
       
-      // Force shadow map rebuild for combined pass
-      if (this.sunLight.shadow.map) {
-        this.sunLight.shadow.map.dispose();
-        this.sunLight.shadow.map = null;
-      }
+      // Force shadow map update for combined pass (no dispose needed - same shadow type)
       this.sunLight.shadow.needsUpdate = true;
       
       // Render to combined shadow target
       this.renderer.setRenderTarget(this.shadowTargetCombined);
       this.renderer.clear();
       this.renderer.render(this.scene, this.camera);
+      this._shadowCombinedMatchesBuildings = false;
     } else {
-      // No trees - combined is same as buildings
-      this.renderer.setRenderTarget(this.shadowTargetCombined);
-      this.renderer.clear();
-      this.renderer.render(this.scene, this.camera);
+      // PERF: When no trees, combined = buildings. Skip the redundant second
+      // render pass entirely. We set a flag so updateFalseColorUniforms
+      // points both shader samplers at the buildings texture.
+      this._shadowCombinedMatchesBuildings = true;
     }
     
     // Reset render target and restore original state
@@ -577,11 +629,14 @@ class SunStudy {
     this.sunLight.shadow.bias = originalBias;
     this.sunLight.shadow.normalBias = originalNormalBias;
     
-    // Force shadow map rebuild with original shadow type for final render
-    if (this.sunLight.shadow.map) {
+    // PERF: Only dispose if we need to switch back to a different shadow type
+    if (needsShadowTypeSwitch && this.sunLight.shadow.map) {
       this.sunLight.shadow.map.dispose();
       this.sunLight.shadow.map = null;
     }
+    
+    // Restore ground plane visibility
+    if (this.groundPlane) this.groundPlane.visible = groundWasVisible;
     
     // Restore original materials
     this.meshBuildings.material = originalBuildingsMaterial;
@@ -632,17 +687,51 @@ class SunStudy {
   
   drawOverlays() {
     if (!this.overlayCtx || !this.overlayCanvas) return;
+    if (!this.overlayDirty) return; // Skip if nothing changed
+    this.overlayDirty = false;
+    
     const w = this.overlayCanvas.width / (window.devicePixelRatio || 1);
     const h = this.overlayCanvas.height / (window.devicePixelRatio || 1);
     this.overlayCtx.clearRect(0, 0, w, h);
-    this.drawCompassRose(this.overlayCtx, w, h);
+    this.blitCompassRose(this.overlayCtx, w, h);
     this.drawSunPath(this.overlayCtx, w, h);
   }
   
-  drawCompassRose(ctx, w, h) {
+  // Renders compass rose to an offscreen canvas once, then blits it each frame.
+  // Only re-renders when canvas dimensions change (resize).
+  blitCompassRose(ctx, w, h) {
     const size = 45;
+    const canvasKey = `${w}|${h}`;
+    
+    if (!this._compassCanvas || this._compassSize !== canvasKey) {
+      // Create/recreate offscreen canvas for compass
+      const pad = 4; // padding around compass
+      const dim = (size + 25 + pad) * 2;
+      this._compassCanvas = document.createElement('canvas');
+      const dpr = window.devicePixelRatio || 1;
+      this._compassCanvas.width = dim * dpr;
+      this._compassCanvas.height = dim * dpr;
+      const offCtx = this._compassCanvas.getContext('2d');
+      offCtx.setTransform(dpr, 0, 0, dpr, 0, 0);
+      // Draw compass centered in offscreen canvas
+      // We translate so drawCompassRose draws at the center of this small canvas
+      const offW = dim;
+      const offH = dim;
+      this.drawCompassRose(offCtx, offW, offH, size + 25 + pad, size + 25 + pad);
+      this._compassSize = canvasKey;
+    }
+    
+    // Blit cached compass to the correct position
     const cx = w - size - 25;
     const cy = h - size - 25;
+    const dim = this._compassCanvas.width / (window.devicePixelRatio || 1);
+    ctx.drawImage(this._compassCanvas, cx - dim / 2, cy - dim / 2, dim, dim);
+  }
+  
+  drawCompassRose(ctx, w, h, overrideCx, overrideCy) {
+    const size = 45;
+    const cx = overrideCx !== undefined ? overrideCx : w - size - 25;
+    const cy = overrideCy !== undefined ? overrideCy : h - size - 25;
     
     const bearingRad = this.mapBearing * Math.PI / 180;
     // North in screen coords: screen-up is -PI/2, rotated by -bearing
@@ -744,22 +833,35 @@ class SunStudy {
       }
     }
     
-    // Compute sun positions throughout the day
-    // Radius now depends on altitude: high sun → near center, low sun → near edge
-    const pathPoints = [];
-    for (let hour = 0; hour <= 24; hour += 0.25) {
-      const { altitude, azimuth } = this.calculateSunPosition(this.date, hour, this.latitude);
-      if (altitude > 0) {
-        const r = altitudeToRadius(altitude);
-        const azRad = azimuth * Math.PI / 180;
-        const screenAngle = northAngle + azRad;
-        pathPoints.push({
-          x: cx + r * Math.cos(screenAngle),
-          y: cy + r * Math.sin(screenAngle),
-          hour, altitude, azimuth
-        });
+    // ---- PERF: Cache sun path points by date ----
+    // calculateSunPosition is called 97 times (24h / 0.25h steps).
+    // The path only depends on the date + latitude, NOT the current time,
+    // so we cache it and only recalculate when the date changes.
+    const dateKey = `${this.date.getFullYear()}-${this.date.getMonth()}-${this.date.getDate()}`;
+    let rawPathData = this._cachedSunPathPoints;
+    if (this._cachedSunPathDate !== dateKey) {
+      rawPathData = [];
+      for (let hour = 0; hour <= 24; hour += 0.25) {
+        const { altitude, azimuth } = this.calculateSunPosition(this.date, hour, this.latitude);
+        if (altitude > 0) {
+          rawPathData.push({ hour, altitude, azimuth });
+        }
       }
+      this._cachedSunPathPoints = rawPathData;
+      this._cachedSunPathDate = dateKey;
     }
+    
+    // Project cached astronomical data to screen coordinates
+    const pathPoints = rawPathData.map(pt => {
+      const r = altitudeToRadius(pt.altitude);
+      const azRad = pt.azimuth * Math.PI / 180;
+      const screenAngle = northAngle + azRad;
+      return {
+        x: cx + r * Math.cos(screenAngle),
+        y: cy + r * Math.sin(screenAngle),
+        hour: pt.hour, altitude: pt.altitude, azimuth: pt.azimuth
+      };
+    });
     
     if (pathPoints.length < 2) return;
     
@@ -1117,6 +1219,9 @@ class SunStudy {
         Math.abs(sunY - this.lastSunPosition.y) > threshold ||
         Math.abs(sunZ - this.lastSunPosition.z) > threshold) {
       this.shadowMapsDirty = true;
+      this.needsRender = true;
+      this.overlayDirty = true;
+      this.falseColorUniformsDirty = true;
       this.lastSunPosition = { x: sunX, y: sunY, z: sunZ };
     }
     
@@ -1515,6 +1620,10 @@ class SunStudy {
     
     this.resizeOverlay();
     this.shadowMapsDirty = true;
+    this.needsRender = true;
+    this.overlayDirty = true;
+    this.falseColorUniformsDirty = true;
+    this._compassSize = 0; // Invalidate compass cache on resize
   }
   
   animate() {
@@ -1527,22 +1636,28 @@ class SunStudy {
       if (this.timeOfDay >= 24) this.timeOfDay = 0;
       this.updateTimeDisplay();
       this.updateSunPosition();
+      // Animation sets all dirty flags via updateSunPosition
     }
     
-    // Render shadow maps for false color mode (with throttling)
-    if (this.isFalseColorMode) {
-      this.renderShadowMaps();
-      this.updateFalseColorUniforms();
+    // PERF: Skip all GPU work if nothing has changed
+    if (this.needsRender) {
+      // Render shadow maps for false color mode (gated on shadowMapsDirty inside)
+      if (this.isFalseColorMode) {
+        this.renderShadowMaps();
+        this.updateFalseColorUniforms();
+      }
+      
+      // Use composer for post-processing (SSAO)
+      if (this.composer) {
+        this.composer.render();
+      } else {
+        this.renderer.render(this.scene, this.camera);
+      }
+      
+      this.needsRender = false;
     }
     
-    // Use composer for post-processing (SSAO)
-    if (this.composer) {
-      this.composer.render();
-    } else {
-      this.renderer.render(this.scene, this.camera);
-    }
-    
-    // Draw 2D overlays (compass rose + sun path)
+    // Draw 2D overlays (compass rose + sun path) — gated on overlayDirty inside
     this.drawOverlays();
   }
   
@@ -1571,7 +1686,9 @@ class SunStudy {
     
     this.canvas.style.display = 'block';
     if (this.overlayCanvas) this.overlayCanvas.style.display = 'block';
-    this.shadowMapsDirty = true; // Force update on show
+    this.shadowMapsDirty = true;
+    this.needsRender = true;
+    this.overlayDirty = true;
     
     setTimeout(() => {
       this.onResize();
