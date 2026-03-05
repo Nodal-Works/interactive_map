@@ -83,6 +83,7 @@ class SunStudy {
     // Sweden location (Gothenburg - matches map center)
     this.latitude = 57.68839377903814;
     this.longitude = 11.977770568930168;
+    this.timezone = 1; // CET = UTC+1 (standard time; DST not modelled)
     
     // Map bearing for alignment
     this.mapBearing = -92.58546386659737;
@@ -192,6 +193,9 @@ class SunStudy {
                 break;
             case 'toggle_trees':
                 this.toggleTrees();
+                break;
+            case 'get_memory':
+                this.getMemoryReport();
                 break;
         }
     }
@@ -1151,29 +1155,147 @@ class SunStudy {
     this.composer.addPass(outputPass);
   }
   
+  // =========================================================================
+  //  NOAA Solar Calculator  (adapted from NOAA / SunLight.js reference)
+  //  Accounts for: equation of time, longitude within timezone, orbital
+  //  eccentricity, obliquity nutation, and atmospheric refraction.
+  // =========================================================================
+
+  /** @private */ static _degToRad(d) { return d * (Math.PI / 180); }
+  /** @private */ static _radToDeg(r) { return r * (180 / Math.PI); }
+
+  /** @private */ static _calcGeomMeanLongSun(t) {
+    let L = 280.46646 + t * (36000.76983 + t * 0.0003032);
+    while (L > 360) L -= 360;
+    while (L < 0) L += 360;
+    return L;
+  }
+  /** @private */ static _calcGeomMeanAnomalySun(t) {
+    return 357.52911 + t * (35999.05029 - 0.0001537 * t);
+  }
+  /** @private */ static _calcEccentricityEarthOrbit(t) {
+    return 0.016708634 - t * (0.000042037 + 0.0000001267 * t);
+  }
+  /** @private */ static _calcSunEqOfCenter(t) {
+    const D = SunStudy._degToRad;
+    const m = SunStudy._calcGeomMeanAnomalySun(t);
+    const mr = D(m);
+    return Math.sin(mr)     * (1.914602 - t * (0.004817 + 0.000014 * t))
+         + Math.sin(2 * mr) * (0.019993 - 0.000101 * t)
+         + Math.sin(3 * mr) * 0.000289;
+  }
+  /** @private */ static _calcSunTrueLong(t) {
+    return SunStudy._calcGeomMeanLongSun(t) + SunStudy._calcSunEqOfCenter(t);
+  }
+  /** @private */ static _calcSunApparentLong(t) {
+    const D = SunStudy._degToRad;
+    const omega = 125.04 - 1934.136 * t;
+    return SunStudy._calcSunTrueLong(t) - 0.00569 - 0.00478 * Math.sin(D(omega));
+  }
+  /** @private */ static _calcMeanObliquityOfEcliptic(t) {
+    const s = 21.448 - t * (46.815 + t * (0.00059 - t * 0.001813));
+    return 23.0 + (26.0 + s / 60.0) / 60.0;
+  }
+  /** @private */ static _calcObliquityCorrection(t) {
+    const D = SunStudy._degToRad;
+    return SunStudy._calcMeanObliquityOfEcliptic(t)
+         + 0.00256 * Math.cos(D(125.04 - 1934.136 * t));
+  }
+  /** @private */ static _calcSunDeclination(t) {
+    const D = SunStudy._degToRad, R = SunStudy._radToDeg;
+    const e = SunStudy._calcObliquityCorrection(t);
+    const lambda = SunStudy._calcSunApparentLong(t);
+    return R(Math.asin(Math.sin(D(e)) * Math.sin(D(lambda))));
+  }
+  /** @private */ static _calcEquationOfTime(t) {
+    const D = SunStudy._degToRad, R = SunStudy._radToDeg;
+    const e  = SunStudy._calcObliquityCorrection(t);
+    const l0 = SunStudy._calcGeomMeanLongSun(t);
+    const ec = SunStudy._calcEccentricityEarthOrbit(t);
+    const m  = SunStudy._calcGeomMeanAnomalySun(t);
+    let y = Math.tan(D(e) / 2); y *= y;
+    const s2l = Math.sin(2 * D(l0)), sm  = Math.sin(D(m));
+    const c2l = Math.cos(2 * D(l0)), s4l = Math.sin(4 * D(l0));
+    const s2m = Math.sin(2 * D(m));
+    return R(y * s2l - 2 * ec * sm + 4 * ec * y * sm * c2l
+            - 0.5 * y * y * s4l - 1.25 * ec * ec * s2m) * 4; // minutes
+  }
+
+  /** @private */ static _getJD(date) {
+    let m = date.getMonth() + 1, d = date.getDate(), y = date.getFullYear();
+    if (m <= 2) { y--; m += 12; }
+    const A = Math.floor(y / 100);
+    const B = 2 - A + Math.floor(A / 4);
+    return Math.floor(365.25 * (y + 4716))
+         + Math.floor(30.6001 * (m + 1)) + d + B - 1524.5;
+  }
+
+  /**
+   * Full NOAA solar position calculator.
+   * @param {Date}   date      - calendar date
+   * @param {number} timeOfDay - clock hour in local STANDARD time (e.g. 13.5 = 13:30)
+   * @param {number} latitude  - degrees north
+   * @returns {{ altitude: number, azimuth: number }} degrees
+   */
   calculateSunPosition(date, timeOfDay, latitude) {
-    const start = new Date(date.getFullYear(), 0, 0);
-    const diff = date - start;
-    const oneDay = 1000 * 60 * 60 * 24;
-    const dayOfYear = Math.floor(diff / oneDay);
-    
-    const declination = 23.45 * Math.sin((360 / 365) * (dayOfYear - 81) * Math.PI / 180);
-    const hourAngle = (timeOfDay - 12.0) * 15;
-    
-    const latRad = latitude * Math.PI / 180;
-    const declRad = declination * Math.PI / 180;
-    const hourRad = hourAngle * Math.PI / 180;
-    
-    const sinAlt = Math.sin(latRad) * Math.sin(declRad) + 
-                   Math.cos(latRad) * Math.cos(declRad) * Math.cos(hourRad);
-    const altitude = Math.asin(sinAlt) * 180 / Math.PI;
-    
-    const cosAz = (Math.sin(declRad) - Math.sin(latRad) * sinAlt) / 
-                  (Math.cos(latRad) * Math.cos(Math.asin(sinAlt)));
-    let azimuth = Math.acos(Math.max(-1, Math.min(1, cosAz))) * 180 / Math.PI;
-    
-    if (hourAngle > 0) azimuth = 360 - azimuth;
-    
+    const D = SunStudy._degToRad, R = SunStudy._radToDeg;
+    const longitude = this.longitude;
+    const tz = this.timezone;
+
+    const totalMinutes = timeOfDay * 60;
+    const jd = SunStudy._getJD(date);
+    const T = ((jd + totalMinutes / 1440.0 - tz / 24.0) - 2451545.0) / 36525.0;
+
+    // Equation of Time & declination for this Julian century
+    const eqTime = SunStudy._calcEquationOfTime(T);
+    const theta  = SunStudy._calcSunDeclination(T);
+
+    // True solar time (accounts for longitude offset within timezone)
+    const solarTimeFix = eqTime + 4.0 * longitude - 60.0 * tz; // minutes
+    let trueSolarTime = totalMinutes + solarTimeFix;
+    while (trueSolarTime > 1440) trueSolarTime -= 1440;
+    while (trueSolarTime < 0)    trueSolarTime += 1440;
+
+    let hourAngle = trueSolarTime / 4.0 - 180.0; // degrees
+    if (hourAngle < -180) hourAngle += 360;
+
+    // Zenith / elevation
+    const haRad = D(hourAngle);
+    let csz = Math.sin(D(latitude)) * Math.sin(D(theta))
+            + Math.cos(D(latitude)) * Math.cos(D(theta)) * Math.cos(haRad);
+    csz = Math.max(-1, Math.min(1, csz));
+    const zenith = R(Math.acos(csz));
+    const exoatmElevation = 90.0 - zenith;
+
+    // Azimuth
+    let azimuth;
+    const azDenom = Math.cos(D(latitude)) * Math.sin(D(zenith));
+    if (Math.abs(azDenom) > 0.001) {
+      let azCos = (Math.sin(D(latitude)) * Math.cos(D(zenith))
+                   - Math.sin(D(theta))) / azDenom;
+      azCos = Math.max(-1, Math.min(1, azCos));
+      azimuth = 180.0 - R(Math.acos(azCos));
+      if (hourAngle > 0) azimuth = -azimuth;
+    } else {
+      azimuth = latitude > 0 ? 180 : 0;
+    }
+    if (azimuth < 0) azimuth += 360;
+
+    // Atmospheric refraction correction
+    let refCorr = 0;
+    if (exoatmElevation <= 85) {
+      const te = Math.tan(D(exoatmElevation));
+      if (exoatmElevation > 5)
+        refCorr = 58.1 / te - 0.07 / (te ** 3) + 0.000086 / (te ** 5);
+      else if (exoatmElevation > -0.575)
+        refCorr = 1735 + exoatmElevation * (-518.2 + exoatmElevation *
+                  (103.4 + exoatmElevation * (-12.79 + exoatmElevation * 0.711)));
+      else
+        refCorr = -20.774 / te;
+      refCorr /= 3600;
+    }
+
+    const altitude = exoatmElevation + refCorr;
     return { altitude, azimuth };
   }
   
@@ -1194,24 +1316,50 @@ class SunStudy {
     // shadow camera and lose their shadows entirely.
     const distance = 2000;
     const altRad = Math.max(0.05, altitude * Math.PI / 180);
-    const adjustedAz = azimuth - this.mapBearing;
-    const azRad = (adjustedAz - 180) * Math.PI / 180;
     
-    this.sunLight.intensity = altitude > 0 ? 1.0 : 0;
+    // Use the SAME screen-angle formula as the 2D sun path overlay.
+    // This ensures the 3D light direction matches the compass/overlay exactly.
+    // Previously used a different formula that was rotated 90° from the overlay,
+    // causing shadows to fall south instead of north at noon.
+    const bearingRad = this.mapBearing * Math.PI / 180;
+    const northAngle = -Math.PI / 2 - bearingRad;
+    const azimuthRad = azimuth * Math.PI / 180;
+    const screenAngle = northAngle + azimuthRad;
     
-    // Cinematic lighting: Adjust color based on altitude
+    // Map screen-angle to 3D world coordinates matching the camera orientation:
+    // Camera looks down -Y, with up ≈ -X and right ≈ -Z
+    // So: screen-right → -Z, screen-down → +X
+    const distH = distance * Math.cos(altRad);
+    
+    // Smooth horizon fade (like SunLight.js reference): instead of binary
+    // on/off at altitude=0, fade intensity from 2° down to 0°.
+    const FADE_THRESHOLD = 2.0; // degrees
+    if (altitude <= 0) {
+      this.sunLight.intensity = 0;
+    } else if (altitude <= FADE_THRESHOLD) {
+      this.sunLight.intensity = altitude / FADE_THRESHOLD;
+    } else {
+      this.sunLight.intensity = 1.0;
+    }
+    
+    // Cinematic lighting: Adjust color and intensity based on altitude
     if (altitude > 0) {
       const color = new THREE.Color();
       if (altitude < 10) color.setHSL(0.05, 1.0, 0.6);
       else if (altitude < 25) { const t = (altitude - 10) / 15; color.setHSL(0.1, 1.0, 0.6 + t * 0.2); }
       else { const t = Math.min(1, (altitude - 25) / 40); color.setHSL(0.08, 0.6 - t * 0.2, 0.8 + t * 0.2); }
       this.sunLight.color.copy(color);
-      this.sunLight.intensity = Math.min(2.5, 0.8 + Math.sin(altitude * Math.PI / 180) * 2.0);
+      // Apply smooth fade near horizon (0°-2°), then cinematic ramp above
+      const fadeFactor = altitude <= FADE_THRESHOLD ? (altitude / FADE_THRESHOLD) : 1.0;
+      this.sunLight.intensity = fadeFactor * Math.min(2.5, 0.8 + Math.sin(altitude * Math.PI / 180) * 2.0);
     }
     
-    const sunX = distance * Math.cos(altRad) * Math.sin(azRad);
+    const sunX = distH * Math.sin(screenAngle);
     const sunY = distance * Math.sin(altRad);
-    const sunZ = distance * Math.cos(altRad) * Math.cos(azRad);
+    // Negate Z to compensate for the model Z-flip (scale.set(s, s, -s) from Rhino STL inversion)
+    // Without this, the sun light direction is in true world-space but the mirrored geometry
+    // causes shadows to fall on the wrong side relative to the 2D overlay.
+    const sunZ = distH * Math.cos(screenAngle);
     
     // Dirty flag check
     const threshold = 0.1;
@@ -1695,6 +1843,216 @@ class SunStudy {
       this.animate();
     }, 50);
   }
+  
+  // ==================== MEMORY PROFILING ====================
+  
+  getMemoryReport() {
+    const report = {
+      gpu: {},
+      js: {},
+      threeInfo: {},
+      totals: { gpuMB: 0, jsMB: 0 }
+    };
+    
+    const MB = 1024 * 1024;
+    let totalGPU = 0;
+    
+    // --- 1. Render Targets (shadow maps) ---
+    const rtSizes = {};
+    const measureRT = (name, rt) => {
+      if (!rt) return;
+      const w = rt.width;
+      const h = rt.height;
+      // RedFormat = 1 byte/pixel, RGBAFormat = 4 bytes/pixel
+      const bpp = (rt.texture && rt.texture.format === THREE.RedFormat) ? 1 : 4;
+      const bytes = w * h * bpp;
+      rtSizes[name] = { width: w, height: h, bpp, bytes };
+      totalGPU += bytes;
+    };
+    measureRT('shadowTargetBuildings', this.shadowTargetBuildings);
+    measureRT('shadowTargetCombined', this.shadowTargetCombined);
+    report.gpu.renderTargets = rtSizes;
+    
+    // --- 2. Shadow Map (directional light) ---
+    if (this.sunLight && this.sunLight.shadow && this.sunLight.shadow.map) {
+      const sm = this.sunLight.shadow.map;
+      // Shadow maps are depth textures, typically 4 bytes/pixel (DEPTH_COMPONENT32F)
+      // VSM uses 2-channel (RG) float = 8 bytes/pixel
+      const isVSM = this.renderer && this.renderer.shadowMap.type === THREE.VSMShadowMap;
+      const bpp = isVSM ? 8 : 4;
+      const bytes = sm.width * sm.height * bpp;
+      report.gpu.shadowMap = { width: sm.width, height: sm.height, bpp, type: isVSM ? 'VSM' : 'PCF/Basic', bytes };
+      totalGPU += bytes;
+    } else {
+      report.gpu.shadowMap = { status: 'not allocated' };
+    }
+    
+    // --- 3. Post-processing buffers (EffectComposer) ---
+    if (this.composer) {
+      const ppBuffers = {};
+      // Composer has at least 2 render targets (read/write buffers)
+      if (this.composer.readBuffer) {
+        const rb = this.composer.readBuffer;
+        const bytes = rb.width * rb.height * 4; // RGBA
+        ppBuffers.readBuffer = { width: rb.width, height: rb.height, bytes };
+        totalGPU += bytes;
+      }
+      if (this.composer.writeBuffer) {
+        const wb = this.composer.writeBuffer;
+        const bytes = wb.width * wb.height * 4;
+        ppBuffers.writeBuffer = { width: wb.width, height: wb.height, bytes };
+        totalGPU += bytes;
+      }
+      // SSAO has its own internal buffers (normal, depth, AO)
+      if (this.ssaoPass) {
+        // SSAO typically allocates ~3 full-res render targets
+        const w = this.ssaoPass.width || (window.innerWidth - 120);
+        const h = this.ssaoPass.height || window.innerHeight;
+        const ssaoBytes = w * h * 4 * 3; // 3 targets × RGBA
+        ppBuffers.ssaoEstimate = { width: w, height: h, targets: 3, bytes: ssaoBytes };
+        totalGPU += ssaoBytes;
+      }
+      // SMAA uses area and search textures (~1MB fixed)
+      if (this.smaaPass) {
+        ppBuffers.smaaFixed = { bytes: 1 * MB, note: 'area+search textures' };
+        totalGPU += 1 * MB;
+      }
+      report.gpu.postProcessing = ppBuffers;
+    }
+    
+    // --- 4. Geometry buffers (vertex data on GPU) ---
+    const geoSizes = {};
+    const measureGeometry = (name, mesh) => {
+      if (!mesh || !mesh.geometry) return;
+      const geo = mesh.geometry;
+      let bytes = 0;
+      for (const attrName in geo.attributes) {
+        const attr = geo.attributes[attrName];
+        bytes += attr.array ? attr.array.byteLength : 0;
+      }
+      if (geo.index && geo.index.array) {
+        bytes += geo.index.array.byteLength;
+      }
+      const vertexCount = geo.attributes.position ? geo.attributes.position.count : 0;
+      const faceCount = geo.index ? geo.index.count / 3 : vertexCount / 3;
+      geoSizes[name] = { vertices: vertexCount, faces: Math.floor(faceCount), bytes };
+      totalGPU += bytes;
+    };
+    measureGeometry('buildings', this.meshBuildings);
+    measureGeometry('trees', this.meshTrees);
+    measureGeometry('groundPlane', this.groundPlane);
+    report.gpu.geometry = geoSizes;
+    
+    // --- 5. Canvas memory ---
+    const canvasSizes = {};
+    if (this.canvas) {
+      const bytes = this.canvas.width * this.canvas.height * 4;
+      canvasSizes.webglCanvas = { width: this.canvas.width, height: this.canvas.height, bytes };
+      totalGPU += bytes;
+    }
+    if (this.overlayCanvas) {
+      const bytes = this.overlayCanvas.width * this.overlayCanvas.height * 4;
+      canvasSizes.overlayCanvas = { width: this.overlayCanvas.width, height: this.overlayCanvas.height, bytes };
+      totalGPU += bytes;
+    }
+    if (this._compassCanvas) {
+      const bytes = this._compassCanvas.width * this._compassCanvas.height * 4;
+      canvasSizes.compassCache = { width: this._compassCanvas.width, height: this._compassCanvas.height, bytes };
+      totalGPU += bytes;
+    }
+    report.gpu.canvases = canvasSizes;
+    
+    // --- 6. Three.js renderer info ---
+    if (this.renderer) {
+      const info = this.renderer.info;
+      report.threeInfo = {
+        memory: {
+          geometries: info.memory.geometries,
+          textures: info.memory.textures
+        },
+        render: {
+          calls: info.render.calls,
+          triangles: info.render.triangles,
+          points: info.render.points,
+          lines: info.render.lines,
+          frame: info.render.frame
+        },
+        programs: info.programs ? info.programs.length : 0
+      };
+    }
+    
+    // --- 7. JS Heap (Chrome only) ---
+    if (performance && performance.memory) {
+      report.js = {
+        usedHeapMB: (performance.memory.usedJSHeapSize / MB).toFixed(1),
+        totalHeapMB: (performance.memory.totalJSHeapSize / MB).toFixed(1),
+        limitMB: (performance.memory.jsHeapSizeLimit / MB).toFixed(1)
+      };
+      report.totals.jsMB = (performance.memory.usedJSHeapSize / MB).toFixed(1);
+    } else {
+      report.js = { note: 'performance.memory not available (Chrome only)' };
+    }
+    
+    report.totals.gpuMB = (totalGPU / MB).toFixed(2);
+    report.totals.gpuBytes = totalGPU;
+    
+    // --- Pretty-print to console ---
+    console.group('%c☀ Sun Study Memory Report', 'color: #ffcc33; font-weight: bold; font-size: 14px');
+    
+    console.group('GPU Render Targets');
+    for (const [name, info] of Object.entries(rtSizes)) {
+      console.log(`  ${name}: ${info.width}×${info.height} @ ${info.bpp}bpp = ${(info.bytes / MB).toFixed(2)} MB`);
+    }
+    console.groupEnd();
+    
+    console.group('Shadow Map');
+    const sm = report.gpu.shadowMap;
+    if (sm.bytes) {
+      console.log(`  ${sm.width}×${sm.height} ${sm.type} @ ${sm.bpp}bpp = ${(sm.bytes / MB).toFixed(2)} MB`);
+    } else {
+      console.log('  Not allocated');
+    }
+    console.groupEnd();
+    
+    if (report.gpu.postProcessing) {
+      console.group('Post-Processing');
+      for (const [name, info] of Object.entries(report.gpu.postProcessing)) {
+        console.log(`  ${name}: ${(info.bytes / MB).toFixed(2)} MB`);
+      }
+      console.groupEnd();
+    }
+    
+    console.group('Geometry (vertex buffers)');
+    for (const [name, info] of Object.entries(geoSizes)) {
+      console.log(`  ${name}: ${info.vertices.toLocaleString()} verts, ${info.faces.toLocaleString()} tris = ${(info.bytes / MB).toFixed(2)} MB`);
+    }
+    console.groupEnd();
+    
+    console.group('Canvases');
+    for (const [name, info] of Object.entries(canvasSizes)) {
+      console.log(`  ${name}: ${info.width}×${info.height} = ${(info.bytes / MB).toFixed(2)} MB`);
+    }
+    console.groupEnd();
+    
+    console.log(`%cThree.js: ${report.threeInfo?.memory?.geometries || 0} geometries, ${report.threeInfo?.memory?.textures || 0} textures, ${report.threeInfo?.programs || 0} shader programs`, 'color: #888');
+    console.log(`%cDraw calls last frame: ${report.threeInfo?.render?.calls || 0}, triangles: ${(report.threeInfo?.render?.triangles || 0).toLocaleString()}`, 'color: #888');
+    
+    if (report.js.usedHeapMB) {
+      console.log(`%cJS Heap: ${report.js.usedHeapMB} / ${report.js.totalHeapMB} MB (limit: ${report.js.limitMB} MB)`, 'color: #66ccff');
+    }
+    
+    console.log(`%c━━━ TOTAL ESTIMATED GPU: ${report.totals.gpuMB} MB ━━━`, 'color: #ff6633; font-weight: bold; font-size: 12px');
+    console.groupEnd();
+    
+    // Broadcast to controller
+    if (this.channel) {
+      this.channel.postMessage({ type: 'memory_report', report });
+    }
+    
+    return report;
+  }
+  
+  // ==================== END MEMORY PROFILING ====================
   
   hide() {
     this.canvas.style.display = 'none';
