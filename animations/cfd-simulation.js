@@ -44,7 +44,7 @@
   
   // Lattice Boltzmann parameters (tuned for stability)
   const Q = 9; // D2Q9 lattice (9 velocities in 2D)
-  let OMEGA = 0.8; // Base relaxation parameter (higher = lower viscosity)
+  let OMEGA = 0.55; // Base relaxation parameter (higher = lower viscosity)
   let WIND_SPEED = 0.05; // Inlet wind speed in lattice units (increased for better Reynolds number)
   const VISCOSITY = 0.05; // Kinematic viscosity (lower = more turbulent)
   const MAX_VELOCITY = 0.3; // Velocity clamp for stability
@@ -58,14 +58,19 @@
   // Opposite direction indices for bounce-back
   const opp = [0, 3, 4, 1, 2, 7, 8, 5, 6];
   
-  // Grid arrays
-  let f = null; // Distribution functions [x][y][direction]
-  let fTemp = null; // Temporary distribution functions
-  let rho = null; // Density [x][y]
-  let ux = null; // Velocity x-component [x][y]
-  let uy = null; // Velocity y-component [x][y]
-  let obstacle = null; // Boolean obstacle map [x][y] (solid - buildings)
-  let treeObstacle = null; // Boolean tree obstacle map [x][y] (permeable)
+  // Grid arrays (flat typed buffers for performance)
+  // Access via idx(i,j) for 2D and fidx(i,j,k) for 3D
+  let f = null; // Distribution functions - Float32Array(NX * NY * Q)
+  let fTemp = null; // Temporary distribution functions - Float32Array(NX * NY * Q)
+  let rho = null; // Density - Float32Array(NX * NY)
+  let ux = null; // Velocity x-component - Float32Array(NX * NY)
+  let uy = null; // Velocity y-component - Float32Array(NX * NY)
+  let obstacle = null; // Obstacle map - Uint8Array(NX * NY) (1 = solid building)
+  let treeObstacle = null; // Tree obstacle map - Uint8Array(NX * NY) (1 = permeable)
+  
+  // Index helpers for flat buffer access
+  function idx(i, j) { return i * NY + j; }
+  function fidx(i, j, k) { return (i * NY + j) * Q + k; }
   
   // Dynamic velocity scale tracking
   let currentMaxVelocity = 0;
@@ -116,44 +121,32 @@
   }
   
   function initializeSimulation() {
-    // Initialize arrays
-    f = new Array(NX);
-    fTemp = new Array(NX);
-    rho = new Array(NX);
-    ux = new Array(NX);
-    uy = new Array(NX);
-    obstacle = new Array(NX);
-    treeObstacle = new Array(NX);
+    // Initialize flat typed arrays
+    const gridSize = NX * NY;
+    f = new Float32Array(gridSize * Q);
+    fTemp = new Float32Array(gridSize * Q);
+    rho = new Float32Array(gridSize);
+    ux = new Float32Array(gridSize);
+    uy = new Float32Array(gridSize);
+    obstacle = new Uint8Array(gridSize);
+    treeObstacle = new Uint8Array(gridSize);
+    
+    // Initialize with equilibrium distribution for uniform flow
+    // Wind flows left-to-right in SCREEN space (i direction)
+    const u0 = WIND_SPEED;
+    const v0 = 0.0;
+    const rho0 = 1.0;
     
     for (let i = 0; i < NX; i++) {
-      f[i] = new Array(NY);
-      fTemp[i] = new Array(NY);
-      rho[i] = new Array(NY);
-      ux[i] = new Array(NY);
-      uy[i] = new Array(NY);
-      obstacle[i] = new Array(NY);
-      treeObstacle[i] = new Array(NY);
-      
       for (let j = 0; j < NY; j++) {
-        f[i][j] = new Array(Q);
-        fTemp[i][j] = new Array(Q);
-        
-        // Initialize with equilibrium distribution for uniform flow
-        // Wind flows left-to-right in SCREEN space (i direction)
-        const u0 = WIND_SPEED; // Horizontal flow in screen space
-        const v0 = 0.0; // No vertical component in screen space
-        const rho0 = 1.0;
-        
         for (let k = 0; k < Q; k++) {
-          f[i][j][k] = equilibrium(k, rho0, u0, v0);
-          fTemp[i][j][k] = f[i][j][k];
+          const feq = equilibrium(k, rho0, u0, v0);
+          f[fidx(i,j,k)] = feq;
+          fTemp[fidx(i,j,k)] = feq;
         }
-        
-        rho[i][j] = rho0;
-        ux[i][j] = u0;
-        uy[i][j] = v0;
-        obstacle[i][j] = false;
-        treeObstacle[i][j] = false;
+        rho[idx(i,j)] = rho0;
+        ux[idx(i,j)] = u0;
+        uy[idx(i,j)] = v0;
       }
     }
     
@@ -221,11 +214,7 @@
     if (typeof map === 'undefined' || buildingPolygons.length === 0) return;
     
     // Clear existing obstacles
-    for (let i = 0; i < NX; i++) {
-      for (let j = 0; j < NY; j++) {
-        obstacle[i][j] = false;
-      }
-    }
+    obstacle.fill(0);
     
     // Get canvas bounds in screen space
     const canvasWidth = cfdCanvas.width;
@@ -287,7 +276,7 @@
           const cellCenterY = (j - Y_OFFSET + 0.5) * cellSize;
           
           if (pointInScreenPolygon({x: cellCenterX, y: cellCenterY}, screenPoints)) {
-            obstacle[i][j] = true;
+            obstacle[idx(i,j)] = 1;
           }
         }
       }
@@ -299,13 +288,13 @@
     let holesFilled = 0;
     for (let i = 1; i < NX - 1; i++) {
       for (let j = 1; j < NY - 1; j++) {
-        if (!obstacle[i][j]) {
-          const neighborCount = (obstacle[i-1][j] ? 1 : 0) +
-                                (obstacle[i+1][j] ? 1 : 0) +
-                                (obstacle[i][j-1] ? 1 : 0) +
-                                (obstacle[i][j+1] ? 1 : 0);
+        if (!obstacle[idx(i,j)]) {
+          const neighborCount = (obstacle[idx(i-1,j)] ? 1 : 0) +
+                                (obstacle[idx(i+1,j)] ? 1 : 0) +
+                                (obstacle[idx(i,j-1)] ? 1 : 0) +
+                                (obstacle[idx(i,j+1)] ? 1 : 0);
           if (neighborCount >= 3) {
-            obstacle[i][j] = true;
+            obstacle[idx(i,j)] = 1;
             holesFilled++;
           }
         }
@@ -404,7 +393,7 @@
             // Check if within circle radius
             const dist = Math.sqrt(di * di + dj * dj);
             if (dist <= gridRadius) {
-              treeObstacle[i][j] = true;
+              treeObstacle[idx(i,j)] = 1;
               treeCellCount++;
             }
           }
@@ -417,11 +406,7 @@
   
   function clearTreeObstacles() {
     // Clear tree obstacles
-    for (let i = 0; i < NX; i++) {
-      for (let j = 0; j < NY; j++) {
-        treeObstacle[i][j] = false;
-      }
-    }
+    treeObstacle.fill(0);
   }
   
   function toggleTrees() {
@@ -463,7 +448,7 @@
           
           // Stream to neighbors if within bounds
           if (nextI >= 0 && nextI < NX && nextJ >= 0 && nextJ < NY) {
-            fTemp[nextI][nextJ][k] = f[i][j][k];
+            fTemp[fidx(nextI,nextJ,k)] = f[fidx(i,j,k)];
           }
         }
       }
@@ -474,14 +459,14 @@
       // Top boundary (j = 0) - mirror velocities to enforce zero vertical velocity
       if (i > 0 && i < NX - 1) {
         for (let k = 0; k < Q; k++) {
-          fTemp[i][0][k] = fTemp[i][1][k]; // Copy from interior
+          fTemp[fidx(i,0,k)] = fTemp[fidx(i,1,k)]; // Copy from interior
         }
       }
       
       // Bottom boundary (j = NY-1) - mirror velocities to enforce zero vertical velocity
       if (i > 0 && i < NX - 1) {
         for (let k = 0; k < Q; k++) {
-          fTemp[i][NY-1][k] = fTemp[i][NY-2][k]; // Copy from interior
+          fTemp[fidx(i,NY-1,k)] = fTemp[fidx(i,NY-2,k)]; // Copy from interior
         }
       }
     }
@@ -494,17 +479,19 @@
     // Boundary conditions and collision
     for (let i = 0; i < NX; i++) {
       for (let j = 0; j < NY; j++) {
+        const ij = idx(i,j);
+        
         // Handle solid obstacles (buildings) with full bounce-back
-        if (obstacle[i][j]) {
+        if (obstacle[ij]) {
           for (let k = 0; k < Q; k++) {
-            fTemp[i][j][k] = f[i][j][opp[k]];
+            fTemp[fidx(i,j,k)] = f[fidx(i,j,opp[k])];
           }
           continue;
         }
         
         // Handle permeable obstacles (trees) with partial bounce-back
         // This models porous media where some flow passes through
-        const isTreeCell = INCLUDE_TREES && treeObstacle && treeObstacle[i][j];
+        const isTreeCell = INCLUDE_TREES && treeObstacle && treeObstacle[ij];
         
         // Compute macroscopic quantities
         let density = 0.0;
@@ -512,9 +499,10 @@
         let v = 0.0;
         
         for (let k = 0; k < Q; k++) {
-          density += f[i][j][k];
-          u += ex[k] * f[i][j][k];
-          v += ey[k] * f[i][j][k];
+          const fval = f[fidx(i,j,k)];
+          density += fval;
+          u += ex[k] * fval;
+          v += ey[k] * fval;
         }
         
         u /= density;
@@ -543,12 +531,12 @@
           const rho_inlet = 1.0;
           
           for (let k = 0; k < Q; k++) {
-            fTemp[i][j][k] = equilibrium(k, rho_inlet, u_inlet, v_inlet);
+            fTemp[fidx(i,j,k)] = equilibrium(k, rho_inlet, u_inlet, v_inlet);
           }
           
-          rho[i][j] = rho_inlet;
-          ux[i][j] = u_inlet;
-          uy[i][j] = v_inlet;
+          rho[ij] = rho_inlet;
+          ux[ij] = u_inlet;
+          uy[ij] = v_inlet;
           continue;
         }
         
@@ -556,12 +544,13 @@
         // Zero-gradient extrapolation (Neumann) for distribution functions
         if (i === NX - 1) {
           for (let k = 0; k < Q; k++) {
-            fTemp[i][j][k] = f[i-1][j][k];
+            fTemp[fidx(i,j,k)] = f[fidx(i-1,j,k)];
           }
           
-          rho[i][j] = rho[i-1][j];
-          ux[i][j] = ux[i-1][j];
-          uy[i][j] = uy[i-1][j];
+          const ij_prev = idx(i-1,j);
+          rho[ij] = rho[ij_prev];
+          ux[ij] = ux[ij_prev];
+          uy[ij] = uy[ij_prev];
           continue;
         }
         
@@ -576,9 +565,9 @@
         density = Math.max(0.5, Math.min(2.0, density));
         
         // Store macroscopic values
-        rho[i][j] = density;
-        ux[i][j] = u;
-        uy[i][j] = v;
+        rho[ij] = density;
+        ux[ij] = u;
+        uy[ij] = v;
         
         // Collision step: TRT-LES (Two-Relaxation Time with Smagorinsky)
         // This is much more stable than standard BGK, as recommended by the paper
@@ -586,10 +575,10 @@
         // 1. Calculate Smagorinsky turbulence (same as before)
         let S = 0;
         if (i > 0 && i < NX - 1 && j > 0 && j < NY - 1) {
-          const du_dx = (ux[i+1][j] - ux[i-1][j]) / 2;
-          const du_dy = (ux[i][j+1] - ux[i][j-1]) / 2;
-          const dv_dx = (uy[i+1][j] - uy[i-1][j]) / 2;
-          const dv_dy = (uy[i][j+1] - uy[i][j-1]) / 2;
+          const du_dx = (ux[idx(i+1,j)] - ux[idx(i-1,j)]) / 2;
+          const du_dy = (ux[idx(i,j+1)] - ux[idx(i,j-1)]) / 2;
+          const dv_dx = (uy[idx(i+1,j)] - uy[idx(i-1,j)]) / 2;
+          const dv_dy = (uy[idx(i,j+1)] - uy[idx(i,j-1)]) / 2;
           
           const Sxx = du_dx;
           const Syy = dv_dy;
@@ -612,15 +601,18 @@
           const feq_k = equilibrium(k, density, u, v);
           const feq_k_opp = equilibrium(k_opp, density, u, v);
           
+          const fijk = f[fidx(i,j,k)];
+          const fijk_opp = f[fidx(i,j,k_opp)];
+          
           // Symmetric and Anti-symmetric non-equilibrium parts
-          const f_neq_plus = 0.5 * ((f[i][j][k] - feq_k) + (f[i][j][k_opp] - feq_k_opp));
-          const f_neq_minus = 0.5 * ((f[i][j][k] - feq_k) - (f[i][j][k_opp] - feq_k_opp));
+          const f_neq_plus = 0.5 * ((fijk - feq_k) + (fijk_opp - feq_k_opp));
+          const f_neq_minus = 0.5 * ((fijk - feq_k) - (fijk_opp - feq_k_opp));
           
           // Relax with different rates
-          fTemp[i][j][k] = f[i][j][k] - omega_plus * f_neq_plus - omega_minus * f_neq_minus;
+          fTemp[fidx(i,j,k)] = fijk - omega_plus * f_neq_plus - omega_minus * f_neq_minus;
           
           // Clamp for stability
-          fTemp[i][j][k] = Math.max(0, fTemp[i][j][k]);
+          if (fTemp[fidx(i,j,k)] < 0) fTemp[fidx(i,j,k)] = 0;
         }
       }
     }
@@ -638,8 +630,9 @@
     currentMaxVelocity = 0;
     for (let i = X_OFFSET; i < X_OFFSET + NX_VISIBLE; i++) {
       for (let j = Y_OFFSET; j < Y_OFFSET + NY_VISIBLE; j++) {
-        if (obstacle[i][j]) continue;
-        const speed = Math.sqrt(ux[i][j] * ux[i][j] + uy[i][j] * uy[i][j]);
+        const ij = idx(i,j);
+        if (obstacle[ij]) continue;
+        const speed = Math.sqrt(ux[ij] * ux[ij] + uy[ij] * uy[ij]);
         if (speed > currentMaxVelocity) {
           currentMaxVelocity = speed;
         }
@@ -658,10 +651,11 @@
     
     for (let i = visibleStartX; i < visibleEndX; i++) {
       for (let j = visibleStartY; j < visibleEndY; j++) {
+        const ij = idx(i,j);
         // Skip obstacles - we want to see the buildings underneath
-        if (obstacle[i][j]) continue;
+        if (obstacle[ij]) continue;
         
-        const speed = Math.sqrt(ux[i][j] * ux[i][j] + uy[i][j] * uy[i][j]);
+        const speed = Math.sqrt(ux[ij] * ux[ij] + uy[ij] * uy[ij]);
         
         // Color based on velocity magnitude with transparency
         // Normalize against DYNAMIC maximum for adaptive color scaling
@@ -685,7 +679,7 @@
   
   // Particle system for flow visualization
   let particles = [];
-  let NUM_PARTICLES = 500; // Low default for performance
+  let NUM_PARTICLES = 200; // Low default for performance
   let PARTICLE_SPEED_MULTIPLIER = 20; // Control particle movement speed (increased for faster flow)
   
   function initParticles() {
@@ -707,8 +701,9 @@
       const j = Math.floor(p.y);
       
       if (i >= 0 && i < NX && j >= 0 && j < NY) {
+        const ij = idx(i,j);
         // Check if particle hit an obstacle
-        if (obstacle[i][j]) {
+        if (obstacle[ij]) {
           // Push particle away from obstacle using nearest non-obstacle neighbor velocity
           // The obstacle cell itself has zero velocity, so we need to find a valid neighbor
           let pushX = 0, pushY = 0;
@@ -716,7 +711,7 @@
           for (let di = -1; di <= 1 && !found; di++) {
             for (let dj = -1; dj <= 1 && !found; dj++) {
               const ni = i + di, nj = j + dj;
-              if (ni >= 0 && ni < NX && nj >= 0 && nj < NY && !obstacle[ni][nj]) {
+              if (ni >= 0 && ni < NX && nj >= 0 && nj < NY && !obstacle[idx(ni,nj)]) {
                 pushX = di;
                 pushY = dj;
                 found = true;
@@ -733,20 +728,20 @@
           const fracJ = p.y - j;
           
           // Sample velocity at current cell and neighbors
-          let velX = ux[i][j];
-          let velY = uy[i][j];
+          let velX = ux[ij];
+          let velY = uy[ij];
           
           // Bilinear interpolation if neighbors exist
           if (i + 1 < NX && j + 1 < NY) {
-            velX = (1 - fracI) * (1 - fracJ) * ux[i][j] +
-                   fracI * (1 - fracJ) * ux[i + 1][j] +
-                   (1 - fracI) * fracJ * ux[i][j + 1] +
-                   fracI * fracJ * ux[i + 1][j + 1];
+            velX = (1 - fracI) * (1 - fracJ) * ux[ij] +
+                   fracI * (1 - fracJ) * ux[idx(i+1,j)] +
+                   (1 - fracI) * fracJ * ux[idx(i,j+1)] +
+                   fracI * fracJ * ux[idx(i+1,j+1)];
             
-            velY = (1 - fracI) * (1 - fracJ) * uy[i][j] +
-                   fracI * (1 - fracJ) * uy[i + 1][j] +
-                   (1 - fracI) * fracJ * uy[i][j + 1] +
-                   fracI * fracJ * uy[i + 1][j + 1];
+            velY = (1 - fracI) * (1 - fracJ) * uy[ij] +
+                   fracI * (1 - fracJ) * uy[idx(i+1,j)] +
+                   (1 - fracI) * fracJ * uy[idx(i,j+1)] +
+                   fracI * fracJ * uy[idx(i+1,j+1)];
           }
           
           const speed = Math.sqrt(velX * velX + velY * velY);
@@ -770,7 +765,7 @@
           const size = 2.5 + Math.sin(time * 0.01 + p.age * 0.1) * 0.5;
           
           // Speed-based color (faster = more red/yellow)
-          const speed = Math.sqrt(ux[i][j] * ux[i][j] + uy[i][j] * uy[i][j]);
+          const speed = Math.sqrt(ux[ij] * ux[ij] + uy[ij] * uy[ij]);
           const speedNorm = Math.min(speed / WIND_SPEED, 1.0);
           const r = 255;
           const g = 255 - speedNorm * 100;
@@ -826,7 +821,7 @@
           const i = Math.floor(p.x);
           const j = Math.floor(p.y);
           // Check bounds and obstacles
-          if (i >= 0 && i < NX && j >= 0 && j < NY && !obstacle[i][j]) {
+          if (i >= 0 && i < NX && j >= 0 && j < NY && !obstacle[idx(i,j)]) {
             break;
           }
           
