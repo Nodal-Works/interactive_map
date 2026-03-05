@@ -53,11 +53,11 @@ const AUDIO_FADE_STEPS = 30; // Smooth fade steps
 
 // Configuration
 const CONFIG = {
-  maxCars: 35,
-  maxBuses: 8,
-  maxBicycles: 20,
-  maxTaxis: 10,
-  maxPedestrians: 400,   // Reduced for GPU performance (still visually dense)
+  maxCars: 18,
+  maxBuses: 4,
+  maxBicycles: 10,
+  maxTaxis: 5,
+  maxPedestrians: 200,   // Reduced for low-end GPU performance
   carSpeed: 0.002,       // Progress per frame along path
   busSpeed: 0.0012,      // Buses are slower
   bicycleSpeed: 0.0015,  // Cyclists between cars and pedestrians

@@ -16,7 +16,7 @@ class StormwaterFlowAnimation {
     
     // Particle system
     this.particles = [];
-    this.maxParticles = 8000;
+    this.maxParticles = 4000;
     this.particleSpawnRate = 40;
     
     // Offscreen canvas for particle glow (pre-rendered sprite)
