@@ -24,7 +24,7 @@
   
   // Simulation parameters
   let GRID_RESOLUTION = 100; // Number of cells along longer dimension
-  const UPSTREAM_FACTOR = 1.0; // Extend domain 1x to the left (reduced for performance)
+  const UPSTREAM_FACTOR = 0.3; // Extend domain 0.3x to the left
   const DOWNSTREAM_FACTOR = 0.5; // Extend domain 0.5x to the right (reduced for performance)
   const VERTICAL_PADDING_FACTOR = 0.2; // Extend domain 20% on top and bottom (reduced for performance)
   let NX, NY; // Grid dimensions (including all extensions)
@@ -623,6 +623,30 @@
     fTemp = temp;
   }
   
+  // HSL to RGB helper for ImageData rendering (returns [r, g, b] 0-255)
+  function hslToRgb(h, s, l) {
+    h /= 360; s /= 100; l /= 100;
+    let r, g, b;
+    if (s === 0) {
+      r = g = b = l;
+    } else {
+      const hue2rgb = (p, q, t) => {
+        if (t < 0) t += 1;
+        if (t > 1) t -= 1;
+        if (t < 1/6) return p + (q - p) * 6 * t;
+        if (t < 1/2) return q;
+        if (t < 2/3) return p + (q - p) * (2/3 - t) * 6;
+        return p;
+      };
+      const q = l < 0.5 ? l * (1 + s) : l + s - l * s;
+      const p = 2 * l - q;
+      r = hue2rgb(p, q, h + 1/3);
+      g = hue2rgb(p, q, h);
+      b = hue2rgb(p, q, h - 1/3);
+    }
+    return [(r * 255 + 0.5) | 0, (g * 255 + 0.5) | 0, (b * 255 + 0.5) | 0];
+  }
+  
   function visualize(time) {
     ctx.clearRect(0, 0, cfdCanvas.width, cfdCanvas.height);
     
@@ -642,12 +666,18 @@
     // Smooth the max velocity to avoid jitter (exponential moving average)
     maxVelocitySmoothed = maxVelocitySmoothed * 0.9 + currentMaxVelocity * 0.1;
     
-    // Visualize velocity magnitude with color and streamlines
-    // Only render the visible region (skip padding zones)
+    // Render velocity field using ImageData for bulk pixel writes (much faster than fillRect)
+    const canvasW = cfdCanvas.width;
+    const canvasH = cfdCanvas.height;
+    const imageData = ctx.createImageData(canvasW, canvasH);
+    const pixels = imageData.data; // Uint8ClampedArray [r,g,b,a, r,g,b,a, ...]
+    
     const visibleStartX = X_OFFSET;
     const visibleEndX = X_OFFSET + NX_VISIBLE;
     const visibleStartY = Y_OFFSET;
     const visibleEndY = Y_OFFSET + NY_VISIBLE;
+    const maxVelInv = 1.0 / Math.max(maxVelocitySmoothed, 0.01);
+    const cellSizeInt = Math.ceil(cellSize);
     
     for (let i = visibleStartX; i < visibleEndX; i++) {
       for (let j = visibleStartY; j < visibleEndY; j++) {
@@ -657,21 +687,34 @@
         
         const speed = Math.sqrt(ux[ij] * ux[ij] + uy[ij] * uy[ij]);
         
-        // Color based on velocity magnitude with transparency
-        // Normalize against DYNAMIC maximum for adaptive color scaling
-        const normalized = Math.min(speed / Math.max(maxVelocitySmoothed, 0.01), 1.0);
+        // Color based on velocity magnitude
+        const normalized = Math.min(speed * maxVelInv, 1.0);
         const hue = 240 - normalized * 240; // Blue (240) to Red (0)
         const saturation = 70 + normalized * 20;
         const lightness = 40 + normalized * 30;
-        // Lower alpha for better transparency
-        ctx.fillStyle = `hsla(${hue}, ${saturation}%, ${lightness}%, 0.5)`;
+        const [r, g, b] = hslToRgb(hue, saturation, lightness);
+        const a = 128; // 50% alpha
         
-        // Map to canvas coordinates (subtract offsets)
-        const x = (i - X_OFFSET) * cellSize;
-        const y = (j - Y_OFFSET) * cellSize;
-        ctx.fillRect(x, y, cellSize + 1, cellSize + 1);
+        // Fill the cell area in the pixel buffer
+        const px0 = ((i - X_OFFSET) * cellSize) | 0;
+        const py0 = ((j - Y_OFFSET) * cellSize) | 0;
+        const px1 = Math.min(px0 + cellSizeInt, canvasW);
+        const py1 = Math.min(py0 + cellSizeInt, canvasH);
+        
+        for (let py = py0; py < py1; py++) {
+          let off = (py * canvasW + px0) * 4;
+          for (let px = px0; px < px1; px++) {
+            pixels[off]     = r;
+            pixels[off + 1] = g;
+            pixels[off + 2] = b;
+            pixels[off + 3] = a;
+            off += 4;
+          }
+        }
       }
     }
+    
+    ctx.putImageData(imageData, 0, 0);
     
     // Draw animated flow particles
     drawFlowParticles(time);
