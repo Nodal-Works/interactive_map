@@ -16,7 +16,7 @@ class StormwaterFlowAnimation {
     
     // Particle system
     this.particles = [];
-    this.maxParticles = 8000;
+    this.maxParticles = 4000;
     this.particleSpawnRate = 40;
     
     // Offscreen canvas for particle glow (pre-rendered sprite)
@@ -895,7 +895,8 @@ class StormwaterFlowAnimation {
       
       // Remove old particles
       if (p.age > this.particleLifetime) {
-        this.particles.splice(i, 1);
+        this.particles[i] = this.particles[this.particles.length - 1];
+        this.particles.pop();
         continue;
       }
       
@@ -973,7 +974,8 @@ class StormwaterFlowAnimation {
       // Remove particles off screen
       if (p.x < 0 || p.x > this.canvas.width || 
           p.y < 0 || p.y > this.canvas.height) {
-        this.particles.splice(i, 1);
+        this.particles[i] = this.particles[this.particles.length - 1];
+        this.particles.pop();
       }
     }
   }

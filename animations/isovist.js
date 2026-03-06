@@ -16,9 +16,11 @@
   let isDragging = false;
   let updateRequestId = null;
   let animationFrameId = null;
+  let outlineFrameCount = 0;
 
   let MAX_VIEW_DISTANCE = 200; // meters
-  const RAY_COUNT = 360; // number of rays to cast
+  const RAY_COUNT = 180; // number of rays to cast (reduced for performance)
+  const DEG2RAD = Math.PI / 180;
   let HUMAN_FOV = 120; // human field of view in degrees (120° total, 60° each side)
   let USE_HUMAN_FOV = true; // set to false for full 360° view
   let FOLLOW_CURSOR = true; // viewer follows cursor when it moves far enough
@@ -436,9 +438,9 @@
 
       // Multiple layers for gradient fade effect (stacked bands)
       // We use constant opacity because the bands will overlap
-      // Band 0 (smallest) is covered by Band 0, 1, 2, 3, 4 -> High opacity
-      // Band 4 (largest) is covered by Band 4 only -> Low opacity
-      for (let i = 0; i < 5; i++) {
+      // Band 0 (smallest) is covered by Band 0, 1, 2 -> High opacity
+      // Band 2 (largest) is covered by Band 2 only -> Low opacity
+      for (let i = 0; i < 3; i++) {
         map.addLayer({
           id: `isovist-gradient-${i}`,
           type: 'fill',
@@ -731,8 +733,6 @@
       'isovist-gradient-0',
       'isovist-gradient-1',
       'isovist-gradient-2',
-      'isovist-gradient-3',
-      'isovist-gradient-4',
       'isovist-viewed-buildings-fill',
       'isovist-viewed-buildings-outline',
       'isovist-trees-fill',
@@ -859,6 +859,13 @@
 
   function animateOutline() {
     if (!isovistActive) return;
+    
+    // Throttle to ~20fps to reduce GPU paint property updates
+    outlineFrameCount++;
+    if (outlineFrameCount % 3 !== 0) {
+      animationFrameId = requestAnimationFrame(animateOutline);
+      return;
+    }
     
     const time = Date.now() / 1000;
     
@@ -1335,25 +1342,34 @@
         maxLat: origin[1] + range
     };
 
-    const activeObstacles = obstacles.filter(obs => {
-        return !(obs.bbox.minLng > viewBbox.maxLng || 
-                 obs.bbox.maxLng < viewBbox.minLng || 
-                 obs.bbox.minLat > viewBbox.maxLat || 
-                 obs.bbox.maxLat < viewBbox.minLat);
-    });
-
-    // Create a map from active obstacle to its global index
-    const activeObstacleIndices = activeObstacles.map(obs => obstacles.indexOf(obs));
+    const activeObstacles = [];
+    const activeObstacleIndices = [];
+    for (let i = 0; i < obstacles.length; i++) {
+        const obs = obstacles[i];
+        if (!(obs.bbox.minLng > viewBbox.maxLng || 
+              obs.bbox.maxLng < viewBbox.minLng || 
+              obs.bbox.minLat > viewBbox.maxLat || 
+              obs.bbox.maxLat < viewBbox.minLat)) {
+            activeObstacles.push(obs);
+            activeObstacleIndices.push(i);
+        }
+    }
     
     // Filter active trees by distance (bbox check)
-    const activeTrees = INCLUDE_TREES ? treeObstacles.filter(tree => {
-        return !(tree.bbox.minLng > viewBbox.maxLng || 
-                 tree.bbox.maxLng < viewBbox.minLng || 
-                 tree.bbox.minLat > viewBbox.maxLat || 
-                 tree.bbox.maxLat < viewBbox.minLat);
-    }) : [];
-    
-    const activeTreeIndices = activeTrees.map(tree => treeObstacles.indexOf(tree));
+    const activeTrees = [];
+    const activeTreeIndices = [];
+    if (INCLUDE_TREES) {
+        for (let i = 0; i < treeObstacles.length; i++) {
+            const tree = treeObstacles[i];
+            if (!(tree.bbox.minLng > viewBbox.maxLng || 
+                  tree.bbox.maxLng < viewBbox.minLng || 
+                  tree.bbox.minLat > viewBbox.maxLat || 
+                  tree.bbox.maxLat < viewBbox.minLat)) {
+                activeTrees.push(tree);
+                activeTreeIndices.push(i);
+            }
+        }
+    }
 
     // Cast rays within the field of view
     const numRays = Math.ceil((endAngle - startAngle) / angleStep);
@@ -1415,7 +1431,7 @@
     // Generate polygons
     const mainPolygonPoints = [];
     const bands = [];
-    const numBands = 5;
+    const numBands = 3;
     
     // 1. Main Polygon
     rays.forEach(ray => {
@@ -1487,9 +1503,9 @@
     // 3b. Convert viewed tree indices to GeoJSON circle polygons
     const viewedTrees = Array.from(viewedTreeIndices).map(idx => {
       const tree = treeObstacles[idx];
-      // Create a circle polygon approximation (32 points)
+      // Create a circle polygon approximation (12 points)
       const circlePoints = [];
-      const numPoints = 32;
+      const numPoints = 12;
       for (let i = 0; i <= numPoints; i++) {
         const angle = (i / numPoints) * 360;
         circlePoints.push(destination(tree.center, tree.radius, angle));
@@ -1694,38 +1710,23 @@
     return (bearing + 360) % 360;
   }
 
-  function destination(origin, distance, bearing) {
-    const R = 6371000; // Earth radius in meters
-    const lat1 = origin[1] * Math.PI / 180;
-    const lon1 = origin[0] * Math.PI / 180;
-    const brng = bearing * Math.PI / 180;
-
-    const lat2 = Math.asin(
-      Math.sin(lat1) * Math.cos(distance / R) +
-      Math.cos(lat1) * Math.sin(distance / R) * Math.cos(brng)
-    );
-
-    const lon2 = lon1 + Math.atan2(
-      Math.sin(brng) * Math.sin(distance / R) * Math.cos(lat1),
-      Math.cos(distance / R) - Math.sin(lat1) * Math.sin(lat2)
-    );
-
-    return [lon2 * 180 / Math.PI, lat2 * 180 / Math.PI];
+  function destination(origin, distMeters, bearing) {
+    // Fast flat-earth approximation (accurate within 0.1% for distances < 1km)
+    const brng = bearing * DEG2RAD;
+    const cosLat = Math.cos(origin[1] * DEG2RAD);
+    return [
+      origin[0] + Math.sin(brng) * distMeters / (111320 * cosLat),
+      origin[1] + Math.cos(brng) * distMeters / 110540
+    ];
   }
 
   function distance(point1, point2) {
-    const R = 6371000; // Earth radius in meters
-    const lat1 = point1[1] * Math.PI / 180;
-    const lat2 = point2[1] * Math.PI / 180;
-    const dLat = (point2[1] - point1[1]) * Math.PI / 180;
-    const dLon = (point2[0] - point1[0]) * Math.PI / 180;
-
-    const a = Math.sin(dLat / 2) * Math.sin(dLat / 2) +
-              Math.cos(lat1) * Math.cos(lat2) *
-              Math.sin(dLon / 2) * Math.sin(dLon / 2);
-    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-
-    return R * c;
+    // Fast flat-earth approximation (accurate within 0.1% for distances < 1km)
+    const latMid = (point1[1] + point2[1]) * 0.5 * DEG2RAD;
+    const cosLat = Math.cos(latMid);
+    const dx = (point2[0] - point1[0]) * 111320 * cosLat;
+    const dy = (point2[1] - point1[1]) * 110540;
+    return Math.sqrt(dx * dx + dy * dy);
   }
 
   function lineIntersection(p1, p2, p3, p4) {

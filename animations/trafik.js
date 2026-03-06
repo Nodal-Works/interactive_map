@@ -60,7 +60,7 @@ const CONFIG = {
   // Visual settings
   vehicleSize: 16,           // Larger icons
   glowRadius: 28,
-  trailHistoryLength: 500,   // Long trail - shows full route history
+  trailHistoryLength: 100,   // Capped trail for GPU performance
   interpolationSpeed: 0.08,  // Smooth glide factor (0-1)
   trailWidth: 5,             // Trail line width
   trailFadeStart: 0.8,       // Trail opacity at start (more visible)

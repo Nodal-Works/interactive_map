@@ -53,11 +53,11 @@ const AUDIO_FADE_STEPS = 30; // Smooth fade steps
 
 // Configuration
 const CONFIG = {
-  maxCars: 35,
-  maxBuses: 8,
-  maxBicycles: 20,
-  maxTaxis: 10,
-  maxPedestrians: 400,   // Reduced for GPU performance (still visually dense)
+  maxCars: 18,
+  maxBuses: 4,
+  maxBicycles: 10,
+  maxTaxis: 5,
+  maxPedestrians: 200,   // Reduced for low-end GPU performance
   carSpeed: 0.002,       // Progress per frame along path
   busSpeed: 0.0012,      // Buses are slower
   bicycleSpeed: 0.0015,  // Cyclists between cars and pedestrians
@@ -617,11 +617,20 @@ function updateStreetLifeEntities() {
     return p.progress >= 0 && p.progress <= 1;
   });
   
-  // Auto-replenish to keep the city busy
-  while (vehicles.filter(v => v.type === 'car').length < CONFIG.maxCars) spawnCar();
-  while (vehicles.filter(v => v.type === 'taxi').length < CONFIG.maxTaxis) spawnTaxi();
-  while (vehicles.filter(v => v.type === 'bus').length < CONFIG.maxBuses) spawnBus();
-  while (vehicles.filter(v => v.type === 'bicycle').length < CONFIG.maxBicycles) spawnBicycle();
+  // Auto-replenish to keep the city busy (O(1) type counting)
+  let carCount = 0, taxiCount = 0, busCount = 0, bicycleCount = 0;
+  for (let i = 0; i < vehicles.length; i++) {
+    switch (vehicles[i].type) {
+      case 'car': carCount++; break;
+      case 'taxi': taxiCount++; break;
+      case 'bus': busCount++; break;
+      case 'bicycle': bicycleCount++; break;
+    }
+  }
+  while (carCount < CONFIG.maxCars) { spawnCar(); carCount++; }
+  while (taxiCount < CONFIG.maxTaxis) { spawnTaxi(); taxiCount++; }
+  while (busCount < CONFIG.maxBuses) { spawnBus(); busCount++; }
+  while (bicycleCount < CONFIG.maxBicycles) { spawnBicycle(); bicycleCount++; }
   while (pedestrians.length < CONFIG.maxPedestrians) spawnPedestrian();
   
   // Update emergency vehicle
