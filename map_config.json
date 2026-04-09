@@ -48,6 +48,9 @@
       "dtccLogo": "media/dtcc_logo.png",
       "surveyQr": "media/survey_qr.png"
     },
+    "apiKeys": {
+      "streetViewApiKey": "AIzaSyCEAOCjN57u5JJG9WmTORBlR34jBKHrJOU"
+    },
     "other": {
       "treesGpkg": "media/trees.gpkg",
       "slideshowConfig": "media/slideshow/slideshow-config.json",

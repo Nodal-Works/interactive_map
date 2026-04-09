@@ -53,24 +53,15 @@
   const BROADCAST_MIN_DISTANCE = 3; // minimum meters between broadcasts
   const BROADCAST_MIN_HEADING_CHANGE = 15; // minimum degrees before heading update
   
-  // Load Street View API key
-  async function loadStreetViewApiKey() {
-    const paths = ['trafik-config.json', './trafik-config.json'];
-    for (const path of paths) {
-      try {
-        const response = await fetch(path);
-        if (response.ok) {
-          const config = await response.json();
-          const key = config.streetViewApiKey || config.googleMapsApiKey;
-          if (key) {
-            streetViewApiKey = key;
-            console.log('Isovist: Street View API key loaded');
-            return;
-          }
-        }
-      } catch (e) { /* try next */ }
+  // Load Street View API key from project config
+  function loadStreetViewApiKey() {
+    const key = window.APP_CONFIG && window.APP_CONFIG.data && window.APP_CONFIG.data.apiKeys && window.APP_CONFIG.data.apiKeys.streetViewApiKey;
+    if (key) {
+      streetViewApiKey = key;
+      console.log('Isovist: Street View API key loaded from config');
+    } else {
+      console.warn('Isovist: No Street View API key in map_config.json (data.apiKeys.streetViewApiKey)');
     }
-    console.warn('Isovist: Could not load Street View API key');
   }
   loadStreetViewApiKey();
 

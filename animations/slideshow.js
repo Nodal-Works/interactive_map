@@ -29,6 +29,13 @@ const mediaCache = new Map();
 const SLIDESHOW_CONFIG_PATH = (window.APP_CONFIG && window.APP_CONFIG.data.other.slideshowConfig) || 'media/slideshow/slideshow-config.json';
 const SLIDESHOW_MEDIA_PATH = 'media/slideshow/';
 
+// Resolve a slide's media path: absolute paths (containing '/') are used as-is,
+// relative names are prefixed with SLIDESHOW_MEDIA_PATH.
+function resolveMediaPath(slide) {
+  if (!slide.media) return null;
+  return slide.media.includes('/') ? slide.media : SLIDESHOW_MEDIA_PATH + slide.media;
+}
+
 // Load slideshow configuration
 async function loadSlideshowConfig() {
   try {
@@ -165,7 +172,7 @@ function animateWmsTransition(oldLayerId, newLayerId, duration) {
 // ========== Legacy media preload (images/video/geojson) ==========
 
 async function preloadMedia(slide) {
-  const mediaPath = SLIDESHOW_MEDIA_PATH + slide.media;
+  const mediaPath = resolveMediaPath(slide);
 
   if (mediaCache.has(mediaPath)) {
     return mediaCache.get(mediaPath);

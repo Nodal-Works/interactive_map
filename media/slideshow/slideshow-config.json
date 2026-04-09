@@ -226,7 +226,7 @@
     },
     {
       "type": "geojson",
-      "media": "building-footprints.geojson",
+      "media": "media/building-footprints.geojson",
       "duration": 8000,
       "transition": "fade",
       "metadata": {
@@ -261,7 +261,7 @@
     },
     {
       "type": "geojson",
-      "media": "street-network.geojson",
+      "media": "media/street-network.geojson",
       "duration": 8000,
       "transition": "fade",
       "metadata": {

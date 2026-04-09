@@ -132,17 +132,6 @@ async function loadConfig() {
       hasAccessToken: !!apiConfig.accessToken
     });
     
-    // Load bounding box from config if provided [minLng, minLat, maxLng, maxLat]
-    if (config.bbox && Array.isArray(config.bbox) && config.bbox.length === 4) {
-      CONFIG.boundingBox = {
-        minLng: config.bbox[0],
-        minLat: config.bbox[1],
-        maxLng: config.bbox[2],
-        maxLat: config.bbox[3]
-      };
-      console.log(`✓ Trafik: Using custom bounding box: ${config.bbox.join(', ')}`);
-    }
-    
     console.log('✓ Trafik: Loaded API configuration');
     return true;
   } catch (err) {
