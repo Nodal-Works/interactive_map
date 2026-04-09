@@ -1038,9 +1038,14 @@
           const coords = feature.geometry.coordinates;
           const height = feature.properties.height || 10;
           
-          // Calculate radius based on height with random variation
-          const randomVariation = (seededRandom(idx) - 0.5) * 2 * TREE_RADIUS_VARIATION;
-          const radius = TREE_BASE_RADIUS + (height * TREE_HEIGHT_FACTOR) + randomVariation;
+          // Use crown_radius from GeoJSON if available, otherwise estimate from height
+          let radius;
+          if (feature.properties.crown_radius && feature.properties.crown_radius > 0) {
+            radius = feature.properties.crown_radius;
+          } else {
+            const randomVariation = (seededRandom(idx) - 0.5) * 2 * TREE_RADIUS_VARIATION;
+            radius = TREE_BASE_RADIUS + (height * TREE_HEIGHT_FACTOR) + randomVariation;
+          }
           
           // Calculate bbox for spatial filtering
           const radiusDeg = radius / 111000; // rough meters to degrees

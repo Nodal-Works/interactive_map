@@ -9,7 +9,7 @@
       "lat": 57.70800077348138
     },
     "zoom": 16.12793160994688,
-    "bearing": -92.58546386659737
+    "bearing": -2.58546386659737
   },
   "table": {
     "screenWidthCm": 111.93,
@@ -47,10 +47,12 @@
     "geojson": {
       "streetNetwork": "media/street-network.geojson",
       "buildingFootprints": "media/building-footprints.geojson",
-      "trees": "media/trees.geojson"
+      "trees": "media/trees.geojson",
+      "waterBodies": "media/water-bodies.geojson"
     },
     "rasters": {
-      "dem": "media/clipped_dem.geotiff.tif"
+      "dem": "media/clipped_dem.geotiff.tif",
+      "waterMask": "media/water_mask.tif"
     },
     "models3d": {
       "buildingsMesh": "media/mesh.stl",

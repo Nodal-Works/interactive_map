@@ -1002,6 +1002,16 @@ function updateDashboard(targetId) {
                             border-radius: 3px;
                             display: none;
                         "></div>
+                        <div id="street-view-heading-controls" style="
+                            position: absolute;
+                            bottom: 8px;
+                            right: 8px;
+                            display: none;
+                            gap: 4px;
+                        ">
+                            <button id="sv-rotate-left" style="background: rgba(0,0,0,0.7); border: none; color: white; padding: 8px 12px; border-radius: 4px; cursor: pointer;">◀</button>
+                            <button id="sv-rotate-right" style="background: rgba(0,0,0,0.7); border: none; color: white; padding: 8px 12px; border-radius: 4px; cursor: pointer;">▶</button>
+                        </div>
                     </div>
                 </div>
                 
@@ -1058,6 +1068,7 @@ function updateDashboard(targetId) {
         
         // Initialize Street View for isovist dashboard
         loadStreetViewConfig();
+        initStreetViewControls();
         
         legendContent.innerHTML = `
             <div class="dashboard-card">
@@ -1378,12 +1389,111 @@ channel.onmessage = (event) => {
         });
     } else if (data.type === 'isovist_stats') {
         updateIsovistChart(data.data);
+    } else if (data.type === 'street_view_position') {
+        updateStreetViewPosition(data.position, data.heading);
     } else {
         // Log unknown message types for debugging new features
         debugLog('Unknown message type:', data.type);
     }
 };
 
+
+// --- Street View (used by isovist dashboard) ---
+let streetViewApiKey = null;
+let streetViewCurrentPosition = null;
+let streetViewCurrentHeading = 0;
+
+async function loadStreetViewConfig() {
+    if (streetViewApiKey) return true;
+    try {
+        const response = await fetch('map_config.json');
+        const config = await response.json();
+        streetViewApiKey = config.data && config.data.apiKeys && config.data.apiKeys.streetViewApiKey;
+        if (!streetViewApiKey) {
+            // Fallback: try trafik-config.json
+            const resp2 = await fetch('trafik-config.json');
+            const cfg2 = await resp2.json();
+            streetViewApiKey = cfg2.streetViewApiKey;
+        }
+        if (streetViewApiKey) {
+            console.log('Street View API key loaded');
+            return true;
+        }
+        console.warn('No Street View API key found');
+        return false;
+    } catch (e) {
+        console.warn('Could not load Street View API key:', e);
+        return false;
+    }
+}
+
+function initStreetViewControls() {
+    const leftBtn = document.getElementById('sv-rotate-left');
+    const rightBtn = document.getElementById('sv-rotate-right');
+    if (leftBtn) {
+        leftBtn.addEventListener('click', () => {
+            streetViewCurrentHeading = (streetViewCurrentHeading - 45 + 360) % 360;
+            if (streetViewCurrentPosition) updateStreetViewImage();
+        });
+    }
+    if (rightBtn) {
+        rightBtn.addEventListener('click', () => {
+            streetViewCurrentHeading = (streetViewCurrentHeading + 45) % 360;
+            if (streetViewCurrentPosition) updateStreetViewImage();
+        });
+    }
+}
+
+function updateStreetViewImage() {
+    const img = document.getElementById('street-view-image');
+    const noCoverageMsg = document.getElementById('street-view-no-coverage');
+    const coordsDisplay = document.getElementById('street-view-coords');
+    const controls = document.getElementById('street-view-heading-controls');
+    if (!img || !streetViewApiKey || !streetViewCurrentPosition) return;
+
+    const { lat, lng } = streetViewCurrentPosition;
+    if (coordsDisplay) {
+        coordsDisplay.textContent = `${lat.toFixed(6)}, ${lng.toFixed(6)} | Heading: ${streetViewCurrentHeading}\u00B0`;
+    }
+
+    const size = '640x350';
+    const url = `https://maps.googleapis.com/maps/api/streetview?size=${size}&location=${lat},${lng}&heading=${streetViewCurrentHeading}&pitch=0&fov=100&key=${streetViewApiKey}`;
+
+    img.onload = () => {
+        img.style.display = 'block';
+        if (noCoverageMsg) noCoverageMsg.style.display = 'none';
+        if (coordsDisplay) coordsDisplay.style.display = 'block';
+        if (controls) controls.style.display = 'flex';
+    };
+    img.onerror = () => {
+        img.style.display = 'none';
+        if (coordsDisplay) coordsDisplay.style.display = 'none';
+        if (noCoverageMsg) {
+            noCoverageMsg.innerHTML = `
+                <span style="font-size: 48px; margin-bottom: 12px;">\uD83D\uDCF7</span>
+                <span style="font-size: 16px; margin-bottom: 4px;">No Street View Coverage</span>
+                <span style="font-size: 12px; color: #555;">Try clicking a different location on the map</span>
+            `;
+            noCoverageMsg.style.display = 'flex';
+        }
+        if (controls) controls.style.display = 'none';
+    };
+    img.src = url;
+}
+
+function updateStreetViewPosition(position, heading) {
+    streetViewCurrentPosition = position;
+    if (heading !== undefined) {
+        streetViewCurrentHeading = Math.round(heading);
+    }
+    if (!streetViewApiKey) {
+        loadStreetViewConfig().then(hasKey => {
+            if (hasKey) updateStreetViewImage();
+        });
+        return;
+    }
+    updateStreetViewImage();
+}
 
 // Isovist dashboard loaded from controller/isovist-dashboard.js
 // Bird dashboard loaded from controller/bird-dashboard.js

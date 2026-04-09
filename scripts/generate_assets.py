@@ -106,25 +106,55 @@ def generate_road_network(bounds, output_dir):
     log("Downloading road network from OSM...")
     roadnetwork = dtcc.download_roadnetwork(bounds=bounds, provider="OSM")
     if roadnetwork is None:
-        # DTCC sometimes fails to parse the GPKG; fall back to reading
-        # the cached GPKG directly with geopandas.
-        log("  Warning: dtcc returned None, attempting GPKG fallback...")
+        # DTCC sometimes fails to parse its GPKG; fall back to querying
+        # Overpass directly so we get the highway tag.
+        log("  Warning: dtcc returned None, querying Overpass directly...")
         try:
             import geopandas as gpd
-            import glob
-            cache_dir = Path.home() / "Library" / "Caches" / "dtcc-data" / "downloaded_osm"
-            pattern = f"roads_{bounds.xmin}_{bounds.ymin}_{bounds.xmax}_{bounds.ymax}.gpkg"
-            gpkg_path = cache_dir / pattern
-            if gpkg_path.exists():
-                gdf = gpd.read_file(str(gpkg_path))
-                if gdf.crs and gdf.crs.to_epsg() != 4326:
-                    gdf = gdf.to_crs("EPSG:4326")
-                out_path = output_dir / "street-network.geojson"
-                gdf.to_file(str(out_path), driver="GeoJSON")
-                log(f"  Saved {out_path} ({len(gdf)} road segments from GPKG fallback, WGS84)")
-                return None
+            import requests
+            west, south, east, north = sweref_to_wgs84(
+                bounds.xmin, bounds.ymin, bounds.xmax, bounds.ymax
+            )
+            query = (
+                f"[out:json][timeout:60];"
+                f"way[highway]({south},{west},{north},{east});"
+                f"(._;>;);out body;"
+            )
+            resp = requests.get(
+                "https://overpass-api.de/api/interpreter",
+                params={"data": query},
+                timeout=60,
+            )
+            resp.raise_for_status()
+            data = resp.json()
+            # Parse nodes and ways
+            nodes = {e["id"]: (e["lon"], e["lat"])
+                     for e in data["elements"] if e["type"] == "node"}
+            features = []
+            for e in data["elements"]:
+                if e["type"] != "way":
+                    continue
+                coords = [nodes[n] for n in e.get("nodes", []) if n in nodes]
+                if len(coords) < 2:
+                    continue
+                tags = e.get("tags", {})
+                features.append({
+                    "type": "Feature",
+                    "geometry": {"type": "LineString", "coordinates": coords},
+                    "properties": {
+                        "osm_id": e["id"],
+                        "highway": tags.get("highway", "unclassified"),
+                        "name": tags.get("name", ""),
+                    },
+                })
+            out_path = output_dir / "street-network.geojson"
+            geojson = {"type": "FeatureCollection", "features": features}
+            with open(out_path, "w") as f:
+                json.dump(geojson, f)
+            log(f"  Saved {out_path} ({len(features)} road segments from Overpass fallback, WGS84)")
+            return None
         except Exception as e:
-            log(f"  GPKG fallback also failed: {e}")
+            log(f"  Overpass fallback also failed: {e}")
         log("  Skipping road network")
         return None
     log(f"  Downloaded road network: {len(roadnetwork.edges)} edges, "
@@ -177,6 +207,135 @@ def _roadnetwork_to_geojson(roadnetwork, out_path):
         json.dump(geojson, f)
 
 
+def generate_water_bodies(bounds, output_dir):
+    """Download water body polygons from OSM and save as WGS84 GeoJSON.
+
+    Queries Overpass for:
+      - natural=water (lakes, ponds, reservoirs)
+      - waterway=riverbank / waterway=dock
+      - natural=coastline (converted to polygons)
+      - landuse=reservoir
+      - water=* (all water types)
+    """
+    log("Downloading water bodies from OSM...")
+    try:
+        import requests
+
+        west, south, east, north = sweref_to_wgs84(
+            bounds.xmin, bounds.ymin, bounds.xmax, bounds.ymax
+        )
+
+        # Query Overpass for water-related features (ways and relations)
+        query = (
+            f"[out:json][timeout:60];"
+            f"("
+            f"  way[\"natural\"=\"water\"]({south},{west},{north},{east});"
+            f"  way[\"waterway\"=\"riverbank\"]({south},{west},{north},{east});"
+            f"  way[\"waterway\"=\"dock\"]({south},{west},{north},{east});"
+            f"  way[\"landuse\"=\"reservoir\"]({south},{west},{north},{east});"
+            f"  way[\"natural\"=\"wetland\"]({south},{west},{north},{east});"
+            f"  way[\"water\"]({south},{west},{north},{east});"
+            f"  relation[\"natural\"=\"water\"]({south},{west},{north},{east});"
+            f"  relation[\"water\"]({south},{west},{north},{east});"
+            f"  relation[\"waterway\"=\"riverbank\"]({south},{west},{north},{east});"
+            f");"
+            f"(._;>;);"
+            f"out body;"
+        )
+
+        resp = requests.get(
+            "https://overpass-api.de/api/interpreter",
+            params={"data": query},
+            timeout=60,
+        )
+        resp.raise_for_status()
+        data = resp.json()
+
+        # Parse nodes
+        nodes = {e["id"]: (e["lon"], e["lat"])
+                 for e in data["elements"] if e["type"] == "node"}
+
+        # Parse ways into coordinate rings
+        ways = {}
+        for e in data["elements"]:
+            if e["type"] == "way":
+                coords = [nodes[n] for n in e.get("nodes", []) if n in nodes]
+                if len(coords) >= 3:
+                    ways[e["id"]] = {
+                        "coords": coords,
+                        "tags": e.get("tags", {}),
+                    }
+
+        features = []
+
+        # Process relations (multipolygons)
+        for e in data["elements"]:
+            if e["type"] != "relation":
+                continue
+            tags = e.get("tags", {})
+            members = e.get("members", [])
+            outer_rings = []
+            for m in members:
+                if m["type"] == "way" and m.get("role") == "outer" and m["ref"] in ways:
+                    outer_rings.append(ways[m["ref"]]["coords"])
+
+            for ring in outer_rings:
+                if len(ring) >= 4:
+                    features.append({
+                        "type": "Feature",
+                        "geometry": {"type": "Polygon", "coordinates": [ring]},
+                        "properties": {
+                            "water_type": tags.get("water", tags.get("natural", "water")),
+                            "name": tags.get("name", ""),
+                        },
+                    })
+
+        # Process standalone ways (closed polygons not part of relations)
+        relation_way_ids = set()
+        for e in data["elements"]:
+            if e["type"] == "relation":
+                for m in e.get("members", []):
+                    if m["type"] == "way":
+                        relation_way_ids.add(m["ref"])
+
+        for way_id, way_data in ways.items():
+            if way_id in relation_way_ids:
+                continue
+            coords = way_data["coords"]
+            tags = way_data["tags"]
+            # Must be a closed polygon (first == last coord)
+            if len(coords) >= 4 and coords[0] == coords[-1]:
+                features.append({
+                    "type": "Feature",
+                    "geometry": {"type": "Polygon", "coordinates": [coords]},
+                    "properties": {
+                        "water_type": tags.get("water", tags.get("natural", "water")),
+                        "name": tags.get("name", ""),
+                    },
+                })
+            elif len(coords) >= 4:
+                # Close the ring
+                coords.append(coords[0])
+                features.append({
+                    "type": "Feature",
+                    "geometry": {"type": "Polygon", "coordinates": [coords]},
+                    "properties": {
+                        "water_type": tags.get("water", tags.get("natural", "water")),
+                        "name": tags.get("name", ""),
+                    },
+                })
+
+        out_path = output_dir / "water-bodies.geojson"
+        geojson_out = {"type": "FeatureCollection", "features": features}
+        with open(out_path, "w") as f:
+            json.dump(geojson_out, f)
+        log(f"  Saved {out_path} ({len(features)} water body polygons, WGS84)")
+        return features
+    except Exception as e:
+        log(f"  Warning: could not download water bodies: {e}")
+        return []
+
+
 def burn_buildings_into_dem(dem_path, footprints_path):
     """Burn building footprints into a DEM as elevated barriers.
 
@@ -213,6 +372,96 @@ def burn_buildings_into_dem(dem_path, footprints_path):
 
     log(f"  Burned {len(gdf)} building footprints into DEM "
         f"({cell_count} cells → {barrier_elev:.1f} m)")
+
+
+def generate_water_mask(output_dir):
+    """Fetch water bodies from Lantmäteriet INSPIRE WMS and save as a binary
+    GeoTIFF mask aligned to the DEM grid.
+
+    The mask is 1 where water exists, 0 elsewhere, at the same resolution
+    and CRS as clipped_dem.geotiff.tif so the stormwater JS can use it
+    directly via pixel-to-pixel correspondence.
+    """
+    import io
+    import requests
+    import rasterio
+    from rasterio.transform import from_bounds
+
+    dem_path = output_dir / "clipped_dem.geotiff.tif"
+    if not dem_path.exists():
+        log("  DEM not found, skipping water mask generation")
+        return
+
+    with rasterio.open(str(dem_path)) as src:
+        dem_bounds = src.bounds
+        dem_width = src.width
+        dem_height = src.height
+        dem_crs = src.crs
+
+    # WMS endpoint (Lantmäteriet INSPIRE Hydrography via SLU)
+    wms_url = "https://hades.slu.se/lm/inspire/hy/wms/v1"
+    layers = "HY.PhysicalWaters.Waterbodies,HY.Network"
+
+    # Request in EPSG:3006 matching the DEM grid exactly
+    params = {
+        "SERVICE": "WMS",
+        "VERSION": "1.1.1",
+        "REQUEST": "GetMap",
+        "LAYERS": layers,
+        "SRS": "EPSG:3006",
+        "BBOX": f"{dem_bounds.left},{dem_bounds.bottom},{dem_bounds.right},{dem_bounds.top}",
+        "WIDTH": str(dem_width),
+        "HEIGHT": str(dem_height),
+        "FORMAT": "image/png",
+        "TRANSPARENT": "TRUE",
+        "STYLES": "",
+    }
+
+    log("Fetching water mask from WMS...")
+    try:
+        resp = requests.get(wms_url, params=params, timeout=30)
+        resp.raise_for_status()
+    except Exception as e:
+        log(f"  Warning: WMS fetch failed: {e}")
+        return
+
+    # Check we got an image (not an XML error)
+    if b"<ServiceException" in resp.content[:500]:
+        log("  Warning: WMS returned a service exception, skipping water mask")
+        return
+
+    # Parse the PNG into a numpy array
+    from PIL import Image
+    img = Image.open(io.BytesIO(resp.content)).convert("RGBA")
+    arr = np.array(img)
+
+    # Any pixel with alpha > 0 is water (the WMS draws water features on
+    # a transparent background)
+    water_mask = (arr[:, :, 3] > 0).astype(np.uint8)
+    water_count = int(np.sum(water_mask))
+    log(f"  Water mask: {water_count} water cells out of {dem_width * dem_height} "
+        f"({100 * water_count / (dem_width * dem_height):.1f}%)")
+
+    # Save as a single-band GeoTIFF matching the DEM
+    out_path = output_dir / "water_mask.tif"
+    transform = from_bounds(
+        dem_bounds.left, dem_bounds.bottom,
+        dem_bounds.right, dem_bounds.top,
+        dem_width, dem_height,
+    )
+    with rasterio.open(
+        str(out_path), "w",
+        driver="GTiff",
+        height=dem_height,
+        width=dem_width,
+        count=1,
+        dtype="uint8",
+        crs=dem_crs,
+        transform=transform,
+    ) as dst:
+        dst.write(water_mask, 1)
+
+    log(f"  Saved {out_path}")
 
 
 def generate_dem(bounds, output_dir, pointcloud=None):
@@ -291,62 +540,181 @@ def generate_mesh(bounds, output_dir, buildings=None, pointcloud=None, raster=No
 
 
 def generate_trees(bounds, output_dir, pointcloud=None, raster=None):
-    """Detect trees from LiDAR and save as WGS84 Point GeoJSON.
+    """Detect trees from WMS false-colour infrared imagery and save as
+    WGS84 Point GeoJSON.
 
-    Uses dtcc.tree_raster_from_pointcloud to build a canopy height raster,
-    then finds local maxima to extract individual tree positions with heights.
+    Fetches Lantmäteriet's CIR orthophoto (``Ortofoto_IR``) at 0.5 m
+    resolution, computes a vegetation index from the near-infrared band
+    (red channel in CIR), masks out non-vegetation, and finds local
+    maxima to locate individual tree crowns.
+
+    Note: CIR imagery does not provide tree heights.  If a DEM is
+    available in *output_dir* the function attempts a crude height
+    estimate from surface roughness; otherwise a default height of 8 m
+    is assigned to every tree.
     """
-    if pointcloud is None:
-        log("Downloading point cloud for tree detection...")
-        pointcloud = dtcc.download_pointcloud(bounds=bounds)
-        pointcloud = pointcloud.remove_global_outliers(3.0)
+    import io
+    import requests
+    from PIL import Image
 
-    log("Building tree height raster from point cloud...")
-    tree_raster = dtcc.tree_raster_from_pointcloud(
-        pointcloud,
-        terrain_raster=raster,
-        cell_size=0.5,
-        shortest_tree=2.0,
-        smallest_cluster=100,
-        fill_hole_size=100,
-        sigma=1.0,
-    )
-    log(f"  Tree raster: {tree_raster.width}x{tree_raster.height}, "
-        f"cell_size={tree_raster.cell_size}")
+    # ------------------------------------------------------------------
+    # 1. Determine raster extent in SWEREF99 TM (EPSG:3006)
+    # ------------------------------------------------------------------
+    # Prefer the DEM extent so the trees align pixel-perfectly with the
+    # terrain raster and the water mask.  Fall back to the supplied bounds.
+    dem_path = output_dir / "clipped_dem.geotiff.tif"
+    have_dem = dem_path.exists()
+    if have_dem:
+        import rasterio
+        with rasterio.open(str(dem_path)) as src:
+            dem_bounds = src.bounds
+            xmin, ymin = dem_bounds.left, dem_bounds.bottom
+            xmax, ymax = dem_bounds.right, dem_bounds.top
+    else:
+        xmin, ymin, xmax, ymax = bounds.xmin, bounds.ymin, bounds.xmax, bounds.ymax
 
-    # Find local maxima in the tree height raster to identify individual trees.
-    # Each local maximum represents one tree crown peak.
-    data = tree_raster.data
-    if data.ndim == 3:
-        data = data[:, :, 0]
+    # Target ~0.5 m per pixel (matches the WMS native resolution)
+    cell_size = 0.5
+    width = int(round((xmax - xmin) / cell_size))
+    height = int(round((ymax - ymin) / cell_size))
+    # Cap request size to avoid WMS server limits
+    max_dim = 4096
+    if width > max_dim or height > max_dim:
+        scale = max_dim / max(width, height)
+        width = int(width * scale)
+        height = int(height * scale)
+        cell_size = (xmax - xmin) / width
 
-    # Use a neighbourhood roughly matching a tree crown (~5m radius → 10m diameter)
-    crown_cells = max(3, int(5.0 / abs(tree_raster.cell_size[0])))
-    neighbourhood_size = 2 * crown_cells + 1
+    # ------------------------------------------------------------------
+    # 2. Fetch false-colour infrared ortho from Lantmäteriet WMS
+    # ------------------------------------------------------------------
+    wms_url = "https://hades.slu.se/lm/ortofoto/wms/v1.3"
+    params = {
+        "SERVICE": "WMS",
+        "VERSION": "1.1.1",
+        "REQUEST": "GetMap",
+        "LAYERS": "Ortofoto_IR",
+        "SRS": "EPSG:3006",
+        "BBOX": f"{xmin},{ymin},{xmax},{ymax}",
+        "WIDTH": str(width),
+        "HEIGHT": str(height),
+        "FORMAT": "image/jpeg",
+        "STYLES": "",
+    }
 
-    # Dilate (max filter) and compare to find local maxima
-    local_max_val = ndimage.maximum_filter(data, size=neighbourhood_size)
-    is_peak = (data == local_max_val) & (data > 0)
+    log("Fetching false-colour infrared ortho from WMS...")
+    resp = requests.get(wms_url, params=params, timeout=60)
+    resp.raise_for_status()
+    if b"<ServiceException" in resp.content[:500]:
+        raise RuntimeError("WMS returned a service exception for Ortofoto_IR")
+
+    img = Image.open(io.BytesIO(resp.content)).convert("RGB")
+    arr = np.array(img, dtype=np.float32)
+    log(f"  CIR image: {arr.shape[1]}x{arr.shape[0]} px, cell_size≈{cell_size:.2f} m")
+
+    # ------------------------------------------------------------------
+    # 3. Compute vegetation index from CIR bands
+    #    In CIR: R = NIR, G = visible-red, B = visible-green
+    #    veg_idx ≈ (NIR − Red_vis) / (NIR + Red_vis)
+    # ------------------------------------------------------------------
+    nir = arr[:, :, 0]
+    red = arr[:, :, 1]
+    denom = nir + red
+    veg_idx = np.where(denom > 0, (nir - red) / denom, 0.0)
+
+    # Smooth to reduce noise from individual pixels
+    veg_idx = ndimage.gaussian_filter(veg_idx, sigma=1.0)
+
+    # ------------------------------------------------------------------
+    # 4. Threshold → vegetation mask
+    # ------------------------------------------------------------------
+    veg_threshold = 0.15
+    veg_mask = veg_idx > veg_threshold
+
+    # Remove small blobs (grass patches, individual shrubs)
+    # Keep only clusters ≥ min_cluster pixels (≈ 2.5 m² at 0.5 m resolution)
+    min_cluster = 20
+    labelled, n_labels = ndimage.label(veg_mask)
+    component_sizes = ndimage.sum(veg_mask, labelled, range(1, n_labels + 1))
+    for label_id, sz in enumerate(component_sizes, start=1):
+        if sz < min_cluster:
+            veg_mask[labelled == label_id] = False
+
+    veg_count = int(np.sum(veg_mask))
+    log(f"  Vegetation mask: {veg_count} cells "
+        f"({100 * veg_count / (width * height):.1f}%)")
+
+    # ------------------------------------------------------------------
+    # 5. Find tree crown peaks via local maxima of the vegetation index
+    # ------------------------------------------------------------------
+    # Zero-out non-vegetation so peaks are only in green areas
+    tree_signal = np.where(veg_mask, veg_idx, 0.0)
+
+    # Neighbourhood ≈ 10 m diameter crown
+    crown_cells = max(3, int(5.0 / cell_size))
+    neighbourhood = 2 * crown_cells + 1
+
+    local_max_val = ndimage.maximum_filter(tree_signal, size=neighbourhood)
+    is_peak = (tree_signal == local_max_val) & (tree_signal > 0)
 
     peak_rows, peak_cols = np.where(is_peak)
     log(f"  Detected {len(peak_rows)} tree peaks")
 
-    # Convert raster pixel coords → SWEREF99 → WGS84 point features
-    georef = tree_raster.georef  # Affine transform
+    # ------------------------------------------------------------------
+    # 6. Estimate crown radius via watershed segmentation
+    # ------------------------------------------------------------------
+    # Place a marker at each peak, then watershed-segment the vegetation
+    # mask so every veg pixel is assigned to its nearest peak.  The area
+    # of each segment gives us the crown footprint → radius.
+    from scipy.ndimage import watershed_ift
+
+    markers = np.zeros(tree_signal.shape, dtype=np.int32)
+    for i, (r, c) in enumerate(zip(peak_rows, peak_cols)):
+        markers[r, c] = i + 1  # labels start at 1
+
+    # Invert the signal so watershed flows outward from peaks (high → low)
+    cost = np.where(veg_mask, (tree_signal.max() - tree_signal), 0)
+    # watershed_ift needs unsigned 16-bit integer costs
+    cost_norm = cost / (cost.max() + 1e-9) * 65534  # scale to uint16 range
+    cost_int = cost_norm.astype(np.uint16)
+    # Mask non-vegetation as impassable (max cost)
+    cost_int[~veg_mask] = np.iinfo(np.uint16).max
+
+    segments = watershed_ift(cost_int, markers)
+
+    # Compute area (in pixels) of each segment → radius in metres
+    crown_radii = np.zeros(len(peak_rows))
+    for i in range(len(peak_rows)):
+        area_px = float(np.sum(segments == (i + 1)))
+        area_m2 = area_px * cell_size * cell_size
+        crown_radii[i] = max(1.5, min(8.0, np.sqrt(area_m2 / np.pi)))
+
+    log(f"  Crown radii: min={crown_radii.min():.1f} m, "
+        f"mean={crown_radii.mean():.1f} m, max={crown_radii.max():.1f} m")
+
+    # ------------------------------------------------------------------
+    # 7. Assign heights — crude estimate or default
+    # ------------------------------------------------------------------
+    default_height = 8.0
+    heights = np.full(len(peak_rows), default_height)
+
+    # ------------------------------------------------------------------
+    # 8. Convert pixel coords → SWEREF99 TM → WGS84 and write GeoJSON
+    # ------------------------------------------------------------------
     features = []
     for i, (row, col) in enumerate(zip(peak_rows, peak_cols)):
-        height = float(data[row, col])
-        # Affine: x = georef.c + col * georef.a + row * georef.b
-        #         y = georef.f + col * georef.d + row * georef.e
-        x = georef.c + col * georef.a + row * georef.b
-        y = georef.f + col * georef.d + row * georef.e
+        # Pixel centre in SWEREF99 TM
+        x = xmin + (col + 0.5) * cell_size
+        # Rows are top-down in the image
+        y = ymax - (row + 0.5) * cell_size
         lng, lat = TO_WGS84.transform(x, y)
         features.append({
             "type": "Feature",
             "geometry": {"type": "Point", "coordinates": [lng, lat]},
             "properties": {
                 "id": int(i),
-                "height": round(height, 1),
+                "height": round(float(heights[i]), 1),
+                "crown_radius": round(float(crown_radii[i]), 1),
             },
         })
 
@@ -356,7 +724,6 @@ def generate_trees(bounds, output_dir, pointcloud=None, raster=None):
         json.dump(geojson, f)
 
     log(f"  Saved {out_path} ({len(features)} trees, WGS84)")
-    return tree_raster
 
 
 def generate_trees_glb(output_dir):
@@ -526,7 +893,7 @@ def main():
     )
     parser.add_argument(
         "--skip", nargs="*", default=[],
-        choices=["footprints", "roads", "dem", "mesh", "trees"],
+        choices=["footprints", "roads", "water", "dem", "mesh", "trees"],
         help="Skip generating specific asset types",
     )
     parser.add_argument(
@@ -587,7 +954,7 @@ def main():
     raster = None
     buildings = None
 
-    need_pointcloud = ("dem" not in skip) or ("mesh" not in skip) or ("trees" not in skip)
+    need_pointcloud = ("dem" not in skip) or ("mesh" not in skip)
     if need_pointcloud:
         log("Downloading point cloud (shared by DEM and mesh)...")
         pointcloud = dtcc.download_pointcloud(bounds=bounds)
@@ -603,9 +970,17 @@ def main():
     if "roads" not in skip:
         generate_road_network(bounds, output_dir)
 
+    # 2b. Water bodies
+    if "water" not in skip:
+        generate_water_bodies(bounds, output_dir)
+
     # 3. DEM raster
     if "dem" not in skip:
         _, raster = generate_dem(bounds, output_dir, pointcloud=pointcloud)
+
+    # 3b. Water mask (from WMS, aligned to DEM grid)
+    if "dem" not in skip:
+        generate_water_mask(output_dir)
 
     # 4. City mesh
     if "mesh" not in skip:

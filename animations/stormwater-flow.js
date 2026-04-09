@@ -33,6 +33,7 @@ class StormwaterFlowAnimation {
     this.flowData = null;
     this.buildingFootprints = null;
     this.buildingMask = null;  // 2D boolean array: true = building cell
+    this.waterMask = null;     // 2D boolean array: true = water cell (at/below sea level)
     
     // Spatial index for faster flow lookups
     this.flowGrid = null;
@@ -138,6 +139,54 @@ class StormwaterFlowAnimation {
       }
       console.log(`Detected ${barrierCount} building barrier cells in DEM`);
       
+      // Load water mask from WMS-derived GeoTIFF (pixel-aligned to DEM)
+      this.waterMask = [];
+      let waterCount = 0;
+      try {
+        const waterMaskUrl = (window.APP_CONFIG && window.APP_CONFIG.data.rasters.waterMask) || 'media/water_mask.tif';
+        const waterResponse = await fetch(waterMaskUrl + '?v=' + Date.now());
+        if (waterResponse.ok) {
+          const waterBuffer = await waterResponse.arrayBuffer();
+          const waterTiff = await GeoTIFF.fromArrayBuffer(waterBuffer);
+          const waterImage = await waterTiff.getImage();
+          const waterRasters = await waterImage.readRasters();
+          const waterData = waterRasters[0];
+          const ww = waterImage.getWidth();
+          const wh = waterImage.getHeight();
+          
+          if (ww === this.demWidth && wh === this.demHeight) {
+            // Exact match — use directly
+            for (let row = 0; row < this.demHeight; row++) {
+              this.waterMask[row] = [];
+              for (let col = 0; col < this.demWidth; col++) {
+                const isWater = waterData[row * this.demWidth + col] > 0;
+                this.waterMask[row][col] = isWater;
+                if (isWater) waterCount++;
+              }
+            }
+            console.log(`Loaded water mask from GeoTIFF: ${waterCount} water cells`);
+          } else {
+            console.warn(`Water mask size (${ww}x${wh}) differs from DEM (${this.demWidth}x${this.demHeight}), falling back to elevation`);
+            throw new Error('size mismatch');
+          }
+        } else {
+          throw new Error('water mask not found');
+        }
+      } catch (e) {
+        // Fallback: use elevation-based detection (cells at/below sea level)
+        console.log('Water mask GeoTIFF not available, using elevation fallback');
+        const waterThreshold = 0.0;
+        for (let row = 0; row < this.demHeight; row++) {
+          this.waterMask[row] = [];
+          for (let col = 0; col < this.demWidth; col++) {
+            const isWater = this.dem[row][col] <= waterThreshold && !this.buildingMask[row][col];
+            this.waterMask[row][col] = isWater;
+            if (isWater) waterCount++;
+          }
+        }
+        console.log(`Fallback: ${waterCount} water cells (elev <= 0m)`);
+      }
+      
       // Create DEM visualization image
       console.log('Creating DEM visualization...');
       this.createDEMVisualization();
@@ -213,25 +262,11 @@ class StormwaterFlowAnimation {
     
     const elevRange = this.elevationMax - this.elevationMin;
     
-    // Rotate 90° clockwise: new(x, y) = old(row, col) where
-    // new_x = demHeight - 1 - row (flip vertical then transpose)
-    // new_y = col
-    // Actually for 90° CW: new_x = old_row, new_y = demWidth - 1 - old_col
-    // Wait, let's think again:
-    // Original: dem[row][col] where row=0 is north, col=0 is west
-    // 90° clockwise rotation:
-    //   - Top of new image = left of old (col=0)
-    //   - Left of new image = top of old (row=0)
-    // So: new_x = old_row, new_y = old_col for the data
-    // But we need to FLIP to match what Python did (rotate -90 = 90 CW)
-    
     for (let row = 0; row < this.demHeight; row++) {
       for (let col = 0; col < this.demWidth; col++) {
         const elev = this.dem[row][col];
         
         // 90° counter-clockwise rotation transformation
-        // new_x = demHeight - 1 - row (so row 0 goes to right edge)
-        // new_y = col (column stays as Y)
         const newX = this.demHeight - 1 - row;
         const newY = col;
         const idx = (newY * this.demHeight + newX) * 4;
@@ -271,23 +306,7 @@ class StormwaterFlowAnimation {
     }
     
     ctx.putImageData(imageData, 0, 0);
-    
-    // Add corner markers for orientation debugging (on rotated canvas)
-    ctx.fillStyle = 'red';
-    ctx.fillRect(0, 0, 20, 20);
-    ctx.fillStyle = 'green';
-    ctx.fillRect(this.demHeight - 20, 0, 20, 20);
-    ctx.fillStyle = 'blue';
-    ctx.fillRect(0, this.demWidth - 20, 20, 20);
-    ctx.fillStyle = 'yellow';
-    ctx.fillRect(this.demHeight - 20, this.demWidth - 20, 20, 20);
-    
-    console.log('Corner elevations (original DEM orientation):');
-    console.log(`  DEM[0][0] (row=0, col=0):     ${this.dem[0][0]?.toFixed(1)}m`);
-    console.log(`  DEM[0][last] (row=0, col=max): ${this.dem[0][this.demWidth-1]?.toFixed(1)}m`);
-    console.log(`  DEM[last][0] (row=max, col=0): ${this.dem[this.demHeight-1][0]?.toFixed(1)}m`);
-    console.log(`  DEM[last][last]:               ${this.dem[this.demHeight-1][this.demWidth-1]?.toFixed(1)}m`);
-    console.log(`DEM visualization created: ${this.demHeight}x${this.demWidth}px (rotated 90° CW)`);
+    console.log(`DEM visualization created: ${this.demHeight}x${this.demWidth}px (rotated 90° CCW)`);
   }
 
   /**
@@ -464,10 +483,11 @@ class StormwaterFlowAnimation {
       };
     };
     
-    // Extract flow lines (skip building cells)
+    // Extract flow lines (skip building and water cells)
     for (let i = 0; i < rows; i++) {
       for (let j = 0; j < cols; j++) {
         if (this.buildingMask && this.buildingMask[i][j]) continue;
+        if (this.waterMask && this.waterMask[i][j]) continue;
         
         const dir = this.flowDir[i][j];
         const acc = this.flowAcc[i][j];
@@ -506,8 +526,9 @@ class StormwaterFlowAnimation {
         const dir = this.flowDir[i][j];
         const acc = this.flowAcc[i][j];
         
-        // Pool conditions: true sinks OR very high accumulation (skip buildings)
+        // Pool conditions: true sinks OR very high accumulation (skip buildings/water)
         if (this.buildingMask && this.buildingMask[i][j]) continue;
+        if (this.waterMask && this.waterMask[i][j]) continue;
         if ((dir === 0 && acc > 100) || acc > poolThreshold) {
           const pt = rotatePoint(i, j);
           pools.push({
@@ -520,10 +541,11 @@ class StormwaterFlowAnimation {
       }
     }
     
-    // Create start points on a grid (skip building cells)
+    // Create start points on a grid (skip building and water cells)
     for (let i = 0; i < rows; i += startPointSpacing) {
       for (let j = 0; j < cols; j += startPointSpacing) {
         if (this.buildingMask && this.buildingMask[i][j]) continue;
+        if (this.waterMask && this.waterMask[i][j]) continue;
         const acc = this.flowAcc[i][j];
         if (acc >= 1.0 && !isNaN(acc)) {
           const pt = rotatePoint(i, j);
@@ -814,9 +836,17 @@ class StormwaterFlowAnimation {
     const offsetX = (Math.random() - 0.5) * 10;
     const offsetY = (Math.random() - 0.5) * 10;
     
+    const px = selectedPoint.x + offsetX;
+    const py = selectedPoint.y + offsetY;
+    
+    // Reject if offset pushes into water or building
+    if (this.isWater(px, py) || this.isBuilding(px, py)) {
+      return null;
+    }
+    
     return {
-      x: selectedPoint.x + offsetX,
-      y: selectedPoint.y + offsetY,
+      x: px,
+      y: py,
       age: 0,
       trail: [],
       velocity: { x: 0, y: 0 },
@@ -848,6 +878,19 @@ class StormwaterFlowAnimation {
     const col = Math.floor(yNorm * this.demWidth);
     if (row < 0 || row >= this.demHeight || col < 0 || col >= this.demWidth) return false;
     return this.buildingMask[row][col];
+  }
+
+  /**
+   * Check if a screen position corresponds to a water cell in the DEM.
+   */
+  isWater(screenX, screenY) {
+    if (!this.waterMask) return false;
+    const xNorm = screenX / this.canvas.width;
+    const yNorm = screenY / this.canvas.height;
+    const row = Math.floor((1 - xNorm) * this.demHeight);
+    const col = Math.floor(yNorm * this.demWidth);
+    if (row < 0 || row >= this.demHeight || col < 0 || col >= this.demWidth) return false;
+    return this.waterMask[row][col];
   }
 
   /**
@@ -975,6 +1018,13 @@ class StormwaterFlowAnimation {
         continue;
       }
       
+      // Kill particles that reach water — they've drained to the water body
+      if (this.isWater(newX, newY)) {
+        this.particles[i] = this.particles[this.particles.length - 1];
+        this.particles.pop();
+        continue;
+      }
+      
       p.x = newX;
       p.y = newY;
       
@@ -983,6 +1033,13 @@ class StormwaterFlowAnimation {
       const noiseY = Math.cos(p.age * 0.1 + p.y * 0.01) * this.noiseScale;
       p.x += noiseX;
       p.y += noiseY;
+      
+      // Re-check water/building after noise offset
+      if (this.isWater(p.x, p.y) || this.isBuilding(p.x, p.y)) {
+        this.particles[i] = this.particles[this.particles.length - 1];
+        this.particles.pop();
+        continue;
+      }
       
       // Track stationary time for particle growth (pooling effect)
       const speed = Math.sqrt(p.velocity.x * p.velocity.x + p.velocity.y * p.velocity.y);

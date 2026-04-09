@@ -96,27 +96,22 @@ def main():
     dem_bottom = dem_bounds.bottom
     dem_right = dem_bounds.right
     dem_top = dem_bounds.top
-    dem_w = dem_right - dem_left
-    dem_h = dem_top - dem_bottom
-    dem_max_dim = max(dem_w, dem_h)
 
     print(f"  DEM bounds: ({dem_left:.0f}, {dem_bottom:.0f}) – "
           f"({dem_right:.0f}, {dem_top:.0f})")
-    print(f"  Normalisation divisor: {dem_max_dim:.0f}")
 
     # --- Prepare tree template ---
     template = make_tree_template()
     print(f"  Tree template: {len(template.vertices)} verts, {len(template.faces)} faces")
 
-    # --- Build scene with instances ---
-    scene = trimesh.Scene()
-
-    # Register template geometry once
-    template_name = "tree_template"
-    scene.geometry[template_name] = template
-
+    # --- Build a single merged mesh from all tree instances ---
+    # Pre-merging avoids instanced scene-graph nodes so that Three.js
+    # GLTFLoader always sees exactly one Mesh when traversing the GLB.
     placed = 0
     skipped = 0
+    meshes_to_merge = []
+
+    elev_max = float(np.nanmax(dem))
 
     for feat in features:
         coords = feat["geometry"]["coordinates"]
@@ -124,6 +119,7 @@ def main():
         height = feat["properties"].get("height", 8.0)
         if height is None or height <= 0:
             height = 8.0
+        crown_radius = feat["properties"].get("crown_radius", None)
 
         # Reproject to SWEREF99 TM
         easting, northing = TO_SWEREF.transform(lon, lat)
@@ -146,45 +142,57 @@ def main():
             continue
 
         # Skip trees planted on building barrier cells
-        elev_max = float(np.nanmax(dem))
         if ground_elev >= elev_max - 1.0:
             skipped += 1
             continue
 
-        # Convert to normalised GLB coordinates (Y-up)
-        glb_x = (easting - dem_left) / dem_max_dim
-        glb_y = ground_elev / dem_max_dim
-        glb_z = -(northing - dem_bottom) / dem_max_dim
+        # Convert to GLB coordinates matching the buildings STL (Y-up).
+        # The buildings STL uses raw SWEREF99 TM values:
+        #   x = easting, y = elevation, z = -northing
+        # We must match this so sun-study.js can align both meshes
+        # using the same buildingsCenter.
+        glb_x = easting
+        glb_y = ground_elev
+        glb_z = -northing
 
-        # Scale template by tree height (template is 1 m tall)
-        scale = height / dem_max_dim
+        # Scale: height for Y, crown_radius for lateral (X/Z).
+        # Template crown radius is 0.25 m, so lateral scale = crown_radius / 0.25
+        scale_y = height
+        if crown_radius and crown_radius > 0:
+            scale_xz = crown_radius / 0.25
+        else:
+            scale_xz = height  # fallback: uniform scaling
 
         # Build 4×4 transform matrix (scale then translate)
         mat = np.eye(4)
-        mat[0, 0] = scale
-        mat[1, 1] = scale
-        mat[2, 2] = scale
+        mat[0, 0] = scale_xz
+        mat[1, 1] = scale_y
+        mat[2, 2] = scale_xz
         mat[0, 3] = glb_x
         mat[1, 3] = glb_y
         mat[2, 3] = glb_z
 
-        node_name = f"tree_{placed}"
-        scene.graph.update(
-            frame_to=node_name, matrix=mat, geometry=template_name
-        )
+        # Clone template, apply transform, and collect for merging
+        tree_mesh = template.copy()
+        tree_mesh.apply_transform(mat)
+        meshes_to_merge.append(tree_mesh)
         placed += 1
 
     print(f"  Placed {placed} trees, skipped {skipped}")
 
+    # Merge all individual tree meshes into a single mesh
+    print("  Merging into single mesh...")
+    merged = trimesh.util.concatenate(meshes_to_merge)
+
     # --- Export GLB ---
     print(f"Exporting GLB to {out_path} ...")
-    glb_bytes = scene.export(file_type="glb")
+    glb_bytes = merged.export(file_type="glb")
     with open(out_path, "wb") as f:
         f.write(glb_bytes)
 
     size_mb = len(glb_bytes) / (1024 * 1024)
     print(f"  Done — {size_mb:.2f} MB "
-          f"({len(template.vertices)} verts × {placed} instances)")
+          f"({len(merged.vertices)} verts, {len(merged.faces)} faces)")
 
 
 if __name__ == "__main__":

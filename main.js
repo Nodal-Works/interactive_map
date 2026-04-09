@@ -489,9 +489,9 @@ ${JSON.stringify(calibration, null, 2)}`;
             });
             
         } else if (action === 'zoom_in') {
-            map.zoomTo(Math.min(map.getZoom()+0.1, 22));
+            map.zoomTo(Math.min(map.getZoom()+0.01, 22));
         } else if (action === 'zoom_out') {
-            map.zoomTo(Math.max(map.getZoom()-0.1, 0));
+            map.zoomTo(Math.max(map.getZoom()-0.01, 0));
         } else if (action === 'rotate_left') {
             map.rotateTo((map.getBearing() - 0.1) % 360);
         } else if (action === 'rotate_right') {

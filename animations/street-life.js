@@ -631,7 +631,8 @@ function updateStreetLifeEntities() {
   while (taxiCount < CONFIG.maxTaxis) { spawnTaxi(); taxiCount++; }
   while (busCount < CONFIG.maxBuses) { spawnBus(); busCount++; }
   while (bicycleCount < CONFIG.maxBicycles) { spawnBicycle(); bicycleCount++; }
-  while (pedestrians.length < CONFIG.maxPedestrians) spawnPedestrian();
+  let pedCount = pedestrians.length;
+  while (pedCount < CONFIG.maxPedestrians) { spawnPedestrian(); pedCount++; }
   
   // Update emergency vehicle
   if (emergencyVehicle) {
