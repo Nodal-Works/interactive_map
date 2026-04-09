@@ -12,7 +12,6 @@ const MSG_TYPES = {
     ISOVIST_CONTROL: 'isovist_control',
     BIRD_CONTROL: 'bird_control',
     SLIDESHOW_CONTROL: 'slideshow_control',
-    FCC_DEMO_CONTROL: 'fcc_demo_control',
     // Incoming (main -> controller)
     STATE_UPDATE: 'state_update',
     ANIMATION_STATE: 'animation_state',  // New: animation on/off state
@@ -21,11 +20,7 @@ const MSG_TYPES = {
     BIRD_STATUS: 'bird_status',
     SUN_POSITION: 'sun_position',
     SUN_TIME_UPDATE: 'sun_time_update',
-    CALIBRATION_DATA: 'calibration_data',
-    FCC_DEMO_PROGRESS: 'fcc_demo_progress',
-    FCC_DEMO_READY: 'fcc_demo_ready',
-    FCC_DEMO_STATS: 'fcc_demo_stats',
-    FCC_DEMO_PLAYBACK_STATE: 'fcc_demo_playback_state'
+    CALIBRATION_DATA: 'calibration_data'
 };
 
 // Debug mode - set to false in production
@@ -42,7 +37,6 @@ const welcomeScreen = document.getElementById('welcome-screen');
 
 // State objects loaded from their respective module files:
 // - slideshowState from controller/slideshow-dashboard.js
-// - fccDemoState from controller/fcc-demo-dashboard.js
 // - sunStudyState from controller/sun-study-ui.js
 
 
@@ -60,10 +54,7 @@ const ANIMATION_BUTTONS = [
     'slideshow-btn',
     'grid-animation-btn',
     'isovist-btn',
-    'bird-sounds-btn',
-    'campus-demo-btn',
-    'fcc-demo-btn',
-    'street-view-btn'
+    'bird-sounds-btn'
 ];
 
 // Function buttons are buttons that perform actions (not toggleable animations)
@@ -91,10 +82,6 @@ function setAnimationState(targetId, isActive) {
         activeAnimations = activeAnimations.filter(id => id !== targetId);
         if (targetId === 'sun-study-btn') {
             setSunStudyLayout(false);
-        }
-        // Reset campus demo legend when it's deactivated
-        if (targetId === 'campus-demo-btn') {
-            resetCampusDemoLegend();
         }
     }
     syncAnimationButtonStates();
@@ -212,84 +199,6 @@ function updateDashboard(targetId) {
     if (dashboardTitle) dashboardTitle.textContent = 'Dashboard';
     if (legendTitle) legendTitle.textContent = 'Legend';
     
-    // Hide SAM segmentation section by default (only shown for street-view-btn)
-    const samSection = document.getElementById('sam-segmentation-section');
-    if (samSection && targetId !== 'street-view-btn') {
-        samSection.style.display = 'none';
-    }
-    
-    // Campus Demo dashboard
-    if (targetId === 'campus-demo-btn') {
-        if (dashboardTitle) dashboardTitle.textContent = 'Campus Vision';
-        if (legendTitle) legendTitle.textContent = 'Campus Vision Legend';
-
-        dashboardContent.innerHTML = `
-            <div class="dashboard-container">
-                <div class="dashboard-card">
-                    <div class="dashboard-section-title">
-                        <span class="material-icons" style="font-size: 18px;">school</span>
-                        Chalmers Campus Vision
-                    </div>
-                    <div class="info-box" style="border-left-color: #3b82f6;">
-                        <div class="info-title">Interactive Campus Presentation</div>
-                        <p class="info-text">
-                            Navigate through the campus vision with layers showing routes, activity nodes, and green spaces.
-                        </p>
-                    </div>
-                    <p style="color: #888; margin-top: 1rem; font-size: 0.9rem;">
-                        Press → to start, use ← → to navigate
-                    </p>
-                </div>
-            </div>
-        `;
-        
-        // Show the campus demo legend container, hide default
-        const campusLegend = document.getElementById('campus-demo-legend');
-        if (campusLegend) {
-            legendContent.style.display = 'none';
-            campusLegend.style.display = 'block';
-        } else {
-            legendContent.innerHTML = `
-                <div class="dashboard-card">
-                    <div class="dashboard-section-title">Ready to Start</div>
-                    <p style="color: #888;">Press → to begin the presentation</p>
-                </div>
-            `;
-        }
-        
-        // Show Campus Demo Contributors in the metadata section
-        const metadataContent = document.getElementById('metadata-content');
-        const metadataSection = metadataContent?.parentElement;
-        if (metadataSection) {
-            const metadataTitle = metadataSection.querySelector('h2');
-            if (metadataTitle) metadataTitle.textContent = 'Contributors';
-            metadataContent.className = 'credits-grid';
-            metadataContent.innerHTML = `
-                <div class="credit-item">
-                    <div class="credit-role">Chalmers Fastigheter</div>
-                    <div class="credit-name">Ida Gäskeby</div>
-                </div>
-                <div class="credit-item">
-                    <div class="credit-role">Spacescape</div>
-                    <div class="credit-contribution">Spatial Planning & Analysis</div>
-                    <div class="credit-name">Selma Sinanovic Gabrallah</div>
-                    <div class="credit-name">Malin Dahlhielm</div>
-                </div>
-                <div class="credit-item">
-                    <div class="credit-role">Chalmers Rektors Office</div>
-                    <div class="credit-name">Stefan Forsaeus Nilsson</div>
-                    <div class="credit-contribution">Rådgivare, Ledningskansliet, Chalmers verksamhetsstöd</div>
-                </div>
-                <div class="credit-item">
-                    <div class="credit-role">Visualisation Developer</div>
-                    <div class="credit-name">Sanjay Somanath</div>
-                </div>
-            `;
-        }
-        
-        return;
-    }
-
     // Use dedicated slideshow dashboard function for slideshow
     if (targetId === 'slideshow-btn') {
         // If we already know the slideshow is active, show the dashboard immediately
@@ -1337,108 +1246,10 @@ function updateDashboard(targetId) {
             });
         }
 
-    } else if (targetId === 'fcc-demo-btn') {
-        // FCC VR Demo dashboard with video player and timeline
-        updateFCCDemoDashboard();
-        
-    } else if (targetId === 'street-view-btn') {
-        // Street View dashboard with embedded image
-        dashboardContent.innerHTML = `
-            <div class="dashboard-container">
-                <div class="dashboard-card" style="padding: 0; overflow: hidden;">
-                    <div id="street-view-panel" style="width: 100%; height: 350px; background: #1a1a1a; position: relative;">
-                        <img id="street-view-image" style="width: 100%; height: 100%; object-fit: cover; display: none;" />
-                        <div id="street-view-no-coverage" style="
-                            position: absolute;
-                            top: 0; left: 0; right: 0; bottom: 0;
-                            display: flex;
-                            align-items: center;
-                            justify-content: center;
-                            flex-direction: column;
-                            color: #666;
-                            font-size: 14px;
-                            background: #1a1a1a;
-                        ">
-                            <span style="font-size: 48px; margin-bottom: 12px;">📍</span>
-                            <span style="font-size: 16px; margin-bottom: 4px;">Click on the map</span>
-                            <span style="font-size: 12px; color: #555;">to view Street View at that location</span>
-                        </div>
-                        <div id="street-view-coords" style="
-                            position: absolute;
-                            bottom: 8px;
-                            left: 8px;
-                            background: rgba(0,0,0,0.7);
-                            color: #888;
-                            font-size: 10px;
-                            padding: 4px 8px;
-                            border-radius: 4px;
-                            font-family: monospace;
-                            z-index: 10;
-                        "></div>
-                        <div id="street-view-heading-controls" style="
-                            position: absolute;
-                            bottom: 8px;
-                            right: 8px;
-                            display: none;
-                            gap: 4px;
-                            z-index: 10;
-                        ">
-                            <button id="sv-rotate-left" style="background: rgba(0,0,0,0.7); border: none; color: white; padding: 8px 12px; border-radius: 4px; cursor: pointer;">◀</button>
-                            <button id="sv-rotate-right" style="background: rgba(0,0,0,0.7); border: none; color: white; padding: 8px 12px; border-radius: 4px; cursor: pointer;">▶</button>
-                        </div>
-                    </div>
-                </div>
-            </div>
-        `;
-        
-        legendContent.innerHTML = `
-            <div class="dashboard-card">
-                <div class="dashboard-section-title">How to Use</div>
-                <div style="font-size: 11px; color: #ccc; line-height: 1.6;">
-                    <div style="display: flex; align-items: flex-start; gap: 8px; margin-bottom: 8px;">
-                        <span style="color: #3b82f6; font-weight: bold;">1.</span>
-                        <span>Click the Street View button to activate</span>
-                    </div>
-                    <div style="display: flex; align-items: flex-start; gap: 8px; margin-bottom: 8px;">
-                        <span style="color: #3b82f6; font-weight: bold;">2.</span>
-                        <span>Click anywhere on the main map display</span>
-                    </div>
-                    <div style="display: flex; align-items: flex-start; gap: 8px; margin-bottom: 8px;">
-                        <span style="color: #3b82f6; font-weight: bold;">3.</span>
-                        <span>View the Street View image here</span>
-                    </div>
-                    <div style="display: flex; align-items: flex-start; gap: 8px;">
-                        <span style="color: #3b82f6; font-weight: bold;">4.</span>
-                        <span>Use ◀ ▶ buttons to rotate view</span>
-                    </div>
-                </div>
-            </div>
-            <div class="dashboard-card" style="margin-top: 1rem;">
-                <div class="info-box" style="border-left-color: #22c55e;">
-                    <div class="info-title">Coverage</div>
-                    <p class="info-text">
-                        Street View is available along most roads in Sweden. 
-                        If no imagery exists, you'll see a "No Coverage" message.
-                    </p>
-                </div>
-            </div>
-        `;
-        
-        // Initialize rotation controls
-        initStreetViewControls();
-        
-        // Show SAM segmentation section for Street View
-        const samSection = document.getElementById('sam-segmentation-section');
-        if (samSection) samSection.style.display = 'block';
-        
     } else {
         // Default or other tools
         dashboardContent.innerHTML = '<p>Select a simulation to view details.</p>';
         legendContent.innerHTML = '<p>Select a simulation to view its legend.</p>';
-        
-        // Hide SAM segmentation section for non-Street View
-        const samSection = document.getElementById('sam-segmentation-section');
-        if (samSection) samSection.style.display = 'none';
     }
 }
 
@@ -1547,40 +1358,6 @@ channel.onmessage = (event) => {
         });
     } else if (data.type === 'isovist_stats') {
         updateIsovistChart(data.data);
-    } else if (data.type === 'fcc_demo_progress') {
-        // Update FCC demo progress from main window
-        fccDemoState.progress = data.progress;
-        fccDemoState.currentTime = data.time;
-        updateFCCDemoProgress();
-    } else if (data.type === 'fcc_demo_ready') {
-        // FCC demo is ready
-        fccDemoState.pathLength = data.data.pathLength;
-        fccDemoState.pointCount = data.data.pointCount;
-        updateFCCDemoDashboard();
-    } else if (data.type === 'fcc_demo_stats') {
-        // Update FCC demo stats
-        fccDemoState.stats = data.data;
-        updateFCCDemoStats();
-    } else if (data.type === 'fcc_demo_playback_state') {
-        // Update playback state
-        fccDemoState.isPlaying = data.isPlaying;
-        updateFCCDemoPlayButton();
-    } else if (data.type === 'street_view_position') {
-        // Received position from main map - update Street View panorama
-        updateStreetViewPosition(data.position, data.heading);
-    } else if (data.type === 'campus_demo_phase') {
-        // Update campus demo legend based on current phase
-        updateCampusDemoLegend(data.phase, data.phaseIndex, data.label);
-    } else if (data.type === 'sam_segment') {
-        // Trigger segmentation as requested from main window
-        const segBtn = document.getElementById('sam-segment-btn');
-        if (segBtn) {
-            // Simulate user click
-            segBtn.click();
-        } else {
-            // Update status if available
-            if (typeof setSamStatus === 'function') setSamStatus('No segmentation UI', false);
-        }
     } else {
         // Log unknown message types for debugging new features
         debugLog('Unknown message type:', data.type);
@@ -1590,14 +1367,6 @@ channel.onmessage = (event) => {
 
 // Isovist dashboard loaded from controller/isovist-dashboard.js
 // Bird dashboard loaded from controller/bird-dashboard.js
-
-
-
-// FCC demo dashboard loaded from controller/fcc-demo-dashboard.js
-
-
-
-// Campus demo legend loaded from controller/campus-demo-legend.js
 
 
 
@@ -1753,30 +1522,8 @@ document.addEventListener('keydown', (e) => {
         }
         return;
     }
-    
-    // Check if campus demo button is active
-    const campusDemoBtn = document.querySelector('.control-btn[data-target="campus-demo-btn"]');
-    if (campusDemoBtn && campusDemoBtn.classList.contains('active')) {
-        if (e.key === ' ') {
-            e.preventDefault();
-            channel.postMessage({ type: 'campus_demo_control', action: 'autoplay' });
-        } else if (e.key === 'ArrowRight') {
-            e.preventDefault();
-            channel.postMessage({ type: 'campus_demo_control', action: 'next' });
-        } else if (e.key === 'ArrowLeft') {
-            e.preventDefault();
-            channel.postMessage({ type: 'campus_demo_control', action: 'previous' });
-        } else if (e.key === 'Escape') {
-            e.preventDefault();
-            channel.postMessage({ type: 'campus_demo_control', action: 'stop' });
-        }
-        return;
-    }
 });
 
 
 // Auto-Calibration loaded from controller/auto-calibration.js
-
-
-// Street View + SAM loaded from controller/street-view.js
 
