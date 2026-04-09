@@ -105,6 +105,28 @@ def generate_road_network(bounds, output_dir):
     """Download road network from OSM and save as WGS84 GeoJSON."""
     log("Downloading road network from OSM...")
     roadnetwork = dtcc.download_roadnetwork(bounds=bounds, provider="OSM")
+    if roadnetwork is None:
+        # DTCC sometimes fails to parse the GPKG; fall back to reading
+        # the cached GPKG directly with geopandas.
+        log("  Warning: dtcc returned None, attempting GPKG fallback...")
+        try:
+            import geopandas as gpd
+            import glob
+            cache_dir = Path.home() / "Library" / "Caches" / "dtcc-data" / "downloaded_osm"
+            pattern = f"roads_{bounds.xmin}_{bounds.ymin}_{bounds.xmax}_{bounds.ymax}.gpkg"
+            gpkg_path = cache_dir / pattern
+            if gpkg_path.exists():
+                gdf = gpd.read_file(str(gpkg_path))
+                if gdf.crs and gdf.crs.to_epsg() != 4326:
+                    gdf = gdf.to_crs("EPSG:4326")
+                out_path = output_dir / "street-network.geojson"
+                gdf.to_file(str(out_path), driver="GeoJSON")
+                log(f"  Saved {out_path} ({len(gdf)} road segments from GPKG fallback, WGS84)")
+                return None
+        except Exception as e:
+            log(f"  GPKG fallback also failed: {e}")
+        log("  Skipping road network")
+        return None
     log(f"  Downloaded road network: {len(roadnetwork.edges)} edges, "
         f"{len(roadnetwork.vertices)} vertices")
 
@@ -155,6 +177,44 @@ def _roadnetwork_to_geojson(roadnetwork, out_path):
         json.dump(geojson, f)
 
 
+def burn_buildings_into_dem(dem_path, footprints_path):
+    """Burn building footprints into a DEM as elevated barriers.
+
+    Rasterizes building polygons onto the DEM grid and raises those cells
+    so the D8 flow algorithm in the stormwater animation routes water
+    around buildings instead of through them.
+
+    The in-memory dtcc raster (used by mesh/tree steps) is unaffected;
+    only the saved GeoTIFF is modified.
+    """
+    import geopandas as gpd
+    import rasterio
+    from rasterio.features import rasterize
+
+    gdf = gpd.read_file(str(footprints_path))
+    if gdf.crs and gdf.crs.to_epsg() != 3006:
+        gdf = gdf.to_crs("EPSG:3006")
+
+    with rasterio.open(str(dem_path), "r+") as src:
+        dem = src.read(1)
+
+        building_mask = rasterize(
+            [(geom, 1) for geom in gdf.geometry],
+            out_shape=dem.shape,
+            transform=src.transform,
+            fill=0,
+            dtype=np.uint8,
+        )
+
+        barrier_elev = float(np.nanmax(dem)) + 10.0
+        cell_count = int(np.sum(building_mask > 0))
+        dem[building_mask == 1] = barrier_elev
+        src.write(dem, 1)
+
+    log(f"  Burned {len(gdf)} building footprints into DEM "
+        f"({cell_count} cells → {barrier_elev:.1f} m)")
+
+
 def generate_dem(bounds, output_dir, pointcloud=None):
     """Build a terrain raster (DEM) from LiDAR data and save as GeoTIFF."""
     if pointcloud is None:
@@ -174,6 +234,14 @@ def generate_dem(bounds, output_dir, pointcloud=None):
     dtcc.save_raster(raster, str(out_path))
     log(f"  Saved {out_path} ({raster.width}x{raster.height}, "
         f"cell_size={raster.cell_size})")
+
+    # Burn building footprints into the saved DEM so stormwater flow
+    # routes around buildings (the in-memory raster for mesh is unchanged)
+    footprints_path = output_dir / "building-footprints.geojson"
+    if footprints_path.exists():
+        burn_buildings_into_dem(out_path, footprints_path)
+    else:
+        log("  No building footprints found, skipping DEM building burn")
 
     return pointcloud, raster
 
@@ -253,7 +321,7 @@ def generate_trees(bounds, output_dir, pointcloud=None, raster=None):
         data = data[:, :, 0]
 
     # Use a neighbourhood roughly matching a tree crown (~5m radius → 10m diameter)
-    crown_cells = max(3, int(5.0 / tree_raster.cell_size))
+    crown_cells = max(3, int(5.0 / abs(tree_raster.cell_size[0])))
     neighbourhood_size = 2 * crown_cells + 1
 
     # Dilate (max filter) and compare to find local maxima
@@ -291,8 +359,38 @@ def generate_trees(bounds, output_dir, pointcloud=None, raster=None):
     return tree_raster
 
 
-def update_map_config(config_path, wgs84_bbox):
-    """Update map_config.json with the new bounding box and center."""
+def generate_trees_glb(output_dir):
+    """Generate an instanced tree GLB from trees.geojson and the DEM.
+
+    Uses a low-poly tree template instanced at every tree position,
+    grounded on the DEM surface, in the same normalised coordinate
+    system as mesh.stl so the sun-study aligns them automatically.
+    """
+    import subprocess
+    script = Path(__file__).resolve().parent / "generate_trees_glb.py"
+    trees_path = output_dir / "trees.geojson"
+    dem_path = output_dir / "clipped_dem.geotiff.tif"
+    out_path = output_dir / "trees_instanced.glb"
+
+    if not trees_path.exists():
+        log("  trees.geojson not found, skipping GLB generation")
+        return
+    if not dem_path.exists():
+        log("  DEM not found, skipping GLB generation")
+        return
+
+    log("Generating instanced trees GLB...")
+    subprocess.check_call([
+        sys.executable, str(script),
+        "--trees", str(trees_path),
+        "--dem", str(dem_path),
+        "--output", str(out_path),
+    ])
+    log(f"  Saved {out_path}")
+
+
+def update_map_config(config_path, wgs84_bbox, sweref_bbox=None):
+    """Update map_config.json with the new bounding box, center, and table corners."""
     west, south, east, north = wgs84_bbox
     center_lng = (west + east) / 2
     center_lat = (south + north) / 2
@@ -304,6 +402,22 @@ def update_map_config(config_path, wgs84_bbox):
     config["calibration"]["center"]["lat"] = center_lat
     config["table"]["boundingBox"] = [west, south, east, north]
 
+    # Compute DEM corner polygon in WGS84 for table overlay
+    # Corners: SE, NE, NW, SW (matching the existing convention)
+    if sweref_bbox:
+        xmin, ymin, xmax, ymax = sweref_bbox
+        corners_sweref = [
+            (xmax, ymin),  # SE
+            (xmax, ymax),  # NE
+            (xmin, ymax),  # NW
+            (xmin, ymin),  # SW
+        ]
+        corners_wgs84 = []
+        for e, n in corners_sweref:
+            lon, lat = TO_WGS84.transform(e, n)
+            corners_wgs84.append([lon, lat])
+        config["table"]["corners"] = corners_wgs84
+
     with open(config_path, "w") as f:
         json.dump(config, f, indent=2)
         f.write("\n")
@@ -311,6 +425,8 @@ def update_map_config(config_path, wgs84_bbox):
     log(f"Updated {config_path}")
     log(f"  Center: ({center_lng:.6f}, {center_lat:.6f})")
     log(f"  Bounding box: [{west}, {south}, {east}, {north}]")
+    if sweref_bbox:
+        log(f"  Table corners: {config['table']['corners']}")
 
 
 def update_slideshow_config(output_dir):
@@ -504,11 +620,16 @@ def main():
     if "trees" not in skip:
         generate_trees(bounds, output_dir, pointcloud=pointcloud, raster=raster)
 
-    # 6. Update config
+    # 6. Trees instanced GLB (requires trees.geojson + DEM)
+    if "trees" not in skip:
+        generate_trees_glb(output_dir)
+
+    # 7. Update config
     if args.update_config:
         config_path = project_root / "map_config.json"
         if config_path.exists():
-            update_map_config(config_path, wgs84_bbox)
+            update_map_config(config_path, wgs84_bbox,
+                              sweref_bbox=(xmin, ymin, xmax, ymax))
         else:
             log(f"Warning: {config_path} not found, skipping config update")
 

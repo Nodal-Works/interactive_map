@@ -42,6 +42,10 @@ const welcomeScreen = document.getElementById('welcome-screen');
     if (welcomeTitle && cfg.app && cfg.app.welcomeTitle) {
         welcomeTitle.textContent = cfg.app.welcomeTitle;
     }
+    const headerTitle = document.getElementById('header-title');
+    if (headerTitle && cfg.app && cfg.app.title) {
+        headerTitle.textContent = cfg.app.title + ' Dashboard';
+    }
     if (cfg.data && cfg.data.images) {
         const logo1 = document.getElementById('welcome-logo-1');
         const logo2 = document.getElementById('welcome-logo-2');

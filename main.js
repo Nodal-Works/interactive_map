@@ -171,7 +171,7 @@ map.on('load', () => {
   });
 
   // Add table polygon and markers as a GeoJSON source
-  const tableCorners = [
+  const tableCorners = (window.APP_CONFIG && window.APP_CONFIG.table.corners) || [
     [11.98451803339398,57.682927961987396],
     [11.983585758783713,57.6941405253463],
     [11.971022042873042,57.693840269664186],

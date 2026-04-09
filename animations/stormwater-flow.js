@@ -32,6 +32,7 @@ class StormwaterFlowAnimation {
     this.flowAcc = null;
     this.flowData = null;
     this.buildingFootprints = null;
+    this.buildingMask = null;  // 2D boolean array: true = building cell
     
     // Spatial index for faster flow lookups
     this.flowGrid = null;
@@ -88,8 +89,9 @@ class StormwaterFlowAnimation {
         throw new Error('GeoTIFF library not loaded');
       }
       
-      // Load the DEM GeoTIFF file
-      const response = await fetch((window.APP_CONFIG && window.APP_CONFIG.data.rasters.dem) || 'media/clipped_dem.geotiff.tif');
+      // Load the DEM GeoTIFF file (with cache-bust to pick up regenerated DEMs)
+      const demUrl = (window.APP_CONFIG && window.APP_CONFIG.data.rasters.dem) || 'media/clipped_dem.geotiff.tif';
+      const response = await fetch(demUrl + '?v=' + Date.now());
       if (!response.ok) {
         throw new Error('DEM file not found');
       }
@@ -120,6 +122,21 @@ class StormwaterFlowAnimation {
       this.elevationMin = elevStats.min;
       this.elevationMax = elevStats.max;
       console.log(`Elevation range: ${elevStats.min.toFixed(1)}m - ${elevStats.max.toFixed(1)}m`);
+      
+      // Detect building barriers: cells at max elevation are burnt-in buildings
+      // Buildings are burned into the DEM at max_elevation + 10 by generate_assets.py
+      this.buildingMask = [];
+      const barrierThreshold = this.elevationMax - 1.0; // anything near the max
+      let barrierCount = 0;
+      for (let row = 0; row < this.demHeight; row++) {
+        this.buildingMask[row] = [];
+        for (let col = 0; col < this.demWidth; col++) {
+          const isBarrier = this.dem[row][col] >= barrierThreshold;
+          this.buildingMask[row][col] = isBarrier;
+          if (isBarrier) barrierCount++;
+        }
+      }
+      console.log(`Detected ${barrierCount} building barrier cells in DEM`);
       
       // Create DEM visualization image
       console.log('Creating DEM visualization...');
@@ -447,9 +464,11 @@ class StormwaterFlowAnimation {
       };
     };
     
-    // Extract flow lines
+    // Extract flow lines (skip building cells)
     for (let i = 0; i < rows; i++) {
       for (let j = 0; j < cols; j++) {
+        if (this.buildingMask && this.buildingMask[i][j]) continue;
+        
         const dir = this.flowDir[i][j];
         const acc = this.flowAcc[i][j];
         
@@ -487,7 +506,8 @@ class StormwaterFlowAnimation {
         const dir = this.flowDir[i][j];
         const acc = this.flowAcc[i][j];
         
-        // Pool conditions: true sinks OR very high accumulation
+        // Pool conditions: true sinks OR very high accumulation (skip buildings)
+        if (this.buildingMask && this.buildingMask[i][j]) continue;
         if ((dir === 0 && acc > 100) || acc > poolThreshold) {
           const pt = rotatePoint(i, j);
           pools.push({
@@ -500,9 +520,10 @@ class StormwaterFlowAnimation {
       }
     }
     
-    // Create start points on a grid (with same rotation)
+    // Create start points on a grid (skip building cells)
     for (let i = 0; i < rows; i += startPointSpacing) {
       for (let j = 0; j < cols; j += startPointSpacing) {
+        if (this.buildingMask && this.buildingMask[i][j]) continue;
         const acc = this.flowAcc[i][j];
         if (acc >= 1.0 && !isNaN(acc)) {
           const pt = rotatePoint(i, j);
@@ -815,6 +836,21 @@ class StormwaterFlowAnimation {
   }
   
   /**
+   * Check if a screen position corresponds to a building cell in the DEM.
+   * Converts screen coords → normalized → DEM row/col via the rotation transform.
+   */
+  isBuilding(screenX, screenY) {
+    if (!this.buildingMask) return false;
+    const xNorm = screenX / this.canvas.width;
+    const yNorm = screenY / this.canvas.height;
+    // Inverse of rotatePoint: x_norm = 1 - row/rows, y_norm = col/cols
+    const row = Math.floor((1 - xNorm) * this.demHeight);
+    const col = Math.floor(yNorm * this.demWidth);
+    if (row < 0 || row >= this.demHeight || col < 0 || col >= this.demWidth) return false;
+    return this.buildingMask[row][col];
+  }
+
+  /**
    * Find flow direction at a given screen position using spatial grid
    */
   getFlowDirection(screenX, screenY) {
@@ -929,8 +965,18 @@ class StormwaterFlowAnimation {
       }
       
       // Update position with smoothed velocity
-      p.x += p.velocity.x;
-      p.y += p.velocity.y;
+      const newX = p.x + p.velocity.x;
+      const newY = p.y + p.velocity.y;
+      
+      // Check building collision — if new position is inside a building, kill particle
+      if (this.isBuilding(newX, newY)) {
+        this.particles[i] = this.particles[this.particles.length - 1];
+        this.particles.pop();
+        continue;
+      }
+      
+      p.x = newX;
+      p.y = newY;
       
       // Add subtle Perlin-like noise for natural flow (use sin waves for cheap noise)
       const noiseX = Math.sin(p.age * 0.1 + p.x * 0.01) * this.noiseScale;

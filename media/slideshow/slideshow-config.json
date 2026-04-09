@@ -13,7 +13,7 @@
       "metadata": {
         "title": "Ortofoto (Current Aerial Photo)",
         "description": "High-resolution colour orthophoto imagery of the study area at 0.5 m resolution",
-        "source": "Lantmäteriet via SLU"
+        "source": "Lantm\u00e4teriet via SLU"
       }
     },
     {
@@ -28,8 +28,8 @@
       },
       "metadata": {
         "title": "Ortofoto Infrared",
-        "description": "Infrared orthophoto at 0.5 m resolution — reveals vegetation health and water features",
-        "source": "Lantmäteriet via SLU"
+        "description": "Infrared orthophoto at 0.5 m resolution \u2014 reveals vegetation health and water features",
+        "source": "Lantm\u00e4teriet via SLU"
       }
     },
     {
@@ -44,8 +44,8 @@
       },
       "metadata": {
         "title": "Historical Aerial Photo ~1960",
-        "description": "Black-and-white aerial photography from around 1960 — see how the area looked over 60 years ago",
-        "source": "Lantmäteriet via SLU"
+        "description": "Black-and-white aerial photography from around 1960 \u2014 see how the area looked over 60 years ago",
+        "source": "Lantm\u00e4teriet via SLU"
       }
     },
     {
@@ -60,8 +60,8 @@
       },
       "metadata": {
         "title": "Historical Aerial Photo ~1975",
-        "description": "Black-and-white aerial photography from around 1975 — traces of urban development emerge",
-        "source": "Lantmäteriet via SLU"
+        "description": "Black-and-white aerial photography from around 1975 \u2014 traces of urban development emerge",
+        "source": "Lantm\u00e4teriet via SLU"
       }
     },
     {
@@ -77,7 +77,7 @@
       "metadata": {
         "title": "Topographic Map",
         "description": "Detailed topographic web map showing terrain, roads, buildings, and land cover",
-        "source": "Lantmäteriet via SLU"
+        "source": "Lantm\u00e4teriet via SLU"
       }
     },
     {
@@ -92,8 +92,8 @@
       },
       "metadata": {
         "title": "Topographic Map (Muted)",
-        "description": "Subdued topographic map — useful as a neutral basemap for overlaying analysis data",
-        "source": "Lantmäteriet via SLU"
+        "description": "Subdued topographic map \u2014 useful as a neutral basemap for overlaying analysis data",
+        "source": "Lantm\u00e4teriet via SLU"
       }
     },
     {
@@ -108,8 +108,8 @@
       },
       "metadata": {
         "title": "Terrain Hillshade",
-        "description": "Shaded relief map derived from the national elevation model — reveals landform and micro-topography",
-        "source": "Lantmäteriet via SLU"
+        "description": "Shaded relief map derived from the national elevation model \u2014 reveals landform and micro-topography",
+        "source": "Lantm\u00e4teriet via SLU"
       }
     },
     {
@@ -124,8 +124,8 @@
       },
       "metadata": {
         "title": "Terrain Slope",
-        "description": "Slope gradient map in greyscale — steeper areas appear darker, useful for drainage and accessibility analysis",
-        "source": "Lantmäteriet via SLU"
+        "description": "Slope gradient map in greyscale \u2014 steeper areas appear darker, useful for drainage and accessibility analysis",
+        "source": "Lantm\u00e4teriet via SLU"
       }
     },
     {
@@ -141,7 +141,7 @@
       "metadata": {
         "title": "Property Boundaries",
         "description": "Cadastral boundaries and property designations from the Swedish land registry",
-        "source": "Lantmäteriet via SLU"
+        "source": "Lantm\u00e4teriet via SLU"
       }
     },
     {
@@ -157,7 +157,7 @@
       "metadata": {
         "title": "Hydrography",
         "description": "Water bodies, watercourses, and the hydrographic network",
-        "source": "Lantmäteriet via SLU (INSPIRE)"
+        "source": "Lantm\u00e4teriet via SLU (INSPIRE)"
       }
     },
     {
@@ -172,7 +172,7 @@
       },
       "metadata": {
         "title": "Tree Cover (2023)",
-        "description": "Tree canopy cover from 2023 — green areas indicate tree coverage. Useful for urban ecology and canopy analysis",
+        "description": "Tree canopy cover from 2023 \u2014 green areas indicate tree coverage. Useful for urban ecology and canopy analysis",
         "source": "Boverket (Swedish National Board of Housing)"
       }
     },
@@ -188,7 +188,7 @@
       },
       "metadata": {
         "title": "Population Density (2025)",
-        "description": "Population per 1 km² grid cell — darker purple indicates higher density. Data from SCB official statistics",
+        "description": "Population per 1 km\u00b2 grid cell \u2014 darker purple indicates higher density. Data from SCB official statistics",
         "source": "SCB (Statistics Sweden)"
       }
     },
@@ -204,7 +204,7 @@
       },
       "metadata": {
         "title": "Green Areas in Urban Zones (2020)",
-        "description": "Publicly accessible green spaces of at least 0.5 hectares within urban boundaries — parks, forests, and recreational areas",
+        "description": "Publicly accessible green spaces of at least 0.5 hectares within urban boundaries \u2014 parks, forests, and recreational areas",
         "source": "SCB (Statistics Sweden)"
       }
     },
@@ -220,7 +220,7 @@
       },
       "metadata": {
         "title": "Demographic Statistical Areas (DeSO 2025)",
-        "description": "Neighbourhood-level demographic zones used for Swedish population statistics — each area contains roughly 700–2700 residents",
+        "description": "Neighbourhood-level demographic zones used for Swedish population statistics \u2014 each area contains roughly 700\u20132700 residents",
         "source": "SCB (Statistics Sweden)"
       }
     },
@@ -234,13 +234,30 @@
         "description": "Building footprint data for the study area",
         "legend": {
           "items": [
-            { "color": "#ff6600", "label": "Bostad (316 buildings)" },
-            { "color": "#999999", "label": "Komplementbyggnad (224 buildings)" },
-            { "color": "#9966ff", "label": "Samhällsfunktion (186 buildings)" },
-            { "color": "#3388ff", "label": "Verksamhet (53 buildings)" },
-            { "color": "#ffcc00", "label": "Övrig byggnad (5 buildings)" },
-            { "color": "#cc3399", "label": "Industri (3 buildings)" },
-            { "color": "#66cc66", "label": "Ekonomibyggnad (1 building)" }
+            {
+              "color": "#999999",
+              "label": "Komplementbyggnad (144 buildings)"
+            },
+            {
+              "color": "#ff6600",
+              "label": "Bostad (95 buildings)"
+            },
+            {
+              "color": "#cc3399",
+              "label": "Industri (84 buildings)"
+            },
+            {
+              "color": "#3388ff",
+              "label": "Verksamhet (63 buildings)"
+            },
+            {
+              "color": "#9966ff",
+              "label": "Samh\u00e4llsfunktion (61 buildings)"
+            },
+            {
+              "color": "#ffcc00",
+              "label": "\u00d6vrig byggnad (11 buildings)"
+            }
           ]
         },
         "style": {
@@ -248,9 +265,9 @@
           "colorMap": {
             "Bostad": "#ff6600",
             "Komplementbyggnad": "#999999",
-            "Samhällsfunktion": "#9966ff",
+            "Samh\u00e4llsfunktion": "#9966ff",
             "Verksamhet": "#3388ff",
-            "Övrig byggnad": "#ffcc00",
+            "\u00d6vrig byggnad": "#ffcc00",
             "Industri": "#cc3399",
             "Ekonomibyggnad": "#66cc66"
           },
@@ -269,15 +286,42 @@
         "description": "Road and path network in the study area",
         "legend": {
           "items": [
-            { "color": "#ff4444", "label": "Footway (602 segments)" },
-            { "color": "#4444ff", "label": "Service roads (214 segments)" },
-            { "color": "#44ff44", "label": "Residential (153 segments)" },
-            { "color": "#ff8800", "label": "Path (149 segments)" },
-            { "color": "#8844ff", "label": "Tertiary (63 segments)" },
-            { "color": "#ffff44", "label": "Living street (37 segments)" },
-            { "color": "#00ffff", "label": "Cycleway (15 segments)" },
-            { "color": "#ff44ff", "label": "Unclassified (11 segments)" },
-            { "color": "#888888", "label": "Pedestrian (2 segments)" }
+            {
+              "color": "#ff4444",
+              "label": "footway (602 segments)"
+            },
+            {
+              "color": "#4444ff",
+              "label": "service (214 segments)"
+            },
+            {
+              "color": "#44ff44",
+              "label": "residential (153 segments)"
+            },
+            {
+              "color": "#ff8800",
+              "label": "path (149 segments)"
+            },
+            {
+              "color": "#8844ff",
+              "label": "tertiary (63 segments)"
+            },
+            {
+              "color": "#ffff44",
+              "label": "living_street (37 segments)"
+            },
+            {
+              "color": "#00ffff",
+              "label": "cycleway (15 segments)"
+            },
+            {
+              "color": "#ff44ff",
+              "label": "unclassified (11 segments)"
+            },
+            {
+              "color": "#888888",
+              "label": "pedestrian (2 segments)"
+            }
           ]
         },
         "style": {

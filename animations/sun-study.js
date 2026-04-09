@@ -80,13 +80,15 @@ class SunStudy {
     this.falseColorMaterial = null;
     this.isFalseColorMode = false;
     
-    // Sweden location (Gothenburg - matches map center)
-    this.latitude = 57.68839377903814;
-    this.longitude = 11.977770568930168;
-    this.timezone = 1; // CET = UTC+1 (standard time; DST not modelled)
+    // Location from config (fallback to Gothenburg)
+    const cfg = window.APP_CONFIG || {};
+    const cal = cfg.calibration || {};
+    this.latitude = (cal.center && cal.center.lat) || 57.68839377903814;
+    this.longitude = (cal.center && cal.center.lng) || 11.977770568930168;
+    this.timezone = cal.timezone || 1; // CET = UTC+1 (standard time; DST not modelled)
     
     // Map bearing for alignment
-    this.mapBearing = -92.58546386659737;
+    this.mapBearing = cal.bearing || -92.58546386659737;
     
     // Time settings
     // Default to June 21st (Summer Solstice)
