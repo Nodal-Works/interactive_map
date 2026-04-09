@@ -243,21 +243,15 @@ class StormwaterFlowAnimation {
   /**
    * Create DEM visualization as an offscreen canvas
    * Uses terrain colors: low = green/tan, high = brown/white
-   * Rotates 90° counter-clockwise to match screen orientation (DEM is tall, canvas is wide)
    */
   createDEMVisualization() {
-    // The DEM is stored as rows×cols (height×width)
-    // We need to rotate 90° counter-clockwise for landscape canvas
-    // After rotation: width = demHeight, height = demWidth
-    
-    // Create offscreen canvas with ROTATED dimensions
+    // DEM stored as rows×cols (demHeight×demWidth) — render in native orientation
     this.demCanvas = document.createElement('canvas');
-    this.demCanvas.width = this.demHeight;  // Rotated: height becomes width
-    this.demCanvas.height = this.demWidth;  // Rotated: width becomes height
+    this.demCanvas.width = this.demWidth;
+    this.demCanvas.height = this.demHeight;
     const ctx = this.demCanvas.getContext('2d');
     
-    // Create image data with rotated dimensions
-    const imageData = ctx.createImageData(this.demHeight, this.demWidth);
+    const imageData = ctx.createImageData(this.demWidth, this.demHeight);
     const data = imageData.data;
     
     const elevRange = this.elevationMax - this.elevationMin;
@@ -266,10 +260,7 @@ class StormwaterFlowAnimation {
       for (let col = 0; col < this.demWidth; col++) {
         const elev = this.dem[row][col];
         
-        // 90° counter-clockwise rotation transformation
-        const newX = this.demHeight - 1 - row;
-        const newY = col;
-        const idx = (newY * this.demHeight + newX) * 4;
+        const idx = (row * this.demWidth + col) * 4;
         
         if (isNaN(elev)) {
           data[idx] = 0;
@@ -306,7 +297,7 @@ class StormwaterFlowAnimation {
     }
     
     ctx.putImageData(imageData, 0, 0);
-    console.log(`DEM visualization created: ${this.demHeight}x${this.demWidth}px (rotated 90° CCW)`);
+    console.log(`DEM visualization created: ${this.demWidth}x${this.demHeight}px`);
   }
 
   /**
@@ -451,7 +442,6 @@ class StormwaterFlowAnimation {
   /**
    * Generate flow lines and start points for particle animation
    * Uses normalized coordinates (0-1) for screen-independent rendering
-   * Applies 90° counter-clockwise rotation to match DEM visualization
    */
   generateFlowData() {
     const rows = this.demHeight;
@@ -473,13 +463,12 @@ class StormwaterFlowAnimation {
     const flowLines = [];
     const startPoints = [];
     
-    // Helper function to apply 90° counter-clockwise rotation
-    // Original DEM: dem[row][col] where row is Y (0=north), col is X (0=west)
-    // After 90° CCW rotation: new_x = 1 - row/rows, new_y = col/cols
-    const rotatePoint = (row, col) => {
+    // Map DEM row/col to normalized screen coordinates (no rotation)
+    // dem[row][col]: col → x (left to right), row → y (top to bottom)
+    const mapPoint = (row, col) => {
       return {
-        x: 1 - (row / rows),     // row becomes X (flipped: row=0 -> right)
-        y: col / cols            // col becomes Y (col=0 -> top)
+        x: col / cols,
+        y: row / rows
       };
     };
     
@@ -501,9 +490,8 @@ class StormwaterFlowAnimation {
         const nj = j + offset[1];
         
         if (ni >= 0 && ni < rows && nj >= 0 && nj < cols) {
-          // Apply 90° clockwise rotation to coordinates
-          const from = rotatePoint(i, j);
-          const to = rotatePoint(ni, nj);
+          const from = mapPoint(i, j);
+          const to = mapPoint(ni, nj);
           
           flowLines.push({
             from_x_norm: from.x,
@@ -530,7 +518,7 @@ class StormwaterFlowAnimation {
         if (this.buildingMask && this.buildingMask[i][j]) continue;
         if (this.waterMask && this.waterMask[i][j]) continue;
         if ((dir === 0 && acc > 100) || acc > poolThreshold) {
-          const pt = rotatePoint(i, j);
+          const pt = mapPoint(i, j);
           pools.push({
             x_norm: pt.x,
             y_norm: pt.y,
@@ -548,7 +536,7 @@ class StormwaterFlowAnimation {
         if (this.waterMask && this.waterMask[i][j]) continue;
         const acc = this.flowAcc[i][j];
         if (acc >= 1.0 && !isNaN(acc)) {
-          const pt = rotatePoint(i, j);
+          const pt = mapPoint(i, j);
           startPoints.push({
             position_norm: [pt.x, pt.y],
             weight: acc
@@ -659,13 +647,24 @@ class StormwaterFlowAnimation {
   }
   
   /**
-   * Scale normalized flow data (0-1 range) to current canvas dimensions
+   * Scale normalized flow data (0-1 range) to current canvas dimensions.
+   * Uses uniform scaling to preserve the DEM aspect ratio (no stretch).
    */
   scaleFlowToScreen() {
     if (!this.flowData) return;
     
-    const width = this.canvas.width;
-    const height = this.canvas.height;
+    const canvasW = this.canvas.width;
+    const canvasH = this.canvas.height;
+    
+    // No rotation: display width ← demWidth (cols), display height ← demHeight (rows)
+    const scaleX = canvasW / this.demWidth;
+    const scaleY = canvasH / this.demHeight;
+    const uniformScale = Math.min(scaleX, scaleY);
+    
+    this.displayWidth  = this.demWidth  * uniformScale;
+    this.displayHeight = this.demHeight * uniformScale;
+    this.displayOffsetX = (canvasW - this.displayWidth)  / 2;
+    this.displayOffsetY = (canvasH - this.displayHeight) / 2;
     
     // Calculate max accumulation for color scaling
     const accValues = this.flowData.flow_lines.map(line => line.accumulation);
@@ -674,25 +673,25 @@ class StormwaterFlowAnimation {
     
     // Scale flow lines from normalized (0-1) to pixel coordinates
     this.flowData.flow_lines_screen = this.flowData.flow_lines.map(line => ({
-      from_x: line.from_x_norm * width,
-      from_y: line.from_y_norm * height,
-      to_x: line.to_x_norm * width,
-      to_y: line.to_y_norm * height,
+      from_x: line.from_x_norm * this.displayWidth  + this.displayOffsetX,
+      from_y: line.from_y_norm * this.displayHeight + this.displayOffsetY,
+      to_x:   line.to_x_norm   * this.displayWidth  + this.displayOffsetX,
+      to_y:   line.to_y_norm   * this.displayHeight + this.displayOffsetY,
       accumulation: line.accumulation,
       direction: line.direction
     }));
     
     // Scale start points from normalized (0-1) to pixel coordinates
     this.flowData.start_points_screen = this.flowData.start_points.map(point => ({
-      x: point.position_norm[0] * width,
-      y: point.position_norm[1] * height,
+      x: point.position_norm[0] * this.displayWidth  + this.displayOffsetX,
+      y: point.position_norm[1] * this.displayHeight + this.displayOffsetY,
       weight: point.weight
     }));
     
     // Build spatial index for fast lookups
     this.buildFlowGrid();
     
-    console.log(`Scaled ${this.flowData.flow_lines_screen.length} flow lines to ${width}x${height}px`);
+    console.log(`Scaled ${this.flowData.flow_lines_screen.length} flow lines to ${canvasW}x${canvasH}px (display ${Math.round(this.displayWidth)}x${Math.round(this.displayHeight)}, offset ${Math.round(this.displayOffsetX)},${Math.round(this.displayOffsetY)})`);
   }
   
   /**
@@ -871,11 +870,10 @@ class StormwaterFlowAnimation {
    */
   isBuilding(screenX, screenY) {
     if (!this.buildingMask) return false;
-    const xNorm = screenX / this.canvas.width;
-    const yNorm = screenY / this.canvas.height;
-    // Inverse of rotatePoint: x_norm = 1 - row/rows, y_norm = col/cols
-    const row = Math.floor((1 - xNorm) * this.demHeight);
-    const col = Math.floor(yNorm * this.demWidth);
+    const xNorm = (screenX - (this.displayOffsetX || 0)) / (this.displayWidth  || this.canvas.width);
+    const yNorm = (screenY - (this.displayOffsetY || 0)) / (this.displayHeight || this.canvas.height);
+    const col = Math.floor(xNorm * this.demWidth);
+    const row = Math.floor(yNorm * this.demHeight);
     if (row < 0 || row >= this.demHeight || col < 0 || col >= this.demWidth) return false;
     return this.buildingMask[row][col];
   }
@@ -885,10 +883,10 @@ class StormwaterFlowAnimation {
    */
   isWater(screenX, screenY) {
     if (!this.waterMask) return false;
-    const xNorm = screenX / this.canvas.width;
-    const yNorm = screenY / this.canvas.height;
-    const row = Math.floor((1 - xNorm) * this.demHeight);
-    const col = Math.floor(yNorm * this.demWidth);
+    const xNorm = (screenX - (this.displayOffsetX || 0)) / (this.displayWidth  || this.canvas.width);
+    const yNorm = (screenY - (this.displayOffsetY || 0)) / (this.displayHeight || this.canvas.height);
+    const col = Math.floor(xNorm * this.demWidth);
+    const row = Math.floor(yNorm * this.demHeight);
     if (row < 0 || row >= this.demHeight || col < 0 || col >= this.demWidth) return false;
     return this.waterMask[row][col];
   }
