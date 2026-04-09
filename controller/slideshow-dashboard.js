@@ -106,8 +106,8 @@ function updateSlideshowDashboard() {
                 </div>
                 ${meta.title ? `<div style="font-size: 1.1rem; font-weight: 600; color: #1f2937; margin-bottom: 0.5rem;">${meta.title}</div>` : ''}
                 ${meta.description ? `<p class="info-text" style="margin-bottom: 0.75rem;">${meta.description}</p>` : ''}
-                ${meta.source ? `<p style="font-size: 0.8rem; color: #9ca3af; font-style: italic;">Source: ${meta.source}</p>` : ''}
-                ${slideshowState.slideType ? `<div style="margin-top: 0.5rem;"><span style="background: #e5e7eb; padding: 2px 8px; border-radius: 4px; font-size: 0.75rem; text-transform: uppercase;">${slideshowState.slideType}</span></div>` : ''}
+                ${meta.source ? `<p style="font-size: 0.8rem; color: #9ca3af; font-style: italic;"><span class="material-icons" style="font-size: 12px; vertical-align: middle;">public</span> ${meta.source}</p>` : ''}
+                ${slideshowState.slideType ? `<div style="margin-top: 0.5rem;"><span style="background: ${(slideshowState.slideType === 'wms' || slideshowState.slideType === 'arcgis') ? '#dbeafe' : '#e5e7eb'}; color: ${(slideshowState.slideType === 'wms' || slideshowState.slideType === 'arcgis') ? '#1d4ed8' : 'inherit'}; padding: 2px 8px; border-radius: 4px; font-size: 0.75rem; text-transform: uppercase;">${slideshowState.slideType === 'wms' ? 'WMS Layer' : slideshowState.slideType === 'arcgis' ? 'ArcGIS Layer' : slideshowState.slideType}</span></div>` : ''}
             </div>
         </div>
     `;

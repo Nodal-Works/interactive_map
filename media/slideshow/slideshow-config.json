@@ -1,8 +1,184 @@
 {
   "slides": [
     {
-      "media": "building-footprints.geojson",
+      "type": "wms",
+      "duration": 10000,
+      "transition": "fade",
+      "wms": {
+        "url": "https://hades.slu.se/lm/ortofoto/wms/v1.3",
+        "layers": "Ortofoto_0.5",
+        "format": "image/jpeg",
+        "version": "1.1.1"
+      },
+      "metadata": {
+        "title": "Ortofoto (Current Aerial Photo)",
+        "description": "High-resolution colour orthophoto imagery of the study area at 0.5 m resolution",
+        "source": "Lantmäteriet via SLU"
+      }
+    },
+    {
+      "type": "wms",
+      "duration": 10000,
+      "transition": "fade",
+      "wms": {
+        "url": "https://hades.slu.se/lm/ortofoto/wms/v1.3",
+        "layers": "Ortofoto_IR",
+        "format": "image/jpeg",
+        "version": "1.1.1"
+      },
+      "metadata": {
+        "title": "Ortofoto Infrared",
+        "description": "Infrared orthophoto at 0.5 m resolution — reveals vegetation health and water features",
+        "source": "Lantmäteriet via SLU"
+      }
+    },
+    {
+      "type": "wms",
+      "duration": 10000,
+      "transition": "fade",
+      "wms": {
+        "url": "https://hades.slu.se/lm/historiska-ortofoton/wms/v1",
+        "layers": "OI.Histortho_60",
+        "format": "image/jpeg",
+        "version": "1.1.1"
+      },
+      "metadata": {
+        "title": "Historical Aerial Photo ~1960",
+        "description": "Black-and-white aerial photography from around 1960 — see how the area looked over 60 years ago",
+        "source": "Lantmäteriet via SLU"
+      }
+    },
+    {
+      "type": "wms",
+      "duration": 10000,
+      "transition": "fade",
+      "wms": {
+        "url": "https://hades.slu.se/lm/historiska-ortofoton/wms/v1",
+        "layers": "OI.Histortho_75",
+        "format": "image/jpeg",
+        "version": "1.1.1"
+      },
+      "metadata": {
+        "title": "Historical Aerial Photo ~1975",
+        "description": "Black-and-white aerial photography from around 1975 — traces of urban development emerge",
+        "source": "Lantmäteriet via SLU"
+      }
+    },
+    {
+      "type": "wms",
+      "duration": 10000,
+      "transition": "fade",
+      "wms": {
+        "url": "https://hades.slu.se/lm/topowebb/wms/v1",
+        "layers": "topowebbkartan",
+        "format": "image/png",
+        "version": "1.1.1"
+      },
+      "metadata": {
+        "title": "Topographic Map",
+        "description": "Detailed topographic web map showing terrain, roads, buildings, and land cover",
+        "source": "Lantmäteriet via SLU"
+      }
+    },
+    {
+      "type": "wms",
+      "duration": 10000,
+      "transition": "fade",
+      "wms": {
+        "url": "https://hades.slu.se/lm/topowebb/wms/v1",
+        "layers": "topowebbkartan_nedtonad",
+        "format": "image/png",
+        "version": "1.1.1"
+      },
+      "metadata": {
+        "title": "Topographic Map (Muted)",
+        "description": "Subdued topographic map — useful as a neutral basemap for overlaying analysis data",
+        "source": "Lantmäteriet via SLU"
+      }
+    },
+    {
+      "type": "wms",
+      "duration": 10000,
+      "transition": "fade",
+      "wms": {
+        "url": "https://hades.slu.se/lm/hojdmodell/wms/v1.1",
+        "layers": "terrangskuggning",
+        "format": "image/png",
+        "version": "1.1.1"
+      },
+      "metadata": {
+        "title": "Terrain Hillshade",
+        "description": "Shaded relief map derived from the national elevation model — reveals landform and micro-topography",
+        "source": "Lantmäteriet via SLU"
+      }
+    },
+    {
+      "type": "wms",
+      "duration": 10000,
+      "transition": "fade",
+      "wms": {
+        "url": "https://hades.slu.se/lm/hojdmodell/wms/v1.1",
+        "layers": "terranglutning",
+        "format": "image/png",
+        "version": "1.1.1"
+      },
+      "metadata": {
+        "title": "Terrain Slope",
+        "description": "Slope gradient map in greyscale — steeper areas appear darker, useful for drainage and accessibility analysis",
+        "source": "Lantmäteriet via SLU"
+      }
+    },
+    {
+      "type": "wms",
+      "duration": 10000,
+      "transition": "fade",
+      "wms": {
+        "url": "https://hades.slu.se/lm/fastighet/wms/v1.1",
+        "layers": "granser,text",
+        "format": "image/png",
+        "version": "1.1.1"
+      },
+      "metadata": {
+        "title": "Property Boundaries",
+        "description": "Cadastral boundaries and property designations from the Swedish land registry",
+        "source": "Lantmäteriet via SLU"
+      }
+    },
+    {
+      "type": "wms",
+      "duration": 10000,
+      "transition": "fade",
+      "wms": {
+        "url": "https://hades.slu.se/lm/inspire/hy/wms/v1",
+        "layers": "HY.PhysicalWaters.Waterbodies,HY.Network",
+        "format": "image/png",
+        "version": "1.1.1"
+      },
+      "metadata": {
+        "title": "Hydrography",
+        "description": "Water bodies, watercourses, and the hydrographic network",
+        "source": "Lantmäteriet via SLU (INSPIRE)"
+      }
+    },
+    {
+      "type": "arcgis",
+      "duration": 10000,
+      "transition": "fade",
+      "arcgis": {
+        "url": "https://gis2.boverket.se/arcgis/rest/services/Treecover_2023/MapServer",
+        "format": "png",
+        "transparent": true,
+        "layers": "0"
+      },
+      "metadata": {
+        "title": "Tree Cover (2023)",
+        "description": "Tree canopy cover from 2023 — green areas indicate tree coverage. Useful for urban ecology and canopy analysis",
+        "source": "Boverket (Swedish National Board of Housing)"
+      }
+    },
+    {
       "type": "geojson",
+      "media": "building-footprints.geojson",
       "duration": 8000,
       "transition": "fade",
       "metadata": {
@@ -36,8 +212,8 @@
       }
     },
     {
-      "media": "street-network.geojson",
       "type": "geojson",
+      "media": "street-network.geojson",
       "duration": 8000,
       "transition": "fade",
       "metadata": {
@@ -73,71 +249,6 @@
           "strokeOpacity": 0.8
         }
       }
-    },
-    {
-      "media": "satellite_current.png",
-      "type": "image",
-      "duration": 6000,
-      "transition": "fade",
-      "rotation": 90,
-      "fitMode": "stretch",
-      "metadata": {
-        "title": "Current Satellite Imagery",
-        "description": "Recent aerial photography of the study area",
-        "source": "Lantmäteriet (Swedish Land Survey)"
-      }
-    },
-    {
-      "media": "satellite_historic.png",
-      "type": "image",
-      "duration": 6000,
-      "transition": "fade",
-      "rotation": 90,
-      "fitMode": "stretch",
-      "metadata": {
-        "title": "Historic Satellite Imagery",
-        "description": "Composite aerial photography from 1960 ±5 years",
-        "source": "Lantmäteriet (Swedish Land Survey)"
-      }
-    },
-    {
-      "media": "terrain_current.png",
-      "type": "image",
-      "duration": 6000,
-      "transition": "fade",
-      "rotation": 90,
-      "fitMode": "stretch",
-      "metadata": {
-        "title": "Current Terrain",
-        "description": "Terrain elevation map of the study area",
-        "source": "Lantmäteriet (Swedish Land Survey)"
-      }
-    },
-    {
-      "media": "sunstudy.mp4",
-      "type": "video",
-      "duration": 10000,
-      "transition": "fade",
-      "rotation": 0,
-      "fitMode": "stretch",
-      "metadata": {
-        "title": "Sun Study - Winter Solstice",
-        "description": "Solar analysis for winter solstice",
-        "source": "Created by Sanjay Somanath using Ladybug Tools"
-      }
-    },
-    {
-      "media": "wind_simulation.png",
-      "type": "image",
-      "duration": 8000,
-      "transition": "fade",
-      "rotation": 0,
-      "fitMode": "stretch",
-      "metadata": {
-        "title": "Wind Simulation",
-        "description": "Wind velocity at a height of 1.5m above ground",
-        "source": "Chalmers Fraunhofer - Franziska Hunger, Andreas Mark"
-      }
     }
   ],
   "settings": {
@@ -145,6 +256,6 @@
     "autoAdvance": false,
     "showMetadata": true,
     "metadataPosition": "bottom-right",
-    "fitMode": "contain"
+    "wmsTransitionDuration": 1000
   }
 }

@@ -1,5 +1,5 @@
 // ===== Slideshow Animation System =====
-// Display image/video/gif/geojson media with transitions and metadata
+// Display WMS layers, GeoJSON, images, and video with transitions and metadata
 
 const slideshowCanvas = document.getElementById('slideshow-canvas');
 const slideshowCtx = slideshowCanvas ? slideshowCanvas.getContext('2d') : null;
@@ -15,10 +15,12 @@ let currentSlideIndex = 0;
 let isSlideShowActive = false;
 let slideshowTimer = null;
 let currentMediaElement = null;
-let currentMediaRotation = 0; // Track rotation of current media
-let currentMediaFitMode = 'contain'; // Track fitMode of current media
+let currentMediaRotation = 0;
+let currentMediaFitMode = 'contain';
 let transitionProgress = 0;
 let transitionAnimationFrame = null;
+let activeWmsLayerId = null; // currently visible WMS layer
+let wmsTransitionFrame = null;
 
 // Media cache
 const mediaCache = new Map();
@@ -33,13 +35,13 @@ async function loadSlideshowConfig() {
     const response = await fetch(SLIDESHOW_CONFIG_PATH);
     if (!response.ok) {
       console.warn('Slideshow config not found. Using default empty config.');
-      return { slides: [], settings: { loop: true, autoAdvance: true, showMetadata: true, metadataPosition: 'bottom-right', fitMode: 'contain' } };
+      return { slides: [], settings: { loop: true, autoAdvance: true, showMetadata: true, metadataPosition: 'bottom-right' } };
     }
     const config = await response.json();
     return config;
   } catch (error) {
     console.error('Error loading slideshow config:', error);
-    return { slides: [], settings: { loop: true, autoAdvance: true, showMetadata: true, metadataPosition: 'bottom-right', fitMode: 'contain' } };
+    return { slides: [], settings: { loop: true, autoAdvance: true, showMetadata: true, metadataPosition: 'bottom-right' } };
   }
 }
 
@@ -53,21 +55,126 @@ function resizeSlideshowCanvas() {
   slideshowCanvas.style.height = s.h + 'px';
 }
 
-// Preload media
+// ========== WMS Layer Management ==========
+
+// Build a unique source/layer id for a slide
+function wmsId(index) {
+  return 'slideshow-wms-' + index;
+}
+
+// Build tile URL for a slide (WMS or ArcGIS MapServer)
+function buildTileUrl(slide) {
+  const tileSize = 256;
+  if (slide.type === 'arcgis') {
+    const a = slide.arcgis;
+    return a.url + '/export' +
+      '?bbox={bbox-epsg-3857}' +
+      '&bboxSR=3857&imageSR=3857' +
+      '&size=' + tileSize + ',' + tileSize +
+      '&format=' + encodeURIComponent(a.format || 'png') +
+      '&transparent=' + (a.transparent !== false) +
+      '&layers=show:' + (a.layers != null ? a.layers : '0') +
+      '&f=image';
+  }
+  // Default: WMS
+  const wms = slide.wms;
+  return wms.url +
+    '?SERVICE=WMS' +
+    '&VERSION=' + encodeURIComponent(wms.version || '1.1.1') +
+    '&REQUEST=GetMap' +
+    '&LAYERS=' + encodeURIComponent(wms.layers) +
+    '&STYLES=' +
+    '&SRS=EPSG:3857' +
+    '&FORMAT=' + encodeURIComponent(wms.format || 'image/png') +
+    '&TRANSPARENT=true' +
+    '&WIDTH=' + tileSize +
+    '&HEIGHT=' + tileSize +
+    '&BBOX={bbox-epsg-3857}';
+}
+
+// Add a raster source + layer to the map (hidden initially)
+function addWmsLayer(index, slide) {
+  const id = wmsId(index);
+  if (map.getSource(id)) return; // already added
+
+  const tileSize = 256;
+  const url = buildTileUrl(slide);
+
+  map.addSource(id, {
+    type: 'raster',
+    tiles: [url],
+    tileSize: tileSize
+  });
+
+  map.addLayer({
+    id: id,
+    type: 'raster',
+    source: id,
+    paint: {
+      'raster-opacity': 0,
+      'raster-fade-duration': 0
+    }
+  });
+}
+
+// Remove a WMS layer + source from the map
+function removeWmsLayer(index) {
+  const id = wmsId(index);
+  if (map.getLayer(id)) map.removeLayer(id);
+  if (map.getSource(id)) map.removeSource(id);
+}
+
+// Remove all slideshow raster layers (WMS + ArcGIS)
+function removeAllWmsLayers() {
+  if (!slideshowConfig || !slideshowConfig.slides) return;
+  slideshowConfig.slides.forEach((slide, i) => {
+    if (slide.type === 'wms' || slide.type === 'arcgis') removeWmsLayer(i);
+  });
+  activeWmsLayerId = null;
+}
+
+// Animate WMS layer opacity transition (fade in new, fade out old)
+function animateWmsTransition(oldLayerId, newLayerId, duration) {
+  return new Promise((resolve) => {
+    if (wmsTransitionFrame) cancelAnimationFrame(wmsTransitionFrame);
+    const startTime = performance.now();
+
+    function step(now) {
+      const t = Math.min((now - startTime) / duration, 1);
+      // Ease in-out
+      const ease = t < 0.5 ? 2 * t * t : 1 - Math.pow(-2 * t + 2, 2) / 2;
+
+      if (newLayerId && map.getLayer(newLayerId)) {
+        map.setPaintProperty(newLayerId, 'raster-opacity', ease);
+      }
+      if (oldLayerId && map.getLayer(oldLayerId)) {
+        map.setPaintProperty(oldLayerId, 'raster-opacity', 1 - ease);
+      }
+
+      if (t < 1) {
+        wmsTransitionFrame = requestAnimationFrame(step);
+      } else {
+        wmsTransitionFrame = null;
+        resolve();
+      }
+    }
+    wmsTransitionFrame = requestAnimationFrame(step);
+  });
+}
+
+// ========== Legacy media preload (images/video/geojson) ==========
+
 async function preloadMedia(slide) {
   const mediaPath = SLIDESHOW_MEDIA_PATH + slide.media;
-  
+
   if (mediaCache.has(mediaPath)) {
     return mediaCache.get(mediaPath);
   }
-  
+
   if (slide.type === 'image' || slide.type === 'gif') {
     return new Promise((resolve, reject) => {
       const img = new Image();
-      img.onload = () => {
-        mediaCache.set(mediaPath, img);
-        resolve(img);
-      };
+      img.onload = () => { mediaCache.set(mediaPath, img); resolve(img); };
       img.onerror = () => reject(new Error(`Failed to load image: ${mediaPath}`));
       img.src = mediaPath;
     });
@@ -77,222 +184,79 @@ async function preloadMedia(slide) {
       video.preload = 'auto';
       video.muted = true;
       video.playsInline = true;
-      video.onloadeddata = () => {
-        mediaCache.set(mediaPath, video);
-        resolve(video);
-      };
+      video.onloadeddata = () => { mediaCache.set(mediaPath, video); resolve(video); };
       video.onerror = () => reject(new Error(`Failed to load video: ${mediaPath}`));
       video.src = mediaPath;
     });
   } else if (slide.type === 'geojson') {
-    try {
-      const response = await fetch(mediaPath);
-      const geojson = await response.json();
-      mediaCache.set(mediaPath, geojson);
-      return geojson;
-    } catch (error) {
-      throw new Error(`Failed to load GeoJSON: ${mediaPath}`);
-    }
+    const response = await fetch(mediaPath);
+    const geojson = await response.json();
+    mediaCache.set(mediaPath, geojson);
+    return geojson;
   }
 }
 
-// Draw image/video on canvas with fit mode and optional rotation
+// Draw image/video on canvas
 function drawMediaOnCanvas(media, fitMode = 'contain', rotation = 0) {
   if (!slideshowCtx) return;
-  
-  const canvasWidth = slideshowCanvas.width;
-  const canvasHeight = slideshowCanvas.height;
-  
-  let mediaWidth, mediaHeight;
-  
-  if (media instanceof HTMLVideoElement) {
-    mediaWidth = media.videoWidth;
-    mediaHeight = media.videoHeight;
-  } else {
-    mediaWidth = media.width;
-    mediaHeight = media.height;
-  }
-  
-  if (!mediaWidth || !mediaHeight) return;
-  
-  // If rotating 90 or 270 degrees, swap dimensions for aspect ratio calculation
-  const rotatedDimensions = (rotation === 90 || rotation === 270);
-  const effectiveMediaWidth = rotatedDimensions ? mediaHeight : mediaWidth;
-  const effectiveMediaHeight = rotatedDimensions ? mediaWidth : mediaHeight;
-  
-  let drawWidth, drawHeight, drawX, drawY;
-  
+  const cw = slideshowCanvas.width, ch = slideshowCanvas.height;
+  let mw, mh;
+  if (media instanceof HTMLVideoElement) { mw = media.videoWidth; mh = media.videoHeight; }
+  else { mw = media.width; mh = media.height; }
+  if (!mw || !mh) return;
+
+  const rot90 = (rotation === 90 || rotation === 270);
+  const ew = rot90 ? mh : mw, eh = rot90 ? mw : mh;
+  let dw, dh, dx, dy;
   if (fitMode === 'contain') {
-    // Scale to fit inside canvas while maintaining aspect ratio
-    const scale = Math.min(canvasWidth / effectiveMediaWidth, canvasHeight / effectiveMediaHeight);
-    drawWidth = effectiveMediaWidth * scale;
-    drawHeight = effectiveMediaHeight * scale;
-    drawX = (canvasWidth - drawWidth) / 2;
-    drawY = (canvasHeight - drawHeight) / 2;
+    const s = Math.min(cw / ew, ch / eh); dw = ew * s; dh = eh * s;
   } else if (fitMode === 'cover') {
-    // Scale to cover entire canvas while maintaining aspect ratio
-    const scale = Math.max(canvasWidth / effectiveMediaWidth, canvasHeight / effectiveMediaHeight);
-    drawWidth = effectiveMediaWidth * scale;
-    drawHeight = effectiveMediaHeight * scale;
-    drawX = (canvasWidth - drawWidth) / 2;
-    drawY = (canvasHeight - drawHeight) / 2;
-  } else {
-    // Stretch to fill canvas
-    drawWidth = canvasWidth;
-    drawHeight = canvasHeight;
-    drawX = 0;
-    drawY = 0;
-  }
-  
-  slideshowCtx.clearRect(0, 0, canvasWidth, canvasHeight);
-  
-  // Apply rotation if needed
+    const s = Math.max(cw / ew, ch / eh); dw = ew * s; dh = eh * s;
+  } else { dw = cw; dh = ch; }
+  dx = (cw - dw) / 2; dy = (ch - dh) / 2;
+
+  slideshowCtx.clearRect(0, 0, cw, ch);
   if (rotation !== 0) {
     slideshowCtx.save();
-    
-    // Move to center of where the image will be drawn
-    const centerX = drawX + drawWidth / 2;
-    const centerY = drawY + drawHeight / 2;
-    
-    slideshowCtx.translate(centerX, centerY);
+    slideshowCtx.translate(dx + dw / 2, dy + dh / 2);
     slideshowCtx.rotate((rotation * Math.PI) / 180);
-    
-    // For 90/270 degree rotations, we need to adjust the drawing rectangle
-    // because the image dimensions are swapped
-    if (rotatedDimensions) {
-      slideshowCtx.drawImage(media, -drawHeight / 2, -drawWidth / 2, drawHeight, drawWidth);
-    } else {
-      slideshowCtx.drawImage(media, -drawWidth / 2, -drawHeight / 2, drawWidth, drawHeight);
-    }
-    
+    if (rot90) slideshowCtx.drawImage(media, -dh / 2, -dw / 2, dh, dw);
+    else slideshowCtx.drawImage(media, -dw / 2, -dh / 2, dw, dh);
     slideshowCtx.restore();
   } else {
-    slideshowCtx.drawImage(media, drawX, drawY, drawWidth, drawHeight);
+    slideshowCtx.drawImage(media, dx, dy, dw, dh);
   }
 }
 
-// Apply transition effect
-function applyTransition(oldMedia, newMedia, progress, transitionType, oldRotation = 0, newRotation = 0, oldFitMode = 'contain', newFitMode = 'contain') {
-  if (!slideshowCtx) return;
-  
-  const canvasWidth = slideshowCanvas.width;
-  const canvasHeight = slideshowCanvas.height;
-  
-  slideshowCtx.clearRect(0, 0, canvasWidth, canvasHeight);
-  
-  switch (transitionType) {
-    case 'fade':
-      if (oldMedia) {
-        slideshowCtx.globalAlpha = 1 - progress;
-        drawMediaOnCanvas(oldMedia, oldFitMode, oldRotation);
-      }
-      if (newMedia) {
-        slideshowCtx.globalAlpha = progress;
-        drawMediaOnCanvas(newMedia, newFitMode, newRotation);
-      }
-      slideshowCtx.globalAlpha = 1;
-      break;
-      
-    case 'slide-left':
-      if (oldMedia) {
-        slideshowCtx.save();
-        slideshowCtx.translate(-canvasWidth * progress, 0);
-        drawMediaOnCanvas(oldMedia, oldFitMode, oldRotation);
-        slideshowCtx.restore();
-      }
-      if (newMedia) {
-        slideshowCtx.save();
-        slideshowCtx.translate(canvasWidth * (1 - progress), 0);
-        drawMediaOnCanvas(newMedia, newFitMode, newRotation);
-        slideshowCtx.restore();
-      }
-      break;
-      
-    case 'slide-right':
-      if (oldMedia) {
-        slideshowCtx.save();
-        slideshowCtx.translate(canvasWidth * progress, 0);
-        drawMediaOnCanvas(oldMedia, oldFitMode, oldRotation);
-        slideshowCtx.restore();
-      }
-      if (newMedia) {
-        slideshowCtx.save();
-        slideshowCtx.translate(-canvasWidth * (1 - progress), 0);
-        drawMediaOnCanvas(newMedia, newFitMode, newRotation);
-        slideshowCtx.restore();
-      }
-      break;
-      
-    case 'zoom':
-      if (oldMedia) {
-        const scale = 1 + progress * 0.5;
-        slideshowCtx.globalAlpha = 1 - progress;
-        slideshowCtx.save();
-        slideshowCtx.translate(canvasWidth / 2, canvasHeight / 2);
-        slideshowCtx.scale(scale, scale);
-        slideshowCtx.translate(-canvasWidth / 2, -canvasHeight / 2);
-        drawMediaOnCanvas(oldMedia, oldFitMode, oldRotation);
-        slideshowCtx.restore();
-        slideshowCtx.globalAlpha = 1;
-      }
-      if (newMedia) {
-        const scale = 0.5 + progress * 0.5;
-        slideshowCtx.globalAlpha = progress;
-        slideshowCtx.save();
-        slideshowCtx.translate(canvasWidth / 2, canvasHeight / 2);
-        slideshowCtx.scale(scale, scale);
-        slideshowCtx.translate(-canvasWidth / 2, -canvasHeight / 2);
-        drawMediaOnCanvas(newMedia, newFitMode, newRotation);
-        slideshowCtx.restore();
-        slideshowCtx.globalAlpha = 1;
-      }
-      break;
-      
-    default: // instant
-      if (newMedia) {
-        drawMediaOnCanvas(newMedia, newFitMode, newRotation);
-      }
-  }
-}
-
-// Animate transition
-function animateTransition(oldMedia, newMedia, transitionType, duration = 500, oldRotation = 0, newRotation = 0, oldFitMode = 'contain', newFitMode = 'contain') {
+// Canvas transition (for image/video slides)
+function animateCanvasTransition(oldMedia, newMedia, transitionType, duration = 500, oldRot = 0, newRot = 0, oldFit = 'contain', newFit = 'contain') {
   return new Promise((resolve) => {
-    const startTime = performance.now();
-    
-    function animate(currentTime) {
-      const elapsed = currentTime - startTime;
-      transitionProgress = Math.min(elapsed / duration, 1);
-      
-      applyTransition(oldMedia, newMedia, transitionProgress, transitionType, oldRotation, newRotation, oldFitMode, newFitMode);
-      
-      if (transitionProgress < 1) {
-        transitionAnimationFrame = requestAnimationFrame(animate);
-      } else {
-        resolve();
+    const start = performance.now();
+    function step(now) {
+      const t = Math.min((now - start) / duration, 1);
+      if (slideshowCtx) {
+        slideshowCtx.clearRect(0, 0, slideshowCanvas.width, slideshowCanvas.height);
+        if (oldMedia) { slideshowCtx.globalAlpha = 1 - t; drawMediaOnCanvas(oldMedia, oldFit, oldRot); }
+        if (newMedia) { slideshowCtx.globalAlpha = t; drawMediaOnCanvas(newMedia, newFit, newRot); }
+        slideshowCtx.globalAlpha = 1;
       }
+      if (t < 1) transitionAnimationFrame = requestAnimationFrame(step);
+      else resolve();
     }
-    
-    transitionAnimationFrame = requestAnimationFrame(animate);
+    transitionAnimationFrame = requestAnimationFrame(step);
   });
 }
 
 // Display metadata
-function displayMetadata(slide, highlightValue = null) {
-  // Hide metadata overlay in main window - it's now shown in controller
-  if (slideshowMetadata) {
-    slideshowMetadata.style.display = 'none';
-  }
-  
-  // Still broadcast to controller
+function displayMetadata(slide) {
+  if (slideshowMetadata) slideshowMetadata.style.display = 'none';
   broadcastSlideshowState(slide);
 }
 
 // Broadcast slideshow state to controller window
 function broadcastSlideshowState(slide) {
-  // Allow broadcasting even if config is missing (e.g. during loading or error)
   const total = slideshowConfig && slideshowConfig.slides ? slideshowConfig.slides.length : 0;
-  
+
   slideshowChannel.postMessage({
     type: 'slideshow_update',
     isActive: isSlideShowActive,
@@ -305,612 +269,327 @@ function broadcastSlideshowState(slide) {
 
 // Update legend to highlight current attribute - broadcasts to controller only
 function highlightLegendItem(slide, propertyValue) {
-  // Broadcast highlight state to controller
-  slideshowChannel.postMessage({
-    type: 'slideshow_legend_highlight',
-    highlightValue: propertyValue
-  });
+  slideshowChannel.postMessage({ type: 'slideshow_legend_highlight', highlightValue: propertyValue });
 }
 
 // GeoJSON animation state
 let geojsonAnimationFrame = null;
 let geojsonAnimationActive = false;
 
-// Extract unique values for a property from GeoJSON
-function getUniquePropertyValues(geojson, propertyName) {
-  const values = new Set();
-  if (geojson.features) {
-    geojson.features.forEach(feature => {
-      const value = feature.properties?.[propertyName];
-      if (value !== undefined && value !== null) {
-        values.add(value);
-      }
-    });
-  }
-  return Array.from(values);
-}
-
 // Animate GeoJSON by sequentially highlighting each unique attribute value
 async function animateGeoJSONByProperty(geojson, slide) {
   const style = slide.metadata?.style || {};
   const colorProperty = style.colorProperty;
-  
-  if (!colorProperty || !style.colorMap) {
-    // No property-based animation, just display normally
-    return;
-  }
-  
+  if (!colorProperty || !style.colorMap) return;
+
   geojsonAnimationActive = true;
   const uniqueValues = Object.keys(style.colorMap);
-  
-  // Animation parameters
-  const glowDuration = 800; // Duration of glow effect in ms
-  const fillDuration = 400; // Duration of fill effect in ms
-  const pauseBetween = 200; // Pause between attributes
-  
+  const glowDuration = 800, fillDuration = 400, pauseBetween = 200;
+
   for (let i = 0; i < uniqueValues.length && geojsonAnimationActive; i++) {
     const value = uniqueValues[i];
     const color = style.colorMap[value];
-    
-    // Highlight current legend item
     highlightLegendItem(slide, value);
-    
-    // Phase 1: Intense glow outline
     await animateGlow(value, color, glowDuration, colorProperty);
-    
-    // Phase 2: Fill/stroke appears
     if (geojsonAnimationActive) {
       await animateFill(value, color, fillDuration, colorProperty, style.fillOpacity || 0.5, style.strokeOpacity || 0.8, uniqueValues, style.colorMap);
     }
-    
-    // Small pause before next attribute
     if (i < uniqueValues.length - 1 && geojsonAnimationActive) {
       await new Promise(resolve => setTimeout(resolve, pauseBetween));
     }
   }
-  
-  // Broadcast clear highlight to controller
-  slideshowChannel.postMessage({
-    type: 'slideshow_legend_highlight',
-    highlightValue: null
-  });
-  
-  // Return true if animation completed successfully
+  slideshowChannel.postMessage({ type: 'slideshow_legend_highlight', highlightValue: null });
   return geojsonAnimationActive;
 }
 
-// Animate glowing outline for a specific property value
 function animateGlow(propertyValue, color, duration, propertyName) {
   return new Promise((resolve) => {
     const startTime = performance.now();
-    
-    // Add glow layer if it doesn't exist
     if (!map.getLayer('slideshow-glow')) {
-      map.addLayer({
-        id: 'slideshow-glow',
-        type: 'line',
-        source: 'slideshow-geojson',
-        paint: {
-          'line-color': color,
-          'line-width': 0,
-          'line-blur': 0,
-          'line-opacity': 0
-        }
-      });
+      map.addLayer({ id: 'slideshow-glow', type: 'line', source: 'slideshow-geojson', paint: { 'line-color': color, 'line-width': 0, 'line-blur': 0, 'line-opacity': 0 } });
     }
-    
     function animate(currentTime) {
-      if (!geojsonAnimationActive) {
-        resolve();
-        return;
-      }
-      
-      const elapsed = currentTime - startTime;
-      const progress = Math.min(elapsed / duration, 1);
-      
-      // Glow effect: pulse from 0 to max and back
-      const glowProgress = progress < 0.5 ? progress * 2 : (1 - progress) * 2;
-      const maxWidth = 8;
-      const maxBlur = 10;
-      const maxOpacity = 1;
-      
-      map.setPaintProperty('slideshow-glow', 'line-width', glowProgress * maxWidth);
-      map.setPaintProperty('slideshow-glow', 'line-blur', glowProgress * maxBlur);
-      map.setPaintProperty('slideshow-glow', 'line-opacity', glowProgress * maxOpacity);
+      if (!geojsonAnimationActive) { resolve(); return; }
+      const progress = Math.min((currentTime - startTime) / duration, 1);
+      const g = progress < 0.5 ? progress * 2 : (1 - progress) * 2;
+      map.setPaintProperty('slideshow-glow', 'line-width', g * 8);
+      map.setPaintProperty('slideshow-glow', 'line-blur', g * 10);
+      map.setPaintProperty('slideshow-glow', 'line-opacity', g);
       map.setPaintProperty('slideshow-glow', 'line-color', color);
       map.setFilter('slideshow-glow', ['==', ['get', propertyName], propertyValue]);
-      
-      if (progress < 1) {
-        geojsonAnimationFrame = requestAnimationFrame(animate);
-      } else {
-        resolve();
-      }
+      if (progress < 1) geojsonAnimationFrame = requestAnimationFrame(animate);
+      else resolve();
     }
-    
     geojsonAnimationFrame = requestAnimationFrame(animate);
   });
 }
 
-// Animate fill/stroke for a specific property value
 function animateFill(propertyValue, color, duration, propertyName, targetFillOpacity, targetStrokeOpacity, allValues, colorMap) {
   return new Promise((resolve) => {
     const startTime = performance.now();
     const currentIndex = allValues.indexOf(propertyValue);
     const previousValues = allValues.slice(0, currentIndex);
-    
     function animate(currentTime) {
-      if (!geojsonAnimationActive) {
-        resolve();
-        return;
-      }
-      
-      const elapsed = currentTime - startTime;
-      const progress = Math.min(elapsed / duration, 1);
-      
-      // Show all values up to and including current one
+      if (!geojsonAnimationActive) { resolve(); return; }
+      const progress = Math.min((currentTime - startTime) / duration, 1);
       const visibleValues = allValues.slice(0, currentIndex + 1);
-      
-      // Build match expression with opacity per feature for fills
-      const fillOpacityExpression = ['match', ['get', propertyName]];
-      previousValues.forEach(val => {
-        fillOpacityExpression.push(val, targetFillOpacity);
-      });
-      const currentFillOpacity = progress * targetFillOpacity;
-      fillOpacityExpression.push(propertyValue, currentFillOpacity);
-      fillOpacityExpression.push(0);
-      
-      // Build match expression with opacity per feature for lines/strokes
-      const strokeOpacityExpression = ['match', ['get', propertyName]];
-      previousValues.forEach(val => {
-        strokeOpacityExpression.push(val, targetStrokeOpacity);
-      });
-      const currentStrokeOpacity = progress * targetStrokeOpacity;
-      strokeOpacityExpression.push(propertyValue, currentStrokeOpacity);
-      strokeOpacityExpression.push(0);
-      
-      // Build color match expression
-      const colorExpression = ['match', ['get', propertyName]];
-      visibleValues.forEach(val => {
-        colorExpression.push(val, colorMap[val]);
-      });
-      colorExpression.push('#cccccc'); // default color
-      
-      const multiFilter = ['any', ...visibleValues.map(v => ['==', ['get', propertyName], v])];
-      
-      // Update fill layer (for polygons)
-      if (map.getLayer('slideshow-fill')) {
-        map.setFilter('slideshow-fill', ['all', ['==', ['geometry-type'], 'Polygon'], multiFilter]);
-        map.setPaintProperty('slideshow-fill', 'fill-opacity', fillOpacityExpression);
-        map.setPaintProperty('slideshow-fill', 'fill-color', colorExpression);
-      }
-      
-      // Update line layer (for LineStrings like streets)
-      if (map.getLayer('slideshow-line')) {
-        map.setFilter('slideshow-line', ['all', ['==', ['geometry-type'], 'LineString'], multiFilter]);
-        map.setPaintProperty('slideshow-line', 'line-opacity', strokeOpacityExpression);
-        map.setPaintProperty('slideshow-line', 'line-color', colorExpression);
-      }
-      
-      if (progress < 1) {
-        geojsonAnimationFrame = requestAnimationFrame(animate);
-      } else {
-        resolve();
-      }
+      const fillOp = ['match', ['get', propertyName]];
+      previousValues.forEach(v => fillOp.push(v, targetFillOpacity));
+      fillOp.push(propertyValue, progress * targetFillOpacity);
+      fillOp.push(0);
+      const strokeOp = ['match', ['get', propertyName]];
+      previousValues.forEach(v => strokeOp.push(v, targetStrokeOpacity));
+      strokeOp.push(propertyValue, progress * targetStrokeOpacity);
+      strokeOp.push(0);
+      const colExpr = ['match', ['get', propertyName]];
+      visibleValues.forEach(v => colExpr.push(v, colorMap[v]));
+      colExpr.push('#cccccc');
+      const mf = ['any', ...visibleValues.map(v => ['==', ['get', propertyName], v])];
+      if (map.getLayer('slideshow-fill')) { map.setFilter('slideshow-fill', ['all', ['==', ['geometry-type'], 'Polygon'], mf]); map.setPaintProperty('slideshow-fill', 'fill-opacity', fillOp); map.setPaintProperty('slideshow-fill', 'fill-color', colExpr); }
+      if (map.getLayer('slideshow-line')) { map.setFilter('slideshow-line', ['all', ['==', ['geometry-type'], 'LineString'], mf]); map.setPaintProperty('slideshow-line', 'line-opacity', strokeOp); map.setPaintProperty('slideshow-line', 'line-color', colExpr); }
+      if (progress < 1) geojsonAnimationFrame = requestAnimationFrame(animate);
+      else resolve();
     }
-    
     geojsonAnimationFrame = requestAnimationFrame(animate);
   });
 }
 
-// Stop GeoJSON animation
 function stopGeoJSONAnimation() {
   geojsonAnimationActive = false;
-  if (geojsonAnimationFrame) {
-    cancelAnimationFrame(geojsonAnimationFrame);
-    geojsonAnimationFrame = null;
-  }
-  
-  // Remove glow layer
-  if (map.getLayer('slideshow-glow')) {
-    map.removeLayer('slideshow-glow');
-  }
+  if (geojsonAnimationFrame) { cancelAnimationFrame(geojsonAnimationFrame); geojsonAnimationFrame = null; }
+  if (map.getLayer('slideshow-glow')) map.removeLayer('slideshow-glow');
 }
 
-// Remove all slideshow GeoJSON layers from the map
 function removeGeoJSONLayers() {
   stopGeoJSONAnimation();
-  
   if (map.getSource('slideshow-geojson')) {
-    ['slideshow-fill', 'slideshow-line', 'slideshow-polygon-outline', 'slideshow-point', 'slideshow-glow'].forEach(id => {
-      if (map.getLayer(id)) map.removeLayer(id);
-    });
+    ['slideshow-fill', 'slideshow-line', 'slideshow-polygon-outline', 'slideshow-point', 'slideshow-glow'].forEach(id => { if (map.getLayer(id)) map.removeLayer(id); });
     map.removeSource('slideshow-geojson');
   }
 }
 
-// Handle GeoJSON display
 async function displayGeoJSON(geojson, slide) {
-  // Stop any ongoing animation
   stopGeoJSONAnimation();
-  
-  // Remove previous slideshow GeoJSON layers
   if (map.getSource('slideshow-geojson')) {
-    ['slideshow-fill', 'slideshow-line', 'slideshow-polygon-outline', 'slideshow-point', 'slideshow-glow'].forEach(id => {
-      if (map.getLayer(id)) map.removeLayer(id);
-    });
+    ['slideshow-fill', 'slideshow-line', 'slideshow-polygon-outline', 'slideshow-point', 'slideshow-glow'].forEach(id => { if (map.getLayer(id)) map.removeLayer(id); });
     map.removeSource('slideshow-geojson');
   }
-  
-  // Add new GeoJSON layer
   map.addSource('slideshow-geojson', { type: 'geojson', data: geojson });
-  
-  // Get style from metadata or use defaults
   const style = slide.metadata?.style || {};
   const fillOpacity = style.fillOpacity || 0.4;
   const strokeWidth = style.strokeWidth || 2;
   const pointRadius = style.pointRadius || 5;
-  
-  // Check if we have property-based styling (colorProperty and colorMap)
   let fillColor, strokeColor, pointColor;
-  
   if (style.colorProperty && style.colorMap) {
-    // Build match expression for data-driven styling
-    // Format: ['match', ['get', 'property'], value1, color1, value2, color2, ..., defaultColor]
-    const matchExpression = ['match', ['get', style.colorProperty]];
-    
-    // Add each property value and its color
-    Object.entries(style.colorMap).forEach(([value, color]) => {
-      matchExpression.push(value, color);
-    });
-    
-    // Add default color
-    matchExpression.push(style.fillColor || '#3388ff');
-    
-    fillColor = matchExpression;
-    strokeColor = style.strokeColor || ['match', ['get', style.colorProperty],
-      ...Object.entries(style.colorMap).flatMap(([value, color]) => [value, color]),
-      style.strokeColor || '#0066cc'
-    ];
-    pointColor = matchExpression;
+    const me = ['match', ['get', style.colorProperty]];
+    Object.entries(style.colorMap).forEach(([v, c]) => me.push(v, c));
+    me.push(style.fillColor || '#3388ff');
+    fillColor = me;
+    strokeColor = style.strokeColor || ['match', ['get', style.colorProperty], ...Object.entries(style.colorMap).flatMap(([v, c]) => [v, c]), style.strokeColor || '#0066cc'];
+    pointColor = me;
   } else {
-    // Use single color for all features
     fillColor = style.fillColor || '#3388ff';
     strokeColor = style.strokeColor || '#0066cc';
     pointColor = style.pointColor || '#ff7800';
   }
-  
-  // Add fill layer for polygons (initially invisible for animation)
-  map.addLayer({
-    id: 'slideshow-fill',
-    type: 'fill',
-    source: 'slideshow-geojson',
-    filter: ['==', ['geometry-type'], 'Polygon'],
-    paint: {
-      'fill-color': fillColor,
-      'fill-opacity': 0 // Start invisible for animation
-    }
-  });
-  
-  // Add line layer for LineString geometries (e.g., streets)
-  map.addLayer({
-    id: 'slideshow-line',
-    type: 'line',
-    source: 'slideshow-geojson',
-    filter: ['==', ['geometry-type'], 'LineString'],
-    paint: {
-      'line-color': strokeColor,
-      'line-width': strokeWidth,
-      'line-opacity': 0 // Start invisible for animation
-    }
-  });
-  
-  // Add line layer for polygon outlines
-  map.addLayer({
-    id: 'slideshow-polygon-outline',
-    type: 'line',
-    source: 'slideshow-geojson',
-    filter: ['==', ['geometry-type'], 'Polygon'],
-    paint: {
-      'line-color': strokeColor,
-      'line-width': 1,
-      'line-opacity': 0.3 // Subtle outline during animation
-    }
-  });
-  
-  // Add circle layer for points
-  map.addLayer({
-    id: 'slideshow-point',
-    type: 'circle',
-    source: 'slideshow-geojson',
-    filter: ['==', ['geometry-type'], 'Point'],
-    paint: {
-      'circle-radius': pointRadius,
-      'circle-color': pointColor,
-      'circle-stroke-color': '#fff',
-      'circle-stroke-width': 1
-    }
-  });
-  
-  // Start the sequential animation
+  map.addLayer({ id: 'slideshow-fill', type: 'fill', source: 'slideshow-geojson', filter: ['==', ['geometry-type'], 'Polygon'], paint: { 'fill-color': fillColor, 'fill-opacity': 0 } });
+  map.addLayer({ id: 'slideshow-line', type: 'line', source: 'slideshow-geojson', filter: ['==', ['geometry-type'], 'LineString'], paint: { 'line-color': strokeColor, 'line-width': strokeWidth, 'line-opacity': 0 } });
+  map.addLayer({ id: 'slideshow-polygon-outline', type: 'line', source: 'slideshow-geojson', filter: ['==', ['geometry-type'], 'Polygon'], paint: { 'line-color': strokeColor, 'line-width': 1, 'line-opacity': 0.3 } });
+  map.addLayer({ id: 'slideshow-point', type: 'circle', source: 'slideshow-geojson', filter: ['==', ['geometry-type'], 'Point'], paint: { 'circle-radius': pointRadius, 'circle-color': pointColor, 'circle-stroke-color': '#fff', 'circle-stroke-width': 1 } });
+
   let animationCompleted = false;
   if (style.colorProperty && style.colorMap) {
     animationCompleted = await animateGeoJSONByProperty(geojson, slide);
-    
-    // After animation completes, set final state
     if (geojsonAnimationActive) {
-      const strokeOpacity = style.strokeOpacity || 0.8;
       map.setPaintProperty('slideshow-fill', 'fill-opacity', fillOpacity);
-      map.setPaintProperty('slideshow-line', 'line-opacity', strokeOpacity);
+      map.setPaintProperty('slideshow-line', 'line-opacity', style.strokeOpacity || 0.8);
       map.setPaintProperty('slideshow-polygon-outline', 'line-opacity', 1);
     }
   } else {
-    // No animation, show immediately
-    const strokeOpacity = style.strokeOpacity || 0.8;
     map.setPaintProperty('slideshow-fill', 'fill-opacity', fillOpacity);
-    map.setPaintProperty('slideshow-line', 'line-opacity', strokeOpacity);
+    map.setPaintProperty('slideshow-line', 'line-opacity', style.strokeOpacity || 0.8);
     map.setPaintProperty('slideshow-polygon-outline', 'line-opacity', 1);
   }
-  
   return animationCompleted;
 }
 
-// Display a slide
+// ========== Main slide display ==========
+
+// Clean up the previous slide's visuals (WMS, GeoJSON, canvas)
+function cleanupPreviousSlide(previousType) {
+  // Hide canvas
+  if (slideshowCanvas) slideshowCanvas.classList.remove('active');
+  if (slideshowCtx) slideshowCtx.clearRect(0, 0, slideshowCanvas.width, slideshowCanvas.height);
+  // Stop video
+  if (currentMediaElement instanceof HTMLVideoElement) currentMediaElement.pause();
+  currentMediaElement = null;
+  // GeoJSON
+  removeGeoJSONLayers();
+}
+
 async function displaySlide(index) {
-  if (!slideshowConfig || !slideshowConfig.slides || index >= slideshowConfig.slides.length) {
-    return;
-  }
-  
+  if (!slideshowConfig || !slideshowConfig.slides || index >= slideshowConfig.slides.length) return;
+
   const slide = slideshowConfig.slides[index];
-  const oldMedia = currentMediaElement;
-  const oldRotation = currentMediaRotation;
-  const oldFitMode = currentMediaFitMode;
-  const newRotation = slide.rotation || 0; // Get rotation from slide config
-  const newFitMode = slide.fitMode || slideshowConfig.settings.fitMode || 'contain'; // Get fitMode from slide or global config
-  
-  try {
-    // Preload media
+  const transitionDuration = slideshowConfig.settings.wmsTransitionDuration || 1000;
+
+  // --- WMS / ArcGIS raster slide ---
+  if (slide.type === 'wms' || slide.type === 'arcgis') {
+    // Hide canvas
+    if (slideshowCanvas) slideshowCanvas.classList.remove('active');
+    if (slideshowCtx) slideshowCtx.clearRect(0, 0, slideshowCanvas.width, slideshowCanvas.height);
+    if (currentMediaElement instanceof HTMLVideoElement) currentMediaElement.pause();
+    currentMediaElement = null;
+    removeGeoJSONLayers();
+
+    // Ensure the WMS layer is added
+    addWmsLayer(index, slide);
+    const newId = wmsId(index);
+    const oldId = activeWmsLayerId;
+
+    // Cross-fade
+    await animateWmsTransition(oldId, newId, transitionDuration);
+
+    // After transition, fully hide old layer
+    if (oldId && oldId !== newId && map.getLayer(oldId)) {
+      map.setPaintProperty(oldId, 'raster-opacity', 0);
+    }
+    activeWmsLayerId = newId;
+    displayMetadata(slide);
+
+  // --- GeoJSON slide ---
+  } else if (slide.type === 'geojson') {
+    // Fade out active WMS if any
+    if (activeWmsLayerId && map.getLayer(activeWmsLayerId)) {
+      await animateWmsTransition(activeWmsLayerId, null, transitionDuration / 2);
+      activeWmsLayerId = null;
+    }
+    if (slideshowCanvas) slideshowCanvas.classList.remove('active');
+    if (slideshowCtx) slideshowCtx.clearRect(0, 0, slideshowCanvas.width, slideshowCanvas.height);
+    displayMetadata(slide);
     const media = await preloadMedia(slide);
-    
-    // Handle different media types
-    if (slide.type === 'geojson') {
-      // For GeoJSON, hide canvas and display on map with animation
-      if (slideshowCanvas) {
-        slideshowCanvas.classList.remove('active');
-      }
-      if (slideshowCtx) {
-        slideshowCtx.clearRect(0, 0, slideshowCanvas.width, slideshowCanvas.height);
-      }
-      // Display metadata first so it's visible during animation
-      displayMetadata(slide);
-      const animationCompleted = await displayGeoJSON(media, slide);
-      currentMediaElement = null;
-      currentMediaRotation = 0; // GeoJSON doesn't use rotation
-      currentMediaFitMode = 'contain'; // Reset fitMode
-      
-      // Auto-advance after GeoJSON animation completes
-      if (animationCompleted && isSlideShowActive) {
-        // Small pause before advancing to next slide
-        await new Promise(resolve => setTimeout(resolve, 1000));
-        if (isSlideShowActive) {
-          advanceSlide();
-          return; // Exit early, don't schedule another timer
-        }
-      }
-    } else if (slide.type === 'video') {
-      // Remove any GeoJSON layers from previous slide
-      removeGeoJSONLayers();
-      
-      // For video, show canvas and play it
-      if (slideshowCanvas) {
-        slideshowCanvas.classList.add('active');
-      }
-      media.currentTime = 0;
-      await media.play();
-      currentMediaElement = media;
-      currentMediaRotation = newRotation;
-      currentMediaFitMode = newFitMode;
-      
-      // Animate transition
-      await animateTransition(oldMedia, media, slide.transition || 'fade', 500, oldRotation, newRotation, oldFitMode, newFitMode);
-      
-      // Draw video frames continuously
-      function drawVideoFrame() {
-        if (isSlideShowActive && currentSlideIndex === index && !media.paused && !media.ended) {
-          drawMediaOnCanvas(media, newFitMode, newRotation);
-          requestAnimationFrame(drawVideoFrame);
-        }
-      }
-      drawVideoFrame();
-      // Display metadata for video
-      displayMetadata(slide);
-    } else {
-      // Remove any GeoJSON layers from previous slide
-      removeGeoJSONLayers();
-      
-      // For images/gifs, show canvas
-      if (slideshowCanvas) {
-        slideshowCanvas.classList.add('active');
-      }
-      currentMediaElement = media;
-      currentMediaRotation = newRotation;
-      currentMediaFitMode = newFitMode;
-      await animateTransition(oldMedia, media, slide.transition || 'fade', 500, oldRotation, newRotation, oldFitMode, newFitMode);
-      // Display metadata for image/gif types
-      displayMetadata(slide);
+    const animationCompleted = await displayGeoJSON(media, slide);
+    if (animationCompleted && isSlideShowActive) {
+      await new Promise(r => setTimeout(r, 1000));
+      if (isSlideShowActive) { advanceSlide(); return; }
     }
-    
-    // Schedule next slide
-    if (slideshowConfig.settings.autoAdvance) {
-      const duration = slide.duration || 5000;
-      slideshowTimer = setTimeout(() => {
-        advanceSlide();
-      }, duration);
+
+  // --- Video slide ---
+  } else if (slide.type === 'video') {
+    if (activeWmsLayerId && map.getLayer(activeWmsLayerId)) {
+      await animateWmsTransition(activeWmsLayerId, null, transitionDuration / 2);
+      activeWmsLayerId = null;
     }
-    
-  } catch (error) {
-    console.error('Error displaying slide:', error);
-    // Try next slide on error
-    advanceSlide();
+    removeGeoJSONLayers();
+    if (slideshowCanvas) slideshowCanvas.classList.add('active');
+    const media = await preloadMedia(slide);
+    const oldMedia = currentMediaElement;
+    media.currentTime = 0;
+    await media.play();
+    currentMediaElement = media;
+    currentMediaRotation = slide.rotation || 0;
+    currentMediaFitMode = slide.fitMode || 'contain';
+    await animateCanvasTransition(oldMedia, media, 'fade', 500, 0, currentMediaRotation, 'contain', currentMediaFitMode);
+    (function drawVideoFrame() {
+      if (isSlideShowActive && currentSlideIndex === index && !media.paused && !media.ended) {
+        drawMediaOnCanvas(media, currentMediaFitMode, currentMediaRotation);
+        requestAnimationFrame(drawVideoFrame);
+      }
+    })();
+    displayMetadata(slide);
+
+  // --- Image / gif slide ---
+  } else {
+    if (activeWmsLayerId && map.getLayer(activeWmsLayerId)) {
+      await animateWmsTransition(activeWmsLayerId, null, transitionDuration / 2);
+      activeWmsLayerId = null;
+    }
+    removeGeoJSONLayers();
+    if (slideshowCanvas) slideshowCanvas.classList.add('active');
+    const media = await preloadMedia(slide);
+    const oldMedia = currentMediaElement;
+    currentMediaElement = media;
+    currentMediaRotation = slide.rotation || 0;
+    currentMediaFitMode = slide.fitMode || 'contain';
+    await animateCanvasTransition(oldMedia, media, 'fade', 500, 0, currentMediaRotation, 'contain', currentMediaFitMode);
+    displayMetadata(slide);
+  }
+
+  // Schedule next slide (auto-advance)
+  if (slideshowConfig.settings.autoAdvance) {
+    const duration = slide.duration || 5000;
+    slideshowTimer = setTimeout(() => advanceSlide(), duration);
   }
 }
 
 // Advance to next slide
 function advanceSlide() {
   if (!isSlideShowActive || !slideshowConfig) return;
-  
-  // Stop any ongoing GeoJSON animation
   stopGeoJSONAnimation();
-  
-  // Stop current video if playing
-  if (currentMediaElement instanceof HTMLVideoElement) {
-    currentMediaElement.pause();
-  }
-  
-  // Clear timer
-  if (slideshowTimer) {
-    clearTimeout(slideshowTimer);
-    slideshowTimer = null;
-  }
-  
+  if (currentMediaElement instanceof HTMLVideoElement) currentMediaElement.pause();
+  if (slideshowTimer) { clearTimeout(slideshowTimer); slideshowTimer = null; }
+
   currentSlideIndex++;
-  
-  // Loop or stop
   if (currentSlideIndex >= slideshowConfig.slides.length) {
-    if (slideshowConfig.settings.loop) {
-      currentSlideIndex = 0;
-    } else {
-      stopSlideshow();
-      return;
-    }
+    if (slideshowConfig.settings.loop) currentSlideIndex = 0;
+    else { stopSlideshow(); return; }
   }
-  
   displaySlide(currentSlideIndex);
 }
 
 // Start slideshow
 async function startSlideshow() {
-  if (isSlideShowActive) {
-    stopSlideshow();
-    return;
-  }
-  
-  // Load config
+  if (isSlideShowActive) { stopSlideshow(); return; }
+
   slideshowConfig = await loadSlideshowConfig();
-  
   if (!slideshowConfig.slides || slideshowConfig.slides.length === 0) {
     showToast('No slides found in slideshow configuration');
     broadcastSlideshowState(null);
     return;
   }
-  
+
   isSlideShowActive = true;
   currentSlideIndex = 0;
-  
-  // Broadcast animation state to controller
   slideshowChannel.postMessage({ type: 'animation_state', animationId: 'slideshow-btn', isActive: true });
-  
-  // Broadcast initial state immediately
-  if (slideshowConfig && slideshowConfig.slides && slideshowConfig.slides.length > 0) {
+
+  if (slideshowConfig.slides.length > 0) {
     broadcastSlideshowState(slideshowConfig.slides[0]);
-  } else {
-    // Broadcast empty/loading state if config failed or empty
-    slideshowChannel.postMessage({
-      type: 'slideshow_update',
-      isActive: true, // Still active, just empty
-      currentIndex: 0,
-      totalSlides: 0,
-      metadata: { title: "No Slides Found", description: "Check configuration." },
-      slideType: null
-    });
   }
-  
-  // Prepare canvas (but don't show it yet - displaySlide will decide)
-  if (slideshowCanvas) {
-    resizeSlideshowCanvas();
-  }
-  
-  if (slideshowMetadata) {
-    slideshowMetadata.style.display = 'block';
-  }
-  
-  // Update button state
-  if (slideshowBtn) {
-    slideshowBtn.classList.add('active');
-  }
-  
-  // Start first slide
+
+  if (slideshowCanvas) resizeSlideshowCanvas();
+  if (slideshowMetadata) slideshowMetadata.style.display = 'block';
+  if (slideshowBtn) slideshowBtn.classList.add('active');
+
   displaySlide(currentSlideIndex);
-  
   showToast('Slideshow started • Use ← → to navigate • ESC to exit');
 }
 
 // Stop slideshow
 function stopSlideshow() {
   isSlideShowActive = false;
-  
-  // Broadcast animation state to controller
   slideshowChannel.postMessage({ type: 'animation_state', animationId: 'slideshow-btn', isActive: false });
-  
-  // Clear timer
-  if (slideshowTimer) {
-    clearTimeout(slideshowTimer);
-    slideshowTimer = null;
-  }
-  
-  // Stop video if playing
-  if (currentMediaElement instanceof HTMLVideoElement) {
-    currentMediaElement.pause();
-  }
-  
-  // Cancel transition animation
-  if (transitionAnimationFrame) {
-    cancelAnimationFrame(transitionAnimationFrame);
-    transitionAnimationFrame = null;
-  }
-  
-  // Stop GeoJSON animation
+
+  if (slideshowTimer) { clearTimeout(slideshowTimer); slideshowTimer = null; }
+  if (currentMediaElement instanceof HTMLVideoElement) currentMediaElement.pause();
+  if (transitionAnimationFrame) { cancelAnimationFrame(transitionAnimationFrame); transitionAnimationFrame = null; }
+  if (wmsTransitionFrame) { cancelAnimationFrame(wmsTransitionFrame); wmsTransitionFrame = null; }
   stopGeoJSONAnimation();
-  
-  // Clear canvas
-  if (slideshowCtx) {
-    slideshowCtx.clearRect(0, 0, slideshowCanvas.width, slideshowCanvas.height);
-  }
-  
-  // Hide canvas and metadata
-  if (slideshowCanvas) {
-    slideshowCanvas.classList.remove('active');
-  }
-  
-  if (slideshowMetadata) {
-    slideshowMetadata.style.display = 'none';
-  }
-  
+
+  if (slideshowCtx) slideshowCtx.clearRect(0, 0, slideshowCanvas.width, slideshowCanvas.height);
+  if (slideshowCanvas) slideshowCanvas.classList.remove('active');
+  if (slideshowMetadata) slideshowMetadata.style.display = 'none';
+
   // Remove GeoJSON layers
-  if (map.getSource('slideshow-geojson')) {
-    ['slideshow-fill', 'slideshow-line', 'slideshow-polygon-outline', 'slideshow-point', 'slideshow-glow'].forEach(id => {
-      if (map.getLayer(id)) map.removeLayer(id);
-    });
-    map.removeSource('slideshow-geojson');
-  }
-  
-  // Update button state
-  if (slideshowBtn) {
-    slideshowBtn.classList.remove('active');
-  }
-  
+  removeGeoJSONLayers();
+
+  // Remove all WMS layers
+  removeAllWmsLayers();
+
+  if (slideshowBtn) slideshowBtn.classList.remove('active');
   currentMediaElement = null;
   currentSlideIndex = 0;
-  
-  // Broadcast stop state to controller
-  slideshowChannel.postMessage({
-    type: 'slideshow_update',
-    isActive: false,
-    currentIndex: 0,
-    totalSlides: 0,
-    metadata: null,
-    slideType: null
-  });
-  
+
+  slideshowChannel.postMessage({ type: 'slideshow_update', isActive: false, currentIndex: 0, totalSlides: 0, metadata: null, slideType: null });
   showToast('Slideshow stopped');
 }
 
@@ -924,36 +603,25 @@ window.addEventListener('resize', () => {
   if (isSlideShowActive && slideshowCanvas) {
     resizeSlideshowCanvas();
     if (currentMediaElement && !(currentMediaElement instanceof HTMLVideoElement)) {
-      drawMediaOnCanvas(currentMediaElement, slideshowConfig.settings.fitMode);
+      drawMediaOnCanvas(currentMediaElement, currentMediaFitMode, currentMediaRotation);
     }
   }
 });
 
-// Keyboard controls for manual navigation
+// Keyboard controls
 document.addEventListener('keydown', (e) => {
   if (!isSlideShowActive) return;
-  
   if (e.key === 'ArrowRight' || e.key === ' ') {
     e.preventDefault();
-    // Stop any ongoing GeoJSON animation
     stopGeoJSONAnimation();
     advanceSlide();
   } else if (e.key === 'ArrowLeft') {
     e.preventDefault();
-    // Stop any ongoing GeoJSON animation
     stopGeoJSONAnimation();
-    // Go to previous slide
-    if (slideshowTimer) {
-      clearTimeout(slideshowTimer);
-      slideshowTimer = null;
-    }
-    if (currentMediaElement instanceof HTMLVideoElement) {
-      currentMediaElement.pause();
-    }
+    if (slideshowTimer) { clearTimeout(slideshowTimer); slideshowTimer = null; }
+    if (currentMediaElement instanceof HTMLVideoElement) currentMediaElement.pause();
     currentSlideIndex = currentSlideIndex - 1;
-    if (currentSlideIndex < 0) {
-      currentSlideIndex = slideshowConfig.slides.length - 1;
-    }
+    if (currentSlideIndex < 0) currentSlideIndex = slideshowConfig.slides.length - 1;
     displaySlide(currentSlideIndex);
   } else if (e.key === 'Escape') {
     e.preventDefault();
@@ -961,11 +629,10 @@ document.addEventListener('keydown', (e) => {
   }
 });
 
-// Listen for slideshow control messages from controller
+// Listen for controller messages
 slideshowChannel.addEventListener('message', (event) => {
   const data = event.data;
   if (data.type !== 'slideshow_control') return;
-  
   if (data.action === 'next') {
     if (!isSlideShowActive) return;
     stopGeoJSONAnimation();
@@ -973,17 +640,10 @@ slideshowChannel.addEventListener('message', (event) => {
   } else if (data.action === 'previous') {
     if (!isSlideShowActive) return;
     stopGeoJSONAnimation();
-    if (slideshowTimer) {
-      clearTimeout(slideshowTimer);
-      slideshowTimer = null;
-    }
-    if (currentMediaElement instanceof HTMLVideoElement) {
-      currentMediaElement.pause();
-    }
+    if (slideshowTimer) { clearTimeout(slideshowTimer); slideshowTimer = null; }
+    if (currentMediaElement instanceof HTMLVideoElement) currentMediaElement.pause();
     currentSlideIndex = currentSlideIndex - 1;
-    if (currentSlideIndex < 0) {
-      currentSlideIndex = slideshowConfig.slides.length - 1;
-    }
+    if (currentSlideIndex < 0) currentSlideIndex = slideshowConfig.slides.length - 1;
     displaySlide(currentSlideIndex);
   } else if (data.action === 'stop') {
     stopSlideshow();
