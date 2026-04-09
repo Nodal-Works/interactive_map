@@ -74,7 +74,8 @@ const ANIMATION_BUTTONS = [
     'slideshow-btn',
     'grid-animation-btn',
     'isovist-btn',
-    'bird-sounds-btn'
+    'bird-sounds-btn',
+    'cultural-gravity-btn'
 ];
 
 // Function buttons are buttons that perform actions (not toggleable animations)
@@ -1607,6 +1608,46 @@ function updateMetadata(layerId) {
             name = 'Interactive Isovist';
             desc = 'Visual field analysis from a specific point. Shows what is visible from the selected location.';
             legend = '<p>Click on map to set view point.</p>';
+            break;
+        case 'cultural-gravity-btn':
+            name = 'Cultural Gravity';
+            desc = 'Cultural points of interest in Lindholmen visualised as gravity wells attracting crowds of visitors. Larger attractions draw more people.';
+            legend = `
+                <div style="display: flex; flex-direction: column; gap: 10px;">
+                    <div style="display: flex; align-items: center; gap: 10px;">
+                        <span style="width: 12px; height: 12px; border-radius: 50%; background: rgb(255,69,58);"></span>
+                        <span>Landmark</span>
+                    </div>
+                    <div style="display: flex; align-items: center; gap: 10px;">
+                        <span style="width: 12px; height: 12px; border-radius: 50%; background: rgb(175,82,222);"></span>
+                        <span>Theatre</span>
+                    </div>
+                    <div style="display: flex; align-items: center; gap: 10px;">
+                        <span style="width: 12px; height: 12px; border-radius: 50%; background: rgb(255,159,10);"></span>
+                        <span>Heritage</span>
+                    </div>
+                    <div style="display: flex; align-items: center; gap: 10px;">
+                        <span style="width: 12px; height: 12px; border-radius: 50%; background: rgb(48,176,199);"></span>
+                        <span>Education</span>
+                    </div>
+                    <div style="display: flex; align-items: center; gap: 10px;">
+                        <span style="width: 12px; height: 12px; border-radius: 50%; background: rgb(255,55,95);"></span>
+                        <span>Studio</span>
+                    </div>
+                    <div style="display: flex; align-items: center; gap: 10px;">
+                        <span style="width: 12px; height: 12px; border-radius: 50%; background: rgb(50,215,75);"></span>
+                        <span>Nature</span>
+                    </div>
+                    <div style="display: flex; align-items: center; gap: 10px;">
+                        <span style="width: 12px; height: 12px; border-radius: 50%; background: rgb(255,214,10);"></span>
+                        <span>Community</span>
+                    </div>
+                    <div style="display: flex; align-items: center; gap: 10px;">
+                        <span style="width: 12px; height: 12px; border-radius: 50%; background: rgb(94,92,230);"></span>
+                        <span>Art</span>
+                    </div>
+                </div>
+            `;
             break;
         case 'calibrate-btn':
             name = 'Projector Calibration';

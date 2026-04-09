@@ -876,7 +876,7 @@ function broadcastState(activeLayerId) {
 }
 
 // Hook into existing buttons to broadcast state
-['cfd-simulation-btn', 'stormwater-btn', 'sun-study-btn', 'slideshow-btn', 'grid-animation-btn', 'isovist-btn', 'bird-sounds-btn'].forEach(id => {
+['cfd-simulation-btn', 'stormwater-btn', 'sun-study-btn', 'slideshow-btn', 'grid-animation-btn', 'isovist-btn', 'bird-sounds-btn', 'cultural-gravity-btn'].forEach(id => {
     const btn = document.getElementById(id);
     if (btn) {
         btn.addEventListener('click', () => {

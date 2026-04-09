@@ -1527,6 +1527,7 @@ function isAnyVisualizationActive() {
     'grid-animation-btn',
     'isovist-btn',
     'bird-sounds-btn',
+    'cultural-gravity-btn',
     'fcc-demo-btn'
   ];
   
