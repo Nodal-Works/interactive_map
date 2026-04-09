@@ -177,6 +177,54 @@
       }
     },
     {
+      "type": "wms",
+      "duration": 10000,
+      "transition": "fade",
+      "wms": {
+        "url": "https://geodata.scb.se/geoserver/stat/ows",
+        "layers": "befolkning_1km_2025",
+        "format": "image/png",
+        "version": "1.1.1"
+      },
+      "metadata": {
+        "title": "Population Density (2025)",
+        "description": "Population per 1 km² grid cell — darker purple indicates higher density. Data from SCB official statistics",
+        "source": "SCB (Statistics Sweden)"
+      }
+    },
+    {
+      "type": "wms",
+      "duration": 10000,
+      "transition": "fade",
+      "wms": {
+        "url": "https://geodata.scb.se/geoserver/stat/ows",
+        "layers": "Gronomraden_2020_tatort",
+        "format": "image/png",
+        "version": "1.1.1"
+      },
+      "metadata": {
+        "title": "Green Areas in Urban Zones (2020)",
+        "description": "Publicly accessible green spaces of at least 0.5 hectares within urban boundaries — parks, forests, and recreational areas",
+        "source": "SCB (Statistics Sweden)"
+      }
+    },
+    {
+      "type": "wms",
+      "duration": 10000,
+      "transition": "fade",
+      "wms": {
+        "url": "https://geodata.scb.se/geoserver/stat/ows",
+        "layers": "DeSO_2025",
+        "format": "image/png",
+        "version": "1.1.1"
+      },
+      "metadata": {
+        "title": "Demographic Statistical Areas (DeSO 2025)",
+        "description": "Neighbourhood-level demographic zones used for Swedish population statistics — each area contains roughly 700–2700 residents",
+        "source": "SCB (Statistics Sweden)"
+      }
+    },
+    {
       "type": "geojson",
       "media": "building-footprints.geojson",
       "duration": 8000,
