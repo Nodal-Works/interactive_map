@@ -1,13 +1,42 @@
 // MapLibre GL JS implementation for interactive_map
 // Native bearing/rotation support and raster basemap switching
 
+// Load global config synchronously so all modules can access it
+window.APP_CONFIG = null;
+try {
+  const cfgXhr = new XMLHttpRequest();
+  cfgXhr.open('GET', 'map_config.json', false);
+  cfgXhr.send(null);
+  if (cfgXhr.status === 200) {
+    window.APP_CONFIG = JSON.parse(cfgXhr.responseText);
+    console.log('Loaded app config from map_config.json');
+  }
+} catch (e) {
+  console.warn('Could not load map_config.json, using defaults:', e);
+}
+
+// Apply config-driven values to DOM elements with data-config-* attributes
+if (window.APP_CONFIG) {
+  function resolveConfigPath(obj, path) {
+    return path.split('.').reduce((o, k) => (o && o[k] !== undefined) ? o[k] : null, obj);
+  }
+  document.querySelectorAll('[data-config-src]').forEach(el => {
+    const val = resolveConfigPath(window.APP_CONFIG, el.getAttribute('data-config-src'));
+    if (val) el.src = val;
+  });
+  document.querySelectorAll('[data-config-text]').forEach(el => {
+    const val = resolveConfigPath(window.APP_CONFIG, el.getAttribute('data-config-text'));
+    if (val) el.textContent = val;
+  });
+}
+
 // Global function to compute overlay pixel size based on physical dimensions
 // Defaults match the controller values
 window.computeOverlayPixelSize = function() {
-  const SCREEN_WIDTH_CM = 111.93;
-  // const SCREEN_HEIGHT_CM = 62.96; // Not used for width-based scaling
-  const TABLE_WIDTH_CM = 100;
-  const TABLE_HEIGHT_CM = 60;
+  const cfg = window.APP_CONFIG && window.APP_CONFIG.table;
+  const SCREEN_WIDTH_CM = cfg ? cfg.screenWidthCm : 111.93;
+  const TABLE_WIDTH_CM = cfg ? cfg.tableWidthCm : 100;
+  const TABLE_HEIGHT_CM = cfg ? cfg.tableHeightCm : 60;
   
   const pxPerCm = window.innerWidth / SCREEN_WIDTH_CM;
   const w = Math.round(TABLE_WIDTH_CM * pxPerCm);
@@ -44,25 +73,18 @@ function showToast(msg, timeout = 3000) {
   setTimeout(() => { t.classList.add('hide'); setTimeout(() => t.remove(), 300); }, timeout);
 }
 
-// Default fallback values (used if calibration file fails to load)
+// Default fallback values (used if config file fails to load)
 let tableCenter = [11.977770568930168, 57.68839377903814]; // [lon, lat]
 let initialZoom = 15.806953679037164;
 let initialBearing = -92.58546386659737; // degrees
 
-// Try to load calibration synchronously via XMLHttpRequest (for compatibility with other scripts)
-try {
-  const xhr = new XMLHttpRequest();
-  xhr.open('GET', 'map-calibration.json', false); // synchronous request
-  xhr.send(null);
-  if (xhr.status === 200) {
-    const calibration = JSON.parse(xhr.responseText);
-    tableCenter = [calibration.center.lng, calibration.center.lat];
-    initialZoom = calibration.zoom;
-    initialBearing = calibration.bearing;
-    console.log('Loaded map calibration from map-calibration.json');
-  }
-} catch (e) {
-  console.warn('Could not load map-calibration.json, using defaults:', e);
+// Load calibration from the global config
+if (window.APP_CONFIG && window.APP_CONFIG.calibration) {
+  const calibration = window.APP_CONFIG.calibration;
+  tableCenter = [calibration.center.lng, calibration.center.lat];
+  initialZoom = calibration.zoom;
+  initialBearing = calibration.bearing;
+  console.log('Loaded map calibration from map_config.json');
 }
 
 // Create the map with loaded (or default) calibration

@@ -1,0 +1,57 @@
+{
+  "app": {
+    "title": "ACE MR Studio",
+    "welcomeTitle": "Welcome to the ACE MR Studio"
+  },
+  "calibration": {
+    "center": {
+      "lng": 11.977763901369599,
+      "lat": 57.68838121954602
+    },
+    "zoom": 16.12793160994688,
+    "bearing": -92.58546386659737
+  },
+  "table": {
+    "screenWidthCm": 111.93,
+    "tableWidthCm": 100,
+    "tableHeightCm": 60,
+    "tileSizeCm": 20,
+    "cols": 5,
+    "rows": 3,
+    "boundingBox": [11.936224, 57.677523, 12.018278, 57.699659]
+  },
+  "data": {
+    "geojson": {
+      "streetNetwork": "media/street-network.geojson",
+      "buildingFootprints": "media/building-footprints.geojson",
+      "trees": "media/trees.geojson"
+    },
+    "rasters": {
+      "dem": "media/clipped_dem.geotiff.tif"
+    },
+    "models3d": {
+      "buildingsMesh": "media/mesh.stl",
+      "treesInstanced": "media/trees_instanced.glb"
+    },
+    "sound": {
+      "wind": "media/sound/wind.mp3",
+      "rain": "media/sound/rain.mp3",
+      "city": "media/sound/city.mp3",
+      "birds": [
+        "media/sound/XC372879 - Thrush Nightingale - Luscinia luscinia.mp3",
+        "media/sound/XC647538 - European Pied Flycatcher - Ficedula hypoleuca.mp3",
+        "media/sound/XC900416 - Black Redstart - Phoenicurus ochruros.mp3"
+      ]
+    },
+    "images": {
+      "chalmersLogo": "media/chalmers_logo.png",
+      "dtccLogo": "media/dtcc_logo.png",
+      "surveyQr": "media/survey_qr.png"
+    },
+    "other": {
+      "treesGpkg": "media/trees.gpkg",
+      "slideshowConfig": "media/slideshow/slideshow-config.json",
+      "trafikConfig": "trafik-config.json"
+    }
+  }
+}

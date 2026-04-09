@@ -145,7 +145,7 @@ const cycleRoutes = ['cycleway', 'path', 'residential', 'tertiary', 'secondary',
 function loadStreetLifeData() {
   if (streetLifeDataLoaded) return Promise.resolve();
   
-  return fetch('media/street-network.geojson')
+  return fetch((window.APP_CONFIG && window.APP_CONFIG.data.geojson.streetNetwork) || 'media/street-network.geojson')
     .then(response => {
       if (!response.ok) throw new Error(`HTTP ${response.status}`);
       return response.json();
@@ -1149,7 +1149,7 @@ function drawStreetlights(ctx, width, height) {
 
 // Load building footprints for ambient glow
 function loadBuildingFootprints() {
-  fetch('media/building-footprints.geojson')
+  fetch((window.APP_CONFIG && window.APP_CONFIG.data.geojson.buildingFootprints) || 'media/building-footprints.geojson')
     .then(response => {
       if (!response.ok) throw new Error(`HTTP ${response.status}`);
       return response.json();
@@ -1375,7 +1375,7 @@ function fadeInCitySound() {
   
   // Create audio if it doesn't exist
   if (!cityAmbientAudio) {
-    cityAmbientAudio = new Audio('media/sound/city.mp3');
+    cityAmbientAudio = new Audio((window.APP_CONFIG && window.APP_CONFIG.data.sound.city) || 'media/sound/city.mp3');
     cityAmbientAudio.loop = true;
     cityAmbientAudio.volume = 0;
   }

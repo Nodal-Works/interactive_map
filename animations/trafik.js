@@ -38,20 +38,21 @@ let apiConfig = {
 };
 
 // Configuration
+const _trafikBbox = window.APP_CONFIG && window.APP_CONFIG.table && window.APP_CONFIG.table.boundingBox;
 const CONFIG = {
   // API settings
   apiBaseUrl: 'https://ext-api.vasttrafik.se/pr/v4',
-  configPath: 'trafik-config.json',  // Local config file (gitignored)
+  configPath: (window.APP_CONFIG && window.APP_CONFIG.data.other.trafikConfig) || 'trafik-config.json',
   fetchInterval: 3000,               // Fetch every 3 seconds to avoid rate limiting
   tokenRefreshBuffer: 60000,          // Refresh token 1 minute before expiry
   positionsLimit: 200,                // Max vehicles per API call
   
   // Bounding box loaded from config, defaults to Gothenburg area
   boundingBox: {
-    minLat: 57.677523,
-    maxLat: 57.699659,
-    minLng: 11.936224,
-    maxLng: 12.018278
+    minLng: _trafikBbox ? _trafikBbox[0] : 11.936224,
+    minLat: _trafikBbox ? _trafikBbox[1] : 57.677523,
+    maxLng: _trafikBbox ? _trafikBbox[2] : 12.018278,
+    maxLat: _trafikBbox ? _trafikBbox[3] : 57.699659
   },
   
   // Transport mode filter (only show these types)

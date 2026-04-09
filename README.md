@@ -157,7 +157,7 @@ python -m http.server 8000
 ├── main.js                # Map initialisation and core functionality
 ├── controller.js          # Controller logic
 ├── style.css              # Styling for both interfaces
-├── map-calibration.json   # Saved map position/zoom/bearing
+├── map_config.json        # Central app config (calibration, table, data paths)
 ├── animations/            # Feature modules
 │   ├── bird-sounds.js     # Bird sound sensor visualisation
 │   ├── campus-demo.js     # Campus masterplan SVG slideshow

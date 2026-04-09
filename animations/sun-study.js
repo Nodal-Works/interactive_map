@@ -1414,7 +1414,7 @@ class SunStudy {
     console.log('Loading STL model (buildings/terrain)...');
     
     loader.load(
-      './media/mesh.stl',
+      (window.APP_CONFIG && window.APP_CONFIG.data.models3d.buildingsMesh) || './media/mesh.stl',
       (geometry) => {
         console.log('STL loaded, vertices:', geometry.attributes.position.count);
         
@@ -1528,7 +1528,7 @@ class SunStudy {
      */
     
     loader.load(
-      './media/trees_instanced.glb',
+      (window.APP_CONFIG && window.APP_CONFIG.data.models3d.treesInstanced) || './media/trees_instanced.glb',
       (gltf) => {
         console.log('Trees GLB loaded');
         

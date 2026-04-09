@@ -68,7 +68,7 @@ class StormwaterFlowAnimation {
     this.particleTrailColor = 'rgba(0, 150, 255, 0.3)';
     
     // Audio setup
-    this.rainAudio = new Audio('media/sound/rain.mp3');
+    this.rainAudio = new Audio((window.APP_CONFIG && window.APP_CONFIG.data.sound.rain) || 'media/sound/rain.mp3');
     this.rainAudio.loop = true;
     
     // Bind methods
@@ -89,9 +89,9 @@ class StormwaterFlowAnimation {
       }
       
       // Load the DEM GeoTIFF file
-      const response = await fetch('media/clipped_dem.geotiff.tif');
+      const response = await fetch((window.APP_CONFIG && window.APP_CONFIG.data.rasters.dem) || 'media/clipped_dem.geotiff.tif');
       if (!response.ok) {
-        throw new Error('DEM file not found at media/clipped_dem.geotiff.tif');
+        throw new Error('DEM file not found');
       }
       
       const arrayBuffer = await response.arrayBuffer();
@@ -139,7 +139,7 @@ class StormwaterFlowAnimation {
       
       // Load building footprints (optional)
       try {
-        const buildingsResponse = await fetch('media/building-footprints.geojson');
+        const buildingsResponse = await fetch((window.APP_CONFIG && window.APP_CONFIG.data.geojson.buildingFootprints) || 'media/building-footprints.geojson');
         if (buildingsResponse.ok) {
           this.buildingFootprints = await buildingsResponse.json();
         }

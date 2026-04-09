@@ -869,7 +869,7 @@
     <main id="main-panel">
         <div id="welcome-screen">
             <canvas id="bg-canvas"></canvas>
-            <h1 class="welcome-title">Welcome to the ACE MR Studio</h1>
+            <h1 class="welcome-title" id="welcome-title">Welcome to the ACE MR Studio</h1>
             
             <div id="tour-info" class="tour-info" style="position: relative; z-index: 2;">
                 <div id="tour-title" class="tour-title"></div>
@@ -877,8 +877,8 @@
             </div>
 
             <div class="logo-container">
-                <img src="media/chalmers_logo.png" alt="Chalmers University of Technology" class="welcome-logo">
-                <img src="media/dtcc_logo.png" alt="DTCC" class="welcome-logo" style="height: 100px;">
+                <img id="welcome-logo-1" src="media/chalmers_logo.png" alt="Chalmers University of Technology" class="welcome-logo">
+                <img id="welcome-logo-2" src="media/dtcc_logo.png" alt="DTCC" class="welcome-logo" style="height: 100px;">
             </div>
         </div>
 
@@ -920,6 +920,22 @@
 
     <aside id="right-panel">
     </aside>
+
+    <!-- Load global config -->
+    <script>
+    (function() {
+        try {
+            var xhr = new XMLHttpRequest();
+            xhr.open('GET', 'map_config.json', false);
+            xhr.send(null);
+            if (xhr.status === 200) {
+                window.APP_CONFIG = JSON.parse(xhr.responseText);
+            }
+        } catch (e) {
+            console.warn('Could not load map_config.json:', e);
+        }
+    })();
+    </script>
 
     <script src="controller/sun-study-ui.js"></script>
     <script src="controller/isovist-dashboard.js"></script>

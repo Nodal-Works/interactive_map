@@ -52,7 +52,7 @@ let segmentsByType = {};
 
 // Load default street network on page load
 streetDataLoading = true;
-fetch('media/street-network.geojson')
+fetch((window.APP_CONFIG && window.APP_CONFIG.data.geojson.streetNetwork) || 'media/street-network.geojson')
   .then(response => {
     if (!response.ok) throw new Error(`HTTP ${response.status}`);
     return response.json();

@@ -19,7 +19,7 @@
   let isSimulating = false;
   
   // Audio setup
-  const windAudio = new Audio('media/sound/wind.mp3');
+  const windAudio = new Audio((window.APP_CONFIG && window.APP_CONFIG.data.sound.wind) || 'media/sound/wind.mp3');
   windAudio.loop = true;
   
   // Simulation parameters
@@ -191,7 +191,7 @@
   
   async function loadDefaultBuildings() {
     try {
-      const response = await fetch('media/building-footprints.geojson');
+      const response = await fetch((window.APP_CONFIG && window.APP_CONFIG.data.geojson.buildingFootprints) || 'media/building-footprints.geojson');
       if (!response.ok) throw new Error('Building footprints not found');
       
       const geojson = await response.json();
@@ -306,7 +306,7 @@
   
   async function loadTreeObstacles() {
     try {
-      const response = await fetch('media/trees.geojson');
+      const response = await fetch((window.APP_CONFIG && window.APP_CONFIG.data.geojson.trees) || 'media/trees.geojson');
       if (!response.ok) {
         console.warn('CFD: Trees file not found');
         return;

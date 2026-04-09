@@ -6,12 +6,13 @@ const gridCtx = gridCanvas.getContext('2d');
 const gridBtn = document.getElementById('grid-animation-btn');
 const gridChannel = new BroadcastChannel('map_controller_channel');
 
-// Table physical dimensions
-const TABLE_WIDTH_CM = 100;
-const TABLE_HEIGHT_CM = 60;
-const TILE_SIZE_CM = 20;
-const COLS = Math.floor(TABLE_WIDTH_CM / TILE_SIZE_CM); // 5
-const ROWS = Math.floor(TABLE_HEIGHT_CM / TILE_SIZE_CM); // 3
+// Table physical dimensions (from global config)
+const _gridCfg = window.APP_CONFIG && window.APP_CONFIG.table;
+const TABLE_WIDTH_CM = _gridCfg ? _gridCfg.tableWidthCm : 100;
+const TABLE_HEIGHT_CM = _gridCfg ? _gridCfg.tableHeightCm : 60;
+const TILE_SIZE_CM = _gridCfg ? _gridCfg.tileSizeCm : 20;
+const COLS = _gridCfg ? _gridCfg.cols : Math.floor(TABLE_WIDTH_CM / TILE_SIZE_CM);
+const ROWS = _gridCfg ? _gridCfg.rows : Math.floor(TABLE_HEIGHT_CM / TILE_SIZE_CM);
 
 let animationFrame = null;
 let isAnimating = false;

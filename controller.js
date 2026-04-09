@@ -34,6 +34,22 @@ const statusIndicator = document.getElementById('connection-status');
 const statusText = document.getElementById('connection-text');
 const welcomeScreen = document.getElementById('welcome-screen');
 
+// Apply config-driven values to the DOM
+(function applyConfig() {
+    const cfg = window.APP_CONFIG;
+    if (!cfg) return;
+    const welcomeTitle = document.getElementById('welcome-title');
+    if (welcomeTitle && cfg.app && cfg.app.welcomeTitle) {
+        welcomeTitle.textContent = cfg.app.welcomeTitle;
+    }
+    if (cfg.data && cfg.data.images) {
+        const logo1 = document.getElementById('welcome-logo-1');
+        const logo2 = document.getElementById('welcome-logo-2');
+        if (logo1 && cfg.data.images.chalmersLogo) logo1.src = cfg.data.images.chalmersLogo;
+        if (logo2 && cfg.data.images.dtccLogo) logo2.src = cfg.data.images.dtccLogo;
+    }
+})();
+
 
 // State objects loaded from their respective module files:
 // - slideshowState from controller/slideshow-dashboard.js
@@ -321,14 +337,14 @@ function updateDashboard(targetId) {
             <div class="dashboard-card">
                 <div class="dashboard-section-title">About the Project</div>
                 <p class="info-text" style="margin-bottom: 1rem;">
-                    The <strong>ACE MR Studio</strong> is an interactive platform designed to bridge the gap between complex urban data and stakeholder engagement.
+                    The <strong>${(window.APP_CONFIG && window.APP_CONFIG.app.title) || 'ACE MR Studio'}</strong> is an interactive platform designed to bridge the gap between complex urban data and stakeholder engagement.
                 </p>
                 <p class="info-text">
                     We want this space to be a place to test and ask questions about complex data communication and also inspire a new form of data story telling and research.
                 </p>
                 <div style="margin-top: 1.5rem; display: flex; justify-content: center; align-items: center;">
-                    <img src="media/chalmers_logo.png" style="height: 40px; margin-right: 20px; opacity: 0.8;">
-                    <img src="media/dtcc_logo.png" style="height: 70px; opacity: 0.8;">
+                    <img src="${(window.APP_CONFIG && window.APP_CONFIG.data.images.chalmersLogo) || 'media/chalmers_logo.png'}" style="height: 40px; margin-right: 20px; opacity: 0.8;">
+                    <img src="${(window.APP_CONFIG && window.APP_CONFIG.data.images.dtccLogo) || 'media/dtcc_logo.png'}" style="height: 70px; opacity: 0.8;">
                 </div>
             </div>
             <div class="dashboard-card">
@@ -337,7 +353,7 @@ function updateDashboard(targetId) {
                     Help us improve! Scan the QR code to share your feedback.
                 </p>
                 <div style="display: flex; justify-content: center; align-items: center;">
-                    <img src="media/survey_qr.png" style="width: 300px; height: 300px; border-radius: 8px;">
+                    <img src="${(window.APP_CONFIG && window.APP_CONFIG.data.images.surveyQr) || 'media/survey_qr.png'}" style="width: 300px; height: 300px; border-radius: 8px;">
                 </div>
             </div>
         `;

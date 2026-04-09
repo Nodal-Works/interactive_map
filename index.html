@@ -16,25 +16,12 @@
       }
     }
     </script>
-    <script>
-    // Spacebar in main view triggers segmentation in controller via BroadcastChannel
-    (function() {
-      const channel = new BroadcastChannel('map_controller_channel');
-      document.addEventListener('keydown', (e) => {
-        if (e.code !== 'Space' && e.key !== ' ') return;
-        if (e.altKey || e.ctrlKey || e.metaKey || e.shiftKey) return;
-        const active = document.activeElement;
-        if (active && (active.tagName === 'INPUT' || active.tagName === 'TEXTAREA' || active.isContentEditable)) return;
-        e.preventDefault();
-        channel.postMessage({ type: 'sam_segment' });
-      });
-    })();
     </script>
   </head>
   <body>
     <!-- Left sidebar -->
     <div id="left-sidebar">
-      <img src="media/dtcc_logo.png" alt="DTCC" class="sidebar-logo logo-top">
+      <img src="media/dtcc_logo.png" alt="DTCC" class="sidebar-logo logo-top" data-config-src="data.images.dtccLogo">
       
       <!-- Left sidebar controls (top group) -->
       <div class="icon-controls icon-controls-top">
@@ -64,7 +51,7 @@
         </button>
       </div>
       
-      <div class="sidebar-title">ACE MR Studio</div>
+      <div class="sidebar-title" data-config-text="app.title">ACE MR Studio</div>
       
       <!-- Left sidebar controls (bottom group) -->
       <div class="icon-controls icon-controls-bottom">
@@ -93,12 +80,12 @@
         </button>
       </div>
       
-      <img src="media/chalmers_logo.png" alt="Chalmers" class="sidebar-logo logo-bottom">
+      <img src="media/chalmers_logo.png" alt="Chalmers" class="sidebar-logo logo-bottom" data-config-src="data.images.chalmersLogo">
     </div>
 
     <!-- Right sidebar with icon controls -->
     <div id="right-sidebar">
-      <img src="media/chalmers_logo.png" alt="Chalmers" class="sidebar-logo logo-top">
+      <img src="media/chalmers_logo.png" alt="Chalmers" class="sidebar-logo logo-top" data-config-src="data.images.chalmersLogo">
       
       <!-- Right sidebar controls (top group) -->
       <div class="icon-controls icon-controls-top">
@@ -134,7 +121,7 @@
         </button>
       </div>
       
-      <div class="sidebar-title">ACE MR Studio</div>
+      <div class="sidebar-title" data-config-text="app.title">ACE MR Studio</div>
       
       <!-- Right sidebar controls (bottom group) -->
       <div class="icon-controls icon-controls-bottom">
@@ -145,7 +132,7 @@
         </button>
       </div>
       
-      <img src="media/dtcc_logo.png" alt="DTCC" class="sidebar-logo logo-bottom">
+      <img src="media/dtcc_logo.png" alt="DTCC" class="sidebar-logo logo-bottom" data-config-src="data.images.dtccLogo">
     </div>
 
     <!-- Start Overlay for Audio Context -->
