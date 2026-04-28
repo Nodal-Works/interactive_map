@@ -205,6 +205,7 @@ function updateDashboard(targetId) {
     const legendContent = document.getElementById('legend-content');
     const dashboardTitle = document.getElementById('dashboard-title');
     const legendTitle = document.getElementById('legend-title');
+    const metadataTitle = document.querySelector('#metadata-section h2');
     const mainPanel = document.getElementById('main-panel');
 
     // Check if already in sun study mode to avoid duplicate setup
@@ -219,6 +220,7 @@ function updateDashboard(targetId) {
     // Reset titles by default
     if (dashboardTitle) dashboardTitle.textContent = 'Dashboard';
     if (legendTitle) legendTitle.textContent = 'Legend';
+    if (metadataTitle) metadataTitle.textContent = 'Metadata';
     
     // Use dedicated slideshow dashboard function for slideshow
     if (targetId === 'slideshow-btn') {
@@ -367,7 +369,7 @@ function updateDashboard(targetId) {
 
     if (targetId === 'calibrate-btn') {
         if (dashboardTitle) dashboardTitle.textContent = 'Calibration Controls';
-        if (legendTitle) legendTitle.textContent = 'Instructions';
+        if (legendTitle) legendTitle.textContent = 'Legend';
 
         dashboardContent.innerHTML = `
             <div class="dashboard-container">
@@ -384,7 +386,7 @@ function updateDashboard(targetId) {
                         </select>
                     </div>
                     
-                    <div id="camera-preview-container" style="width: 100%; aspect-ratio: 16/9; background: #1a1a1a; border-radius: 8px; margin: 0.75rem 0; overflow: hidden; position: relative;">
+                    <div id="camera-preview-container" style="width: 100%; aspect-ratio: 1/1; min-height: 440px; background: #1a1a1a; border-radius: 8px; margin: 0.75rem 0; overflow: hidden; position: relative;">
                         <canvas id="camera-preview" style="width: 100%; height: 100%; object-fit: contain;"></canvas>
                         <div id="camera-status" style="position: absolute; bottom: 8px; left: 8px; background: rgba(0,0,0,0.7); color: #888; padding: 4px 8px; border-radius: 4px; font-size: 0.8rem;">No camera selected</div>
                     </div>
@@ -462,26 +464,35 @@ function updateDashboard(targetId) {
             </div>
         `;
         
+        const metadataContent = document.getElementById('metadata-content');
+        const metadataSection = metadataContent?.parentElement;
+        if (metadataSection && metadataContent) {
+            const currentMetadataTitle = metadataSection.querySelector('h2');
+            if (currentMetadataTitle) currentMetadataTitle.textContent = 'Educational Context';
+            metadataContent.innerHTML = `
+                <div class="dashboard-card" style="border: none; background: transparent; padding: 0;">
+                    <div class="info-box" style="margin-bottom: 1rem; border-left-color: #3b82f6;">
+                        <div class="info-title">Why Calibration Matters</div>
+                        <p class="info-text">
+                            Calibration aligns the projected map with the physical table model, so measurements, overlays, and analysis correspond to real positions in the room.
+                        </p>
+                    </div>
+                    <div class="info-box" style="border-left-color: #3b82f6;">
+                        <div class="info-title">How To Use This Layer</div>
+                        <p class="info-text">
+                            Start with Auto-Calibration to estimate fit from marker detections, then refine with manual width/height and map adjustments for precise alignment.
+                        </p>
+                    </div>
+                </div>
+            `;
+        }
+
+        // Preserve concise legend while educational context lives in metadata for this layer.
         legendContent.innerHTML = `
             <div class="dashboard-card">
-                <div class="dashboard-section-title">Auto-Calibration</div>
+                <div class="dashboard-section-title">Calibration Legend</div>
                 <p class="info-text">
-                    1. Position a camera to view the entire table<br>
-                    2. Select the camera from the dropdown<br>
-                    3. Click "Start Auto-Calibrate"<br>
-                    4. The system will detect projected markers and automatically adjust zoom/rotation<br>
-                    5. Wait for convergence or click Stop
-                </p>
-            </div>
-            <div class="dashboard-card">
-                <div class="dashboard-section-title">Manual Calibration</div>
-                <p class="info-text">
-                    1. Measure your physical screen dimensions<br>
-                    2. Measure your physical table dimensions<br>
-                    3. Enter values in the settings<br>
-                    4. Click "Show Overlay" to see the target area<br>
-                    5. Adjust map zoom/rotation to fit<br>
-                    6. Click "Copy Current Calibration" to save
+                    Live preview from selected camera with auto and manual alignment controls.
                 </p>
             </div>
         `;
