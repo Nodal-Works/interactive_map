@@ -320,6 +320,25 @@ function isOnScreen(pos, padding = 50) {
          pos.y <= trafikCanvas.height + padding;
 }
 
+function hexToRgba(hex, alpha) {
+  if (!hex || typeof hex !== 'string' || hex[0] !== '#') {
+    return `rgba(255, 255, 255, ${alpha})`;
+  }
+
+  let normalized = hex.slice(1);
+  if (normalized.length === 3) {
+    normalized = normalized.split('').map(ch => ch + ch).join('');
+  }
+  if (normalized.length !== 6) {
+    return `rgba(255, 255, 255, ${alpha})`;
+  }
+
+  const r = parseInt(normalized.slice(0, 2), 16);
+  const g = parseInt(normalized.slice(2, 4), 16);
+  const b = parseInt(normalized.slice(4, 6), 16);
+  return `rgba(${r}, ${g}, ${b}, ${alpha})`;
+}
+
 // Draw a single vehicle - smooth gliding circle with line number and trail
 function drawVehicle(ctx, vehicle) {
   // Use interpolated position for smooth gliding
@@ -346,25 +365,89 @@ function drawVehicle(ctx, vehicle) {
   if (history.length > 1) {
     ctx.lineCap = 'round';
     ctx.lineJoin = 'round';
-    
-    // Draw trail segments with fading opacity
-    for (let i = 1; i < history.length; i++) {
-      const p1 = projectToCanvas(history[i - 1].lng, history[i - 1].lat);
-      const p2 = projectToCanvas(history[i].lng, history[i].lat);
-      
-      // Calculate opacity based on position in trail (older = more faded)
-      const progress = i / history.length;
-      const opacity = CONFIG.trailFadeStart * progress;
-      
-      // Gradient width (thinner at tail)
-      const width = CONFIG.trailWidth * (0.3 + 0.7 * progress);
-      
-      ctx.strokeStyle = bgColor + Math.round(opacity * 255).toString(16).padStart(2, '0');
-      ctx.lineWidth = width;
-      ctx.beginPath();
-      ctx.moveTo(p1.x, p1.y);
-      ctx.lineTo(p2.x, p2.y);
-      ctx.stroke();
+
+    // Ferries render a wake/ripple trail, while other modes keep the default line trail.
+    if (vehicle.type === 'FERRY') {
+      for (let i = 1; i < history.length; i++) {
+        const p1 = projectToCanvas(history[i - 1].lng, history[i - 1].lat);
+        const p2 = projectToCanvas(history[i].lng, history[i].lat);
+        const progress = i / history.length;
+        const dx = p2.x - p1.x;
+        const dy = p2.y - p1.y;
+        const len = Math.hypot(dx, dy) || 1;
+        const ux = dx / len;
+        const uy = dy / len;
+        const nx = -uy;
+        const ny = ux;
+
+        // Soft central wake line.
+        const wakeOpacity = 0.45 * progress;
+        ctx.strokeStyle = hexToRgba(bgColor, wakeOpacity);
+        ctx.lineWidth = CONFIG.trailWidth * (0.18 + 0.35 * progress);
+        ctx.beginPath();
+        ctx.moveTo(p1.x, p1.y);
+        ctx.lineTo(p2.x, p2.y);
+        ctx.stroke();
+
+        // Draw expanding ripple rings at intervals to suggest water disturbance.
+        if (i % 4 === 0) {
+          const age = 1 - progress;
+          const baseRadius = 3 + age * 9;
+          const rippleOpacity = 0.3 * progress;
+          ctx.strokeStyle = hexToRgba(bgColor, rippleOpacity);
+          ctx.lineWidth = 1.2;
+          ctx.beginPath();
+          ctx.arc(p2.x, p2.y, baseRadius, 0, Math.PI * 2);
+          ctx.stroke();
+          ctx.beginPath();
+          ctx.arc(p2.x, p2.y, baseRadius + 4, 0, Math.PI * 2);
+          ctx.stroke();
+        }
+
+        // Add gentle V-shaped wake arms behind the ferry.
+        if (i % 3 === 0) {
+          const age = 1 - progress;
+          const armLength = 6 + age * 12;
+          const armSpread = 2 + age * 6;
+          const anchorX = p2.x - ux * 4;
+          const anchorY = p2.y - uy * 4;
+          const leftX = anchorX - ux * armLength + nx * armSpread;
+          const leftY = anchorY - uy * armLength + ny * armSpread;
+          const rightX = anchorX - ux * armLength - nx * armSpread;
+          const rightY = anchorY - uy * armLength - ny * armSpread;
+
+          ctx.strokeStyle = hexToRgba(bgColor, 0.22 * progress);
+          ctx.lineWidth = 1;
+          ctx.beginPath();
+          ctx.moveTo(anchorX, anchorY);
+          ctx.lineTo(leftX, leftY);
+          ctx.stroke();
+          ctx.beginPath();
+          ctx.moveTo(anchorX, anchorY);
+          ctx.lineTo(rightX, rightY);
+          ctx.stroke();
+        }
+      }
+    } else {
+      // Draw trail segments with fading opacity
+      for (let i = 1; i < history.length; i++) {
+        const p1 = projectToCanvas(history[i - 1].lng, history[i - 1].lat);
+        const p2 = projectToCanvas(history[i].lng, history[i].lat);
+
+        // Calculate opacity based on position in trail (older = more faded)
+        const progress = i / history.length;
+        const opacity = CONFIG.trailFadeStart * progress;
+
+        // Gradient width (thinner at tail)
+        const width = CONFIG.trailWidth * (0.3 + 0.7 * progress);
+
+        ctx.strokeStyle = bgColor + Math.round(opacity * 255).toString(16).padStart(2, '0');
+        ctx.lineWidth = width;
+        ctx.beginPath();
+        ctx.moveTo(p1.x, p1.y);
+        ctx.lineTo(p2.x, p2.y);
+        ctx.stroke();
+      }
     }
     
     // Draw line from last history point to current position
