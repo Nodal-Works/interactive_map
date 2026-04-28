@@ -107,7 +107,7 @@ class SunStudy {
     this.offsetX = 0;      // X position offset
     this.offsetZ = -4;      // Z position offset (Y on screen in top-down)
     this.rotationOffset = 0; // Additional rotation in degrees
-    this.scaleMultiplier = 1.1; // Scale multiplier
+    this.scaleMultiplier = 0.88; // Scale multiplier
     
     this.controlPanel = null;
     this.dependenciesLoaded = false;
