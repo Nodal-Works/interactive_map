@@ -39,6 +39,7 @@ let apiConfig = {
 
 // Configuration
 const _trafikBbox = window.APP_CONFIG && window.APP_CONFIG.table && window.APP_CONFIG.table.boundingBox;
+const _trafikBboxPadding = 0.003; // Slightly expand query area to include nearby routes (e.g., ferries)
 const CONFIG = {
   // API settings
   apiBaseUrl: 'https://ext-api.vasttrafik.se/pr/v4',
@@ -49,14 +50,14 @@ const CONFIG = {
   
   // Bounding box loaded from config, defaults to Gothenburg area
   boundingBox: {
-    minLng: _trafikBbox ? _trafikBbox[0] : 11.936224,
-    minLat: _trafikBbox ? _trafikBbox[1] : 57.677523,
-    maxLng: _trafikBbox ? _trafikBbox[2] : 12.018278,
-    maxLat: _trafikBbox ? _trafikBbox[3] : 57.699659
+    minLng: _trafikBbox ? (_trafikBbox[0] - _trafikBboxPadding) : 11.936224,
+    minLat: _trafikBbox ? (_trafikBbox[1] - _trafikBboxPadding) : 57.677523,
+    maxLng: _trafikBbox ? (_trafikBbox[2] + _trafikBboxPadding) : 12.018278,
+    maxLat: _trafikBbox ? (_trafikBbox[3] + _trafikBboxPadding) : 57.699659
   },
   
   // Transport mode filter (only show these types)
-  transportModes: ['tram', 'bus'],
+  transportModes: ['tram', 'bus', 'ferry'],
   
   // Visual settings
   vehicleSize: 16,           // Larger icons
