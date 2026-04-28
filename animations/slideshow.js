@@ -282,31 +282,138 @@ function highlightLegendItem(slide, propertyValue) {
 // GeoJSON animation state
 let geojsonAnimationFrame = null;
 let geojsonAnimationActive = false;
+let geojsonStepIndex = -1;
+let geojsonStepValues = [];
+let geojsonStepSlide = null;
+let geojsonStepStyle = null;
+let geojsonStepBusy = false;
 
-// Animate GeoJSON by sequentially highlighting each unique attribute value
-async function animateGeoJSONByProperty(geojson, slide) {
-  const style = slide.metadata?.style || {};
-  const colorProperty = style.colorProperty;
-  if (!colorProperty || !style.colorMap) return;
+function getGeoJSONStepConfig(slide) {
+  const style = slide?.metadata?.style || {};
+  const values = style.colorProperty && style.colorMap ? Object.keys(style.colorMap) : [];
+  return { style, values };
+}
 
-  geojsonAnimationActive = true;
-  const uniqueValues = Object.keys(style.colorMap);
-  const glowDuration = 800, fillDuration = 400, pauseBetween = 200;
+function hasManualGeoJSONSteps(slide) {
+  return slide?.type === 'geojson' && getGeoJSONStepConfig(slide).values.length > 0;
+}
 
-  for (let i = 0; i < uniqueValues.length && geojsonAnimationActive; i++) {
-    const value = uniqueValues[i];
-    const color = style.colorMap[value];
-    highlightLegendItem(slide, value);
-    await animateGlow(value, color, glowDuration, colorProperty);
-    if (geojsonAnimationActive) {
-      await animateFill(value, color, fillDuration, colorProperty, style.fillOpacity || 0.5, style.strokeOpacity || 0.8, uniqueValues, style.colorMap);
-    }
-    if (i < uniqueValues.length - 1 && geojsonAnimationActive) {
-      await new Promise(resolve => setTimeout(resolve, pauseBetween));
-    }
-  }
+function resetGeoJSONStepState() {
+  geojsonStepIndex = -1;
+  geojsonStepValues = [];
+  geojsonStepSlide = null;
+  geojsonStepStyle = null;
+  geojsonStepBusy = false;
   slideshowChannel.postMessage({ type: 'slideshow_legend_highlight', highlightValue: null });
-  return geojsonAnimationActive;
+}
+
+function initializeGeoJSONStepState(slide) {
+  const { style, values } = getGeoJSONStepConfig(slide);
+  geojsonStepIndex = -1;
+  geojsonStepValues = values;
+  geojsonStepSlide = slide;
+  geojsonStepStyle = style;
+  geojsonStepBusy = false;
+}
+
+function buildGeoJSONValueFilter(propertyName, values) {
+  if (!values.length) return ['==', ['get', propertyName], '__slideshow_no_match__'];
+  if (values.length === 1) return ['==', ['get', propertyName], values[0]];
+  return ['any', ...values.map(v => ['==', ['get', propertyName], v])];
+}
+
+function buildGeoJSONColorExpression(propertyName, colorMap, values, fallbackColor) {
+  const expr = ['match', ['get', propertyName]];
+  values.forEach(v => expr.push(v, colorMap[v]));
+  expr.push(fallbackColor);
+  return expr;
+}
+
+function applyGeoJSONStepState(stepIndex) {
+  if (!geojsonStepStyle?.colorProperty || !geojsonStepStyle.colorMap) return;
+
+  const propertyName = geojsonStepStyle.colorProperty;
+  const visibleValues = stepIndex >= 0 ? geojsonStepValues.slice(0, stepIndex + 1) : [];
+  const visibleFilter = buildGeoJSONValueFilter(propertyName, visibleValues);
+  const fillOpacity = geojsonStepStyle.fillOpacity || 0.5;
+  const strokeOpacity = geojsonStepStyle.strokeOpacity || 0.8;
+  const fillColor = buildGeoJSONColorExpression(propertyName, geojsonStepStyle.colorMap, visibleValues, geojsonStepStyle.fillColor || '#3388ff');
+  const lineColor = buildGeoJSONColorExpression(propertyName, geojsonStepStyle.colorMap, visibleValues, geojsonStepStyle.strokeColor || '#0066cc');
+
+  if (map.getLayer('slideshow-fill')) {
+    map.setFilter('slideshow-fill', ['all', ['==', ['geometry-type'], 'Polygon'], visibleFilter]);
+    map.setPaintProperty('slideshow-fill', 'fill-opacity', visibleValues.length ? fillOpacity : 0);
+    map.setPaintProperty('slideshow-fill', 'fill-color', fillColor);
+  }
+  if (map.getLayer('slideshow-line')) {
+    map.setFilter('slideshow-line', ['all', ['==', ['geometry-type'], 'LineString'], visibleFilter]);
+    map.setPaintProperty('slideshow-line', 'line-opacity', visibleValues.length ? strokeOpacity : 0);
+    map.setPaintProperty('slideshow-line', 'line-color', lineColor);
+  }
+  if (map.getLayer('slideshow-point')) {
+    map.setFilter('slideshow-point', ['all', ['==', ['geometry-type'], 'Point'], visibleFilter]);
+    map.setPaintProperty('slideshow-point', 'circle-opacity', visibleValues.length ? 1 : 0);
+  }
+
+  highlightLegendItem(geojsonStepSlide, stepIndex >= 0 ? geojsonStepValues[stepIndex] : null);
+}
+
+async function stepGeoJSON(direction) {
+  if (geojsonStepBusy) return true;
+  if (!geojsonStepSlide || !geojsonStepStyle?.colorProperty || !geojsonStepValues.length) return false;
+
+  const targetIndex = geojsonStepIndex + direction;
+  if (targetIndex < -1 || targetIndex >= geojsonStepValues.length) return false;
+
+  stopGeoJSONAnimation();
+  geojsonStepBusy = true;
+
+  if (direction < 0) {
+    geojsonStepIndex = targetIndex;
+    applyGeoJSONStepState(geojsonStepIndex);
+
+    if (geojsonStepIndex >= 0) {
+      const value = geojsonStepValues[geojsonStepIndex];
+      const color = geojsonStepStyle.colorMap[value];
+      geojsonAnimationActive = true;
+      await animateGlow(value, color, 800, geojsonStepStyle.colorProperty);
+      const completed = geojsonAnimationActive;
+      stopGeoJSONAnimation();
+      if (completed) applyGeoJSONStepState(geojsonStepIndex);
+    }
+
+    geojsonStepBusy = false;
+    return true;
+  }
+
+  const value = geojsonStepValues[targetIndex];
+  const color = geojsonStepStyle.colorMap[value];
+  geojsonAnimationActive = true;
+  highlightLegendItem(geojsonStepSlide, value);
+  await animateGlow(value, color, 800, geojsonStepStyle.colorProperty);
+
+  if (geojsonAnimationActive) {
+    await animateFill(
+      value,
+      color,
+      400,
+      geojsonStepStyle.colorProperty,
+      geojsonStepStyle.fillOpacity || 0.5,
+      geojsonStepStyle.strokeOpacity || 0.8,
+      geojsonStepValues,
+      geojsonStepStyle.colorMap
+    );
+  }
+
+  const completed = geojsonAnimationActive;
+  stopGeoJSONAnimation();
+  if (completed) {
+    geojsonStepIndex = targetIndex;
+    applyGeoJSONStepState(geojsonStepIndex);
+  }
+
+  geojsonStepBusy = false;
+  return completed;
 }
 
 function animateGlow(propertyValue, color, duration, propertyName) {
@@ -369,6 +476,7 @@ function stopGeoJSONAnimation() {
 
 function removeGeoJSONLayers() {
   stopGeoJSONAnimation();
+  resetGeoJSONStepState();
   if (map.getSource('slideshow-geojson')) {
     ['slideshow-fill', 'slideshow-line', 'slideshow-polygon-outline', 'slideshow-point', 'slideshow-glow'].forEach(id => { if (map.getLayer(id)) map.removeLayer(id); });
     map.removeSource('slideshow-geojson');
@@ -402,22 +510,49 @@ async function displayGeoJSON(geojson, slide) {
   map.addLayer({ id: 'slideshow-fill', type: 'fill', source: 'slideshow-geojson', filter: ['==', ['geometry-type'], 'Polygon'], paint: { 'fill-color': fillColor, 'fill-opacity': 0 } });
   map.addLayer({ id: 'slideshow-line', type: 'line', source: 'slideshow-geojson', filter: ['==', ['geometry-type'], 'LineString'], paint: { 'line-color': strokeColor, 'line-width': strokeWidth, 'line-opacity': 0 } });
   map.addLayer({ id: 'slideshow-polygon-outline', type: 'line', source: 'slideshow-geojson', filter: ['==', ['geometry-type'], 'Polygon'], paint: { 'line-color': strokeColor, 'line-width': 1, 'line-opacity': 0.3 } });
-  map.addLayer({ id: 'slideshow-point', type: 'circle', source: 'slideshow-geojson', filter: ['==', ['geometry-type'], 'Point'], paint: { 'circle-radius': pointRadius, 'circle-color': pointColor, 'circle-stroke-color': '#fff', 'circle-stroke-width': 1 } });
+  map.addLayer({ id: 'slideshow-point', type: 'circle', source: 'slideshow-geojson', filter: ['==', ['geometry-type'], 'Point'], paint: { 'circle-radius': pointRadius, 'circle-color': pointColor, 'circle-stroke-color': '#fff', 'circle-stroke-width': 1, 'circle-opacity': 1 } });
 
-  let animationCompleted = false;
-  if (style.colorProperty && style.colorMap) {
-    animationCompleted = await animateGeoJSONByProperty(geojson, slide);
-    if (geojsonAnimationActive) {
-      map.setPaintProperty('slideshow-fill', 'fill-opacity', fillOpacity);
-      map.setPaintProperty('slideshow-line', 'line-opacity', style.strokeOpacity || 0.8);
-      map.setPaintProperty('slideshow-polygon-outline', 'line-opacity', 1);
-    }
+  if (hasManualGeoJSONSteps(slide)) {
+    initializeGeoJSONStepState(slide);
+    applyGeoJSONStepState(-1);
   } else {
     map.setPaintProperty('slideshow-fill', 'fill-opacity', fillOpacity);
     map.setPaintProperty('slideshow-line', 'line-opacity', style.strokeOpacity || 0.8);
     map.setPaintProperty('slideshow-polygon-outline', 'line-opacity', 1);
   }
-  return animationCompleted;
+}
+
+function clearSlideshowTimer() {
+  if (slideshowTimer) { clearTimeout(slideshowTimer); slideshowTimer = null; }
+}
+
+function goToNextSlide() {
+  currentSlideIndex++;
+  if (currentSlideIndex >= slideshowConfig.slides.length) {
+    if (slideshowConfig.settings.loop) currentSlideIndex = 0;
+    else { stopSlideshow(); return; }
+  }
+  displaySlide(currentSlideIndex);
+}
+
+function goToPreviousSlide() {
+  currentSlideIndex = currentSlideIndex - 1;
+  if (currentSlideIndex < 0) currentSlideIndex = slideshowConfig.slides.length - 1;
+  displaySlide(currentSlideIndex);
+}
+
+async function navigateSlide(direction) {
+  if (!isSlideShowActive || !slideshowConfig) return;
+
+  clearSlideshowTimer();
+  if (currentMediaElement instanceof HTMLVideoElement) currentMediaElement.pause();
+
+  const stepped = await stepGeoJSON(direction);
+  if (stepped) return;
+
+  stopGeoJSONAnimation();
+  if (direction > 0) goToNextSlide();
+  else goToPreviousSlide();
 }
 
 // ========== Main slide display ==========
@@ -471,15 +606,12 @@ async function displaySlide(index) {
       await animateWmsTransition(activeWmsLayerId, null, transitionDuration / 2);
       activeWmsLayerId = null;
     }
+    currentMediaElement = null;
     if (slideshowCanvas) slideshowCanvas.classList.remove('active');
     if (slideshowCtx) slideshowCtx.clearRect(0, 0, slideshowCanvas.width, slideshowCanvas.height);
     displayMetadata(slide);
     const media = await preloadMedia(slide);
-    const animationCompleted = await displayGeoJSON(media, slide);
-    if (animationCompleted && isSlideShowActive) {
-      await new Promise(r => setTimeout(r, 1000));
-      if (isSlideShowActive) { advanceSlide(); return; }
-    }
+    await displayGeoJSON(media, slide);
 
   // --- Video slide ---
   } else if (slide.type === 'video') {
@@ -523,7 +655,7 @@ async function displaySlide(index) {
   }
 
   // Schedule next slide (auto-advance)
-  if (slideshowConfig.settings.autoAdvance) {
+  if (slideshowConfig.settings.autoAdvance && !hasManualGeoJSONSteps(slide)) {
     const duration = slide.duration || 5000;
     slideshowTimer = setTimeout(() => advanceSlide(), duration);
   }
@@ -532,16 +664,7 @@ async function displaySlide(index) {
 // Advance to next slide
 function advanceSlide() {
   if (!isSlideShowActive || !slideshowConfig) return;
-  stopGeoJSONAnimation();
-  if (currentMediaElement instanceof HTMLVideoElement) currentMediaElement.pause();
-  if (slideshowTimer) { clearTimeout(slideshowTimer); slideshowTimer = null; }
-
-  currentSlideIndex++;
-  if (currentSlideIndex >= slideshowConfig.slides.length) {
-    if (slideshowConfig.settings.loop) currentSlideIndex = 0;
-    else { stopSlideshow(); return; }
-  }
-  displaySlide(currentSlideIndex);
+  navigateSlide(1);
 }
 
 // Start slideshow
@@ -620,16 +743,10 @@ document.addEventListener('keydown', (e) => {
   if (!isSlideShowActive) return;
   if (e.key === 'ArrowRight' || e.key === ' ') {
     e.preventDefault();
-    stopGeoJSONAnimation();
-    advanceSlide();
+    navigateSlide(1);
   } else if (e.key === 'ArrowLeft') {
     e.preventDefault();
-    stopGeoJSONAnimation();
-    if (slideshowTimer) { clearTimeout(slideshowTimer); slideshowTimer = null; }
-    if (currentMediaElement instanceof HTMLVideoElement) currentMediaElement.pause();
-    currentSlideIndex = currentSlideIndex - 1;
-    if (currentSlideIndex < 0) currentSlideIndex = slideshowConfig.slides.length - 1;
-    displaySlide(currentSlideIndex);
+    navigateSlide(-1);
   } else if (e.key === 'Escape') {
     e.preventDefault();
     stopSlideshow();
@@ -642,16 +759,10 @@ slideshowChannel.addEventListener('message', (event) => {
   if (data.type !== 'slideshow_control') return;
   if (data.action === 'next') {
     if (!isSlideShowActive) return;
-    stopGeoJSONAnimation();
-    advanceSlide();
+    navigateSlide(1);
   } else if (data.action === 'previous') {
     if (!isSlideShowActive) return;
-    stopGeoJSONAnimation();
-    if (slideshowTimer) { clearTimeout(slideshowTimer); slideshowTimer = null; }
-    if (currentMediaElement instanceof HTMLVideoElement) currentMediaElement.pause();
-    currentSlideIndex = currentSlideIndex - 1;
-    if (currentSlideIndex < 0) currentSlideIndex = slideshowConfig.slides.length - 1;
-    displaySlide(currentSlideIndex);
+    navigateSlide(-1);
   } else if (data.action === 'stop') {
     stopSlideshow();
   } else if (data.action === 'request_status') {
