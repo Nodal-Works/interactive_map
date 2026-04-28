@@ -49,12 +49,26 @@ window.computeOverlayPixelSize = function() {
 document.addEventListener('DOMContentLoaded', () => {
   const overlay = document.getElementById('start-overlay');
   if (overlay) {
-    overlay.addEventListener('click', () => {
+    overlay.addEventListener('click', (e) => {
+      e.stopPropagation();
+
       // Resume any existing audio contexts or create a dummy one to unlock
       const AudioContext = window.AudioContext || window.webkitAudioContext;
       const ctx = new AudioContext();
       ctx.resume().then(() => {
         console.log('AudioContext unlocked');
+
+        // First click starts in a wider context (2 zoom levels out).
+        map.jumpTo({
+          center: tableCenter,
+          zoom: initialZoom - START_ZOOM_OFFSET,
+          bearing: initialBearing,
+          pitch: 0
+        });
+
+        // Second click on the map smoothly flies into the calibrated default view.
+        armSecondClickFlyIn();
+
         overlay.style.opacity = '0';
         setTimeout(() => overlay.remove(), 500);
       });
@@ -77,6 +91,16 @@ function showToast(msg, timeout = 3000) {
 let tableCenter = [11.977770568930168, 57.68839377903814]; // [lon, lat]
 let initialZoom = 15.806953679037164;
 let initialBearing = -92.58546386659737; // degrees
+const START_ZOOM_OFFSET = 2;
+const START_FLY_IN_DELAY_MS = 900;
+const START_FLY_IN_DURATION_MS = 6500;
+
+function cinematicFlyInEasing(t) {
+  // Ease-in-out cubic for a gentle ramp-up and smoother arrival.
+  return t < 0.5
+    ? 4 * t * t * t
+    : 1 - Math.pow(-2 * t + 2, 3) / 2;
+}
 
 // Load calibration from the global config
 if (window.APP_CONFIG && window.APP_CONFIG.calibration) {
@@ -100,6 +124,28 @@ const map = new maplibregl.Map({
   bearing: initialBearing,
   pitch: 0
 });
+
+let startFlyInArmed = false;
+
+function armSecondClickFlyIn() {
+  if (startFlyInArmed) return;
+  startFlyInArmed = true;
+
+  map.once('click', () => {
+    setTimeout(() => {
+      map.flyTo({
+        center: tableCenter,
+        zoom: initialZoom,
+        bearing: initialBearing,
+        pitch: 0,
+        duration: START_FLY_IN_DURATION_MS,
+        easing: cinematicFlyInEasing,
+        curve: 1.6,
+        essential: true
+      });
+    }, START_FLY_IN_DELAY_MS);
+  });
+}
 
 // Navigation controls hidden - map is calibrated for projection
 
