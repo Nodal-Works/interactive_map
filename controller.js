@@ -1693,6 +1693,13 @@ document.addEventListener('keydown', (e) => {
         }
         return;
     }
+
+    // Cultural Gravity staged progression from controller keyboard
+    const culturalBtn = document.querySelector('.control-btn[data-target="cultural-gravity-btn"]');
+    if (culturalBtn && culturalBtn.classList.contains('active') && e.key === 'ArrowRight' && !e.repeat) {
+        e.preventDefault();
+        channel.postMessage({ type: 'cultural_gravity_advance' });
+    }
 });
 
 

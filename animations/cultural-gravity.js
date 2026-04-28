@@ -26,6 +26,10 @@
   let animationFrame = null;
   let isActive = false;
   let frameCount = 0;
+  let sequenceStage = 0;      // 0: waiting reveal, 1: revealing, 2: waiting gravity, 3: ramping, 4: full
+  let visibleSiteCount = 0;
+  let revealFrameCounter = 0;
+  let particleIntensity = 0;
 
   // ── Cultural Points of Interest (from KultVis Lindholmen research) ───
   const CULTURAL_SITES = [
@@ -62,6 +66,8 @@
   const SPAWN_RADIUS_M = 180;         // metres — spawn ring radius
   const BASE_SPEED = 0.4;             // px/frame drift towards centre
   const WOBBLE = 0.6;                 // lateral wander strength
+  const REVEAL_INTERVAL_FRAMES = 16;
+  const PARTICLE_RAMP_SPEED = 0.012;
 
   let particles = [];
 
@@ -99,7 +105,12 @@
 
   // ── Pre-rendered glow sprite ──────────────────────────────────────────
   let glowSprite = null;
-  const GLOW_SIZE = 16;
+  const GLOW_SIZE = 24;
+
+  function getVisibleSites() {
+    if (visibleSiteCount <= 0) return [];
+    return CULTURAL_SITES.slice(0, Math.min(visibleSiteCount, CULTURAL_SITES.length));
+  }
 
   function createGlowSprite() {
     const s = document.createElement('canvas');
@@ -117,11 +128,14 @@
 
   // ── Particle spawning ────────────────────────────────────────────────
   function spawnParticle() {
+    const visibleSites = getVisibleSites();
+    if (!visibleSites.length) return;
+
     // Pick a random site, weighted
-    const totalWeight = CULTURAL_SITES.reduce((s, p) => s + p.weight, 0);
+    const totalWeight = visibleSites.reduce((s, p) => s + p.weight, 0);
     let r = Math.random() * totalWeight;
-    let site = CULTURAL_SITES[0];
-    for (const s of CULTURAL_SITES) {
+    let site = visibleSites[0];
+    for (const s of visibleSites) {
       r -= s.weight;
       if (r <= 0) { site = s; break; }
     }
@@ -153,9 +167,29 @@
 
   // ── Update & draw ────────────────────────────────────────────────────
   function update() {
+    if (sequenceStage === 1) {
+      revealFrameCounter++;
+      if (revealFrameCounter >= REVEAL_INTERVAL_FRAMES) {
+        revealFrameCounter = 0;
+        visibleSiteCount = Math.min(visibleSiteCount + 1, CULTURAL_SITES.length);
+        if (visibleSiteCount >= CULTURAL_SITES.length) {
+          sequenceStage = 2;
+          console.log('Cultural Gravity: all locations revealed. Press Right Arrow to start gravity flow.');
+        }
+      }
+    }
+
+    if (sequenceStage >= 3) {
+      particleIntensity = Math.min(1, particleIntensity + PARTICLE_RAMP_SPEED);
+      if (particleIntensity >= 1 && sequenceStage === 3) {
+        sequenceStage = 4;
+      }
+    }
+
     // Spawn new particles
-    const spawnRate = Math.min(12, Math.ceil(MAX_PARTICLES / 60));
-    for (let i = 0; i < spawnRate && particles.length < MAX_PARTICLES; i++) {
+    const maxParticlesNow = Math.max(0, Math.floor(MAX_PARTICLES * particleIntensity));
+    const spawnRate = Math.max(0, Math.ceil(12 * particleIntensity));
+    for (let i = 0; i < spawnRate && particles.length < maxParticlesNow; i++) {
       spawnParticle();
     }
 
@@ -206,7 +240,7 @@
     const attractionPx = metresToPx(ATTRACTION_RADIUS_M);
 
     // ── Draw attraction circles ─────────────────────────────────────────
-    for (const site of CULTURAL_SITES) {
+    for (const site of getVisibleSites()) {
       const center = project(site.lng, site.lat);
       const col = CATEGORY_COLORS[site.category] || { r: 200, g: 200, b: 200 };
 
@@ -216,8 +250,8 @@
 
       // Faded gradient circle
       const grad = ctx.createRadialGradient(center.x, center.y, 0, center.x, center.y, r);
-      grad.addColorStop(0, `rgba(${col.r},${col.g},${col.b},0.18)`);
-      grad.addColorStop(0.6, `rgba(${col.r},${col.g},${col.b},0.06)`);
+      grad.addColorStop(0, `rgba(${col.r},${col.g},${col.b},0.34)`);
+      grad.addColorStop(0.6, `rgba(${col.r},${col.g},${col.b},0.13)`);
       grad.addColorStop(1, `rgba(${col.r},${col.g},${col.b},0)`);
       ctx.fillStyle = grad;
       ctx.beginPath();
@@ -225,31 +259,49 @@
       ctx.fill();
 
       // Thin ring at edge
-      ctx.strokeStyle = `rgba(${col.r},${col.g},${col.b},0.25)`;
-      ctx.lineWidth = 1;
+      ctx.strokeStyle = `rgba(${col.r},${col.g},${col.b},0.46)`;
+      ctx.lineWidth = 1.8;
       ctx.beginPath();
       ctx.arc(center.x, center.y, r, 0, Math.PI * 2);
       ctx.stroke();
 
-      // Centre dot
-      ctx.fillStyle = `rgba(${col.r},${col.g},${col.b},0.9)`;
+      // Soft central glow
+      const glow = ctx.createRadialGradient(center.x, center.y, 0, center.x, center.y, 26 * site.weight);
+      glow.addColorStop(0, `rgba(${col.r},${col.g},${col.b},0.75)`);
+      glow.addColorStop(1, `rgba(${col.r},${col.g},${col.b},0)`);
+      ctx.fillStyle = glow;
       ctx.beginPath();
-      ctx.arc(center.x, center.y, 4 * site.weight, 0, Math.PI * 2);
+      ctx.arc(center.x, center.y, 26 * site.weight, 0, Math.PI * 2);
+      ctx.fill();
+
+      // Centre dot
+      ctx.fillStyle = `rgba(${col.r},${col.g},${col.b},1)`;
+      ctx.beginPath();
+      ctx.arc(center.x, center.y, 6.5 * site.weight, 0, Math.PI * 2);
+      ctx.fill();
+
+      // Bright white inner core
+      ctx.fillStyle = 'rgba(255,255,255,0.9)';
+      ctx.beginPath();
+      ctx.arc(center.x, center.y, 2.2 * site.weight, 0, Math.PI * 2);
       ctx.fill();
 
       // Label
-      ctx.font = 'bold 11px sans-serif';
-      ctx.fillStyle = `rgba(${col.r},${col.g},${col.b},0.85)`;
+      ctx.font = 'bold 15px sans-serif';
+      ctx.fillStyle = `rgba(${col.r},${col.g},${col.b},0.98)`;
       ctx.textAlign = 'center';
-      ctx.fillText(site.name, center.x, center.y - 8 * site.weight - 4);
+      ctx.shadowColor = 'rgba(0,0,0,0.6)';
+      ctx.shadowBlur = 6;
+      ctx.fillText(site.name, center.x, center.y - 10 * site.weight - 8);
+      ctx.shadowBlur = 0;
     }
 
     // ── Draw particles (crowd) ──────────────────────────────────────────
     if (!glowSprite) createGlowSprite();
 
     for (const p of particles) {
-      const alpha = Math.min(1, (1 - p.age / p.lifetime)) * 0.85;
-      const sz = p.size * GLOW_SIZE / 4;
+      const alpha = Math.min(1, (1 - p.age / p.lifetime)) * 0.95;
+      const sz = p.size * GLOW_SIZE / 5.2;
 
       ctx.globalAlpha = alpha;
       ctx.globalCompositeOperation = 'lighter';
@@ -261,9 +313,9 @@
       ctx.fill();
 
       // Tiny bright core
-      ctx.fillStyle = `rgba(255,255,255,${alpha * 0.5})`;
+      ctx.fillStyle = `rgba(255,255,255,${alpha * 0.7})`;
       ctx.beginPath();
-      ctx.arc(p.x, p.y, sz * 0.3, 0, Math.PI * 2);
+      ctx.arc(p.x, p.y, sz * 0.42, 0, Math.PI * 2);
       ctx.fill();
 
       ctx.globalCompositeOperation = 'source-over';
@@ -288,8 +340,12 @@
     resizeCanvas();
     particles = [];
     frameCount = 0;
+    sequenceStage = 0;
+    visibleSiteCount = 0;
+    revealFrameCounter = 0;
+    particleIntensity = 0;
     animate();
-    console.log('Cultural Gravity animation started');
+    console.log('Cultural Gravity animation started. Press Right Arrow once to reveal locations, then again to start gravity flow.');
   }
 
   function stop() {
@@ -301,6 +357,10 @@
     }
     ctx.clearRect(0, 0, canvas.width, canvas.height);
     particles = [];
+    sequenceStage = 0;
+    visibleSiteCount = 0;
+    revealFrameCounter = 0;
+    particleIntensity = 0;
     console.log('Cultural Gravity animation stopped');
   }
 
@@ -308,10 +368,37 @@
     if (isActive) stop(); else start();
   }
 
+  function advanceSequence() {
+    if (!isActive) return;
+
+    if (sequenceStage === 0) {
+      sequenceStage = 1;
+      visibleSiteCount = 0;
+      revealFrameCounter = 0;
+      console.log('Cultural Gravity: revealing locations one by one...');
+    } else if (sequenceStage === 2) {
+      sequenceStage = 3;
+      console.log('Cultural Gravity: ramping up gravity animation...');
+    }
+  }
+
   // ── Resize handling ───────────────────────────────────────────────────
   window.addEventListener('resize', () => {
     if (isActive) resizeCanvas();
   });
+
+  function onArrowAdvance(event) {
+    if (!isActive) return;
+    if (event.key !== 'ArrowRight' || event.repeat) return;
+
+    const t = event.target;
+    const tag = t && t.tagName ? t.tagName.toLowerCase() : '';
+    if (tag === 'input' || tag === 'textarea' || (t && t.isContentEditable)) return;
+
+    const before = sequenceStage;
+    advanceSequence();
+    if (sequenceStage !== before) event.preventDefault();
+  }
 
   // ── Init: wire up button ──────────────────────────────────────────────
   function init() {
@@ -326,6 +413,8 @@
             btn.classList.toggle('active');
           });
         }
+
+        window.addEventListener('keydown', onArrowAdvance);
 
         console.log('Cultural Gravity animation module loaded');
       }
@@ -343,6 +432,7 @@
     start: start,
     stop: stop,
     toggle: toggle,
+    advanceSequence: advanceSequence,
     isActive: () => isActive,
   };
 })();

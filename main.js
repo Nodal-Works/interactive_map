@@ -476,6 +476,10 @@ controllerChannel.onmessage = (event) => {
             // Show toast to confirm action from controller
             showToast(`Remote command: ${targetId}`);
         }
+        } else if (data.type === 'cultural_gravity_advance') {
+          if (window.culturalGravityAnimation && typeof window.culturalGravityAnimation.advanceSequence === 'function') {
+            window.culturalGravityAnimation.advanceSequence();
+          }
     } else if (data.type === 'reset_view') {
         map.flyTo({
             center: tableCenter,
