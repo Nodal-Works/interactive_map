@@ -160,70 +160,9 @@
         "source": "Lantm\u00e4teriet via SLU (INSPIRE)"
       }
     },
-    {
-      "type": "arcgis",
-      "duration": 10000,
-      "transition": "fade",
-      "arcgis": {
-        "url": "https://gis2.boverket.se/arcgis/rest/services/Treecover_2023/MapServer",
-        "format": "png",
-        "transparent": true,
-        "layers": "0"
-      },
-      "metadata": {
-        "title": "Tree Cover (2023)",
-        "description": "Tree canopy cover from 2023 \u2014 green areas indicate tree coverage. Useful for urban ecology and canopy analysis",
-        "source": "Boverket (Swedish National Board of Housing)"
-      }
-    },
-    {
-      "type": "wms",
-      "duration": 10000,
-      "transition": "fade",
-      "wms": {
-        "url": "https://geodata.scb.se/geoserver/stat/ows",
-        "layers": "befolkning_1km_2025",
-        "format": "image/png",
-        "version": "1.1.1"
-      },
-      "metadata": {
-        "title": "Population Density (2025)",
-        "description": "Population per 1 km\u00b2 grid cell \u2014 darker purple indicates higher density. Data from SCB official statistics",
-        "source": "SCB (Statistics Sweden)"
-      }
-    },
-    {
-      "type": "wms",
-      "duration": 10000,
-      "transition": "fade",
-      "wms": {
-        "url": "https://geodata.scb.se/geoserver/stat/ows",
-        "layers": "Gronomraden_2020_tatort",
-        "format": "image/png",
-        "version": "1.1.1"
-      },
-      "metadata": {
-        "title": "Green Areas in Urban Zones (2020)",
-        "description": "Publicly accessible green spaces of at least 0.5 hectares within urban boundaries \u2014 parks, forests, and recreational areas",
-        "source": "SCB (Statistics Sweden)"
-      }
-    },
-    {
-      "type": "wms",
-      "duration": 10000,
-      "transition": "fade",
-      "wms": {
-        "url": "https://geodata.scb.se/geoserver/stat/ows",
-        "layers": "DeSO_2025",
-        "format": "image/png",
-        "version": "1.1.1"
-      },
-      "metadata": {
-        "title": "Demographic Statistical Areas (DeSO 2025)",
-        "description": "Neighbourhood-level demographic zones used for Swedish population statistics \u2014 each area contains roughly 700\u20132700 residents",
-        "source": "SCB (Statistics Sweden)"
-      }
-    },
+
+
+
     {
       "type": "geojson",
       "media": "media/building-footprints.geojson",
