@@ -12,14 +12,11 @@ class BirdSoundsLayer {
     this.isActive = false;
     this.audioContext = null;
     
-    // Sensor locations (around the center of the map)
+    // Sensor locations (inside configured table bounding box)
     this.sensors = [
-      //57.685827, 11.976563
-      //57.690655, 11.981606
-      //57.697344, 11.972293  
-      { id: 1, lat: 57.685827, lng: 11.976563 },
-      { id: 2, lat: 57.690655, lng: 11.981606 },
-      { id: 3, lat: 57.697344, lng: 11.972293 }
+      { id: 1, lat: 57.706300, lng: 11.936800 },
+      { id: 2, lat: 57.709200, lng: 11.942000 },
+      { id: 3, lat: 57.710400, lng: 11.948200 }
     ];
 
     // Bird species configuration
