@@ -64,8 +64,8 @@
   const PARTICLE_LIFETIME = 200;      // frames
   const ATTRACTION_RADIUS_M = 120;    // metres — radius of the gravity well
   const SPAWN_RADIUS_M = 180;         // metres — spawn ring radius
-  const BASE_SPEED = 0.4;             // px/frame drift towards centre
-  const WOBBLE = 0.6;                 // lateral wander strength
+  const BASE_SPEED = 0.24;            // px/frame drift towards centre
+  const WOBBLE = 0.38;                // lateral wander strength
   const REVEAL_INTERVAL_FRAMES = 16;
   const PARTICLE_RAMP_SPEED = 0.012;
 
@@ -160,7 +160,7 @@
       age: 0,
       lifetime: PARTICLE_LIFETIME + Math.floor(Math.random() * 80),
       color: col,
-      size: 1.5 + Math.random() * 1.5,
+      size: 1.0 + Math.random() * 0.9,
       site: site,
     });
   }
@@ -234,6 +234,29 @@
     }
   }
 
+  function drawWavyRing(cx, cy, baseRadius, framePhase, ringIndex, col, opacityScale, lineWidth) {
+    const points = 60;
+    const waveAmp = Math.max(2, baseRadius * 0.035) * (1 + ringIndex * 0.22);
+    const waveFreq = 7 + ringIndex;
+    const speed = 0.028 + ringIndex * 0.007;
+
+    ctx.beginPath();
+    for (let i = 0; i <= points; i++) {
+      const a = (i / points) * Math.PI * 2;
+      const wave = Math.sin(a * waveFreq + framePhase * speed + ringIndex * 1.7);
+      const wave2 = Math.sin(a * (waveFreq * 0.5) - framePhase * (speed * 0.7));
+      const rr = baseRadius + waveAmp * wave + waveAmp * 0.32 * wave2;
+      const x = cx + Math.cos(a) * rr;
+      const y = cy + Math.sin(a) * rr;
+      if (i === 0) ctx.moveTo(x, y);
+      else ctx.lineTo(x, y);
+    }
+    ctx.closePath();
+    ctx.strokeStyle = `rgba(${col.r},${col.g},${col.b},${opacityScale})`;
+    ctx.lineWidth = lineWidth;
+    ctx.stroke();
+  }
+
   function draw() {
     ctx.clearRect(0, 0, canvas.width, canvas.height);
 
@@ -244,9 +267,8 @@
       const center = project(site.lng, site.lat);
       const col = CATEGORY_COLORS[site.category] || { r: 200, g: 200, b: 200 };
 
-      // Pulsing radius
-      const pulse = 1 + 0.08 * Math.sin(frameCount * 0.03 + site.lat * 1000);
-      const r = attractionPx * site.weight * pulse;
+      const r = attractionPx * site.weight;
+      const sitePhase = frameCount + site.lat * 1000;
 
       // Faded gradient circle
       const grad = ctx.createRadialGradient(center.x, center.y, 0, center.x, center.y, r);
@@ -258,12 +280,10 @@
       ctx.arc(center.x, center.y, r, 0, Math.PI * 2);
       ctx.fill();
 
-      // Thin ring at edge
-      ctx.strokeStyle = `rgba(${col.r},${col.g},${col.b},0.46)`;
-      ctx.lineWidth = 1.8;
-      ctx.beginPath();
-      ctx.arc(center.x, center.y, r, 0, Math.PI * 2);
-      ctx.stroke();
+      // Animated wavy ripples
+      drawWavyRing(center.x, center.y, r * 0.62, sitePhase, 0, col, 0.54, 1.7);
+      drawWavyRing(center.x, center.y, r * 0.82, sitePhase + 18, 1, col, 0.42, 1.55);
+      drawWavyRing(center.x, center.y, r * 1.03, sitePhase + 36, 2, col, 0.3, 1.35);
 
       // Soft central glow
       const glow = ctx.createRadialGradient(center.x, center.y, 0, center.x, center.y, 26 * site.weight);
@@ -301,7 +321,7 @@
 
     for (const p of particles) {
       const alpha = Math.min(1, (1 - p.age / p.lifetime)) * 0.95;
-      const sz = p.size * GLOW_SIZE / 5.2;
+      const sz = p.size * GLOW_SIZE / 6.4;
 
       ctx.globalAlpha = alpha;
       ctx.globalCompositeOperation = 'lighter';
