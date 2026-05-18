@@ -62,8 +62,8 @@
   // ── Particle system ───────────────────────────────────────────────────
   const MAX_PARTICLES = 600;
   const PARTICLE_LIFETIME = 200;      // frames
-  const ATTRACTION_RADIUS_M = 120;    // metres — radius of the gravity well
-  const SPAWN_RADIUS_M = 180;         // metres — spawn ring radius
+  const ATTRACTION_RADIUS_M = 200;    // metres — radius of the gravity well
+  const SPAWN_RADIUS_M = 280;         // metres — spawn ring radius
   const BASE_SPEED = 0.24;            // px/frame drift towards centre
   const WOBBLE = 0.38;                // lateral wander strength
   const REVEAL_INTERVAL_FRAMES = 16;
@@ -236,9 +236,9 @@
 
   function drawWavyRing(cx, cy, baseRadius, framePhase, ringIndex, col, opacityScale, lineWidth) {
     const points = 60;
-    const waveAmp = Math.max(2, baseRadius * 0.035) * (1 + ringIndex * 0.22);
+    const waveAmp = Math.max(2, baseRadius * 0.07) * (1 + ringIndex * 0.22);
     const waveFreq = 7 + ringIndex;
-    const speed = 0.028 + ringIndex * 0.007;
+    const speed = 0.07 + ringIndex * 0.018;
 
     ctx.beginPath();
     for (let i = 0; i <= points; i++) {
