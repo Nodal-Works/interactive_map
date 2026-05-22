@@ -45,8 +45,8 @@ function showToast(msg, timeout = 3000) {
 }
 
 // Default fallback values (used if calibration file fails to load)
-let tableCenter = [11.977770568930168, 57.68839377903814]; // [lon, lat]
-let initialZoom = 15.806953679037164;
+let tableCenter = [11.97776390135823, 57.6883812195459]; // [lon, lat]
+let initialZoom = 16.22141031611213;
 let initialBearing = -92.58546386659737; // degrees
 
 // Try to load calibration synchronously via XMLHttpRequest (for compatibility with other scripts)
@@ -467,7 +467,7 @@ ${JSON.stringify(calibration, null, 2)}`;
             });
             
         } else if (action === 'zoom_in') {
-            map.zoomTo(Math.min(map.getZoom()+0.1, 22));
+            map.zoomTo(Math.min(map.getZoom()+0.01, 22));
         } else if (action === 'zoom_out') {
             map.zoomTo(Math.max(map.getZoom()-0.1, 0));
         } else if (action === 'rotate_left') {
