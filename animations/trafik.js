@@ -26,6 +26,7 @@ let trafikAnimationFrame = null;
 let isTrafikAnimating = false;
 let vehicles = [];
 let lastFetchTime = 0;
+let nextFetchAllowedAt = 0;
 let updateInterval = null;
 
 // API Configuration - loaded from config file (not .env since this is client-side)
@@ -44,7 +45,7 @@ const CONFIG = {
   // API settings
   apiBaseUrl: 'https://ext-api.vasttrafik.se/pr/v4',
   configPath: (window.APP_CONFIG && window.APP_CONFIG.data.other.trafikConfig) || 'trafik-config.json',
-  fetchInterval: 3000,               // Fetch every 3 seconds to avoid rate limiting
+  fetchInterval: 10000,              // Keep requests below the API rate limit
   tokenRefreshBuffer: 60000,          // Refresh token 1 minute before expiry
   positionsLimit: 200,                // Max vehicles per API call
   
@@ -227,6 +228,16 @@ async function fetchLivePositions() {
       return fetchLivePositions();
     }
     
+    if (response.status === 429) {
+      const retryAfterSeconds = Number(response.headers.get('Retry-After'));
+      const retryDelay = Number.isFinite(retryAfterSeconds) && retryAfterSeconds > 0
+        ? retryAfterSeconds * 1000
+        : 30000;
+      nextFetchAllowedAt = Date.now() + retryDelay;
+      console.warn(`Trafik: Rate limited; retrying in ${Math.ceil(retryDelay / 1000)}s`);
+      return [];
+    }
+
     if (!response.ok) {
       throw new Error(`API error: ${response.status}`);
     }
@@ -575,7 +586,13 @@ async function updateVehicles() {
   const now = Date.now();
   
   // Fetch new positions at interval
-  if (now - lastFetchTime > CONFIG.fetchInterval) {
+  if (now < nextFetchAllowedAt || now - lastFetchTime <= CONFIG.fetchInterval) {
+    return;
+  }
+
+  // Set this before awaiting so a slow request cannot overlap the next poll.
+  lastFetchTime = now;
+  if (now >= nextFetchAllowedAt) {
     const newPositions = await fetchLivePositions();
     if (newPositions.length > 0) {
       // Merge with existing vehicles for smooth interpolation
@@ -613,7 +630,6 @@ async function updateVehicles() {
       vehicles = newPositions;
       console.log(`Trafik: Updated ${vehicles.length} vehicle positions (tram/bus only)`);
     }
-    lastFetchTime = now;
   }
 }
 
