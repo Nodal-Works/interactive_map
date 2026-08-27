@@ -79,6 +79,84 @@ const map = new maplibregl.Map({
   pitch: 0
 });
 
+const EPC_CLASS_COLORS = {
+  A: '#16803c',
+  B: '#4f9f3e',
+  C: '#91b93e',
+  D: '#d1c83b',
+  E: '#e7a832',
+  F: '#dd702d',
+  G: '#bd3c2f'
+};
+let epcModeActive = false;
+let epcSelectedFeature = null;
+
+function epcColorExpression() {
+  return ['match', ['get', 'energy_class'],
+    ...Object.entries(EPC_CLASS_COLORS).flat(), '#6b7280'];
+}
+
+function setEpcMode(active) {
+  epcModeActive = active;
+  ['epc-buildings-fill', 'epc-buildings-line'].forEach(layerId => {
+    if (map.getLayer(layerId)) map.setLayoutProperty(layerId, 'visibility', active ? 'visible' : 'none');
+  });
+  if (!active) {
+    epcSelectedFeature = null;
+    const selectedSource = map.getSource('epc-selected');
+    if (selectedSource) selectedSource.setData({ type: 'FeatureCollection', features: [] });
+  }
+  const button = document.getElementById('epc-btn');
+  if (button) button.classList.toggle('active', active);
+}
+
+async function loadEpcBuildings() {
+  try {
+    const response = await fetch('media/building-footprints-epc.geojson');
+    if (!response.ok) throw new Error(`HTTP ${response.status}`);
+    const data = await response.json();
+    map.addSource('epc-buildings', { type: 'geojson', data });
+    map.addLayer({
+      id: 'epc-buildings-fill', type: 'fill', source: 'epc-buildings',
+      paint: { 'fill-color': epcColorExpression(), 'fill-opacity': 0.72 },
+      layout: { visibility: 'none' }
+    });
+    map.addLayer({
+      id: 'epc-buildings-line', type: 'line', source: 'epc-buildings',
+      paint: { 'line-color': '#111827', 'line-width': 0.7, 'line-opacity': 0.65 },
+      layout: { visibility: 'none' }
+    });
+    map.addSource('epc-selected', { type: 'geojson', data: { type: 'FeatureCollection', features: [] } });
+    map.addLayer({
+      id: 'epc-selected-fill', type: 'fill', source: 'epc-selected',
+      paint: { 'fill-color': '#ffffff', 'fill-opacity': 0.12 }
+    });
+    map.addLayer({
+      id: 'epc-selected-line', type: 'line', source: 'epc-selected',
+      paint: { 'line-color': '#ffffff', 'line-width': 3 }
+    });
+    map.on('mouseenter', 'epc-buildings-fill', () => { map.getCanvas().style.cursor = 'pointer'; });
+    map.on('mouseleave', 'epc-buildings-fill', () => { map.getCanvas().style.cursor = ''; });
+    map.on('click', 'epc-buildings-fill', event => {
+      const feature = event.features?.[0];
+      if (!feature) return;
+      epcSelectedFeature = feature;
+      map.getSource('epc-selected').setData({ type: 'FeatureCollection', features: [feature] });
+      new maplibregl.Popup({ closeButton: false })
+        .setLngLat(event.lngLat)
+        .setHTML(`<strong>EPC ${feature.properties?.energy_class || 'No data'}</strong>`)
+        .addTo(map);
+      new BroadcastChannel('map_controller_channel').postMessage({
+        type: 'epc_building_selected',
+        building: { type: 'Feature', geometry: feature.geometry, properties: feature.properties }
+      });
+    });
+  } catch (error) {
+    console.error('[EPC] Could not load EPC GeoJSON:', error);
+    showToast('EPC data could not be loaded');
+  }
+}
+
 // Navigation controls hidden - map is calibrated for projection
 
 // Raster basemap sources and layers
@@ -147,6 +225,8 @@ map.on('load', () => {
       layout: { visibility: key === 'cartoDark' ? 'visible' : 'none' }
     });
   });
+
+  loadEpcBuildings();
 
   // Add table polygon and markers as a GeoJSON source
   const tableCorners = [
@@ -356,6 +436,12 @@ basemapToggleBtn.addEventListener('click', () => {
   const newBasemap = basemapKeys[currentBasemapIndex];
   setBasemap(newBasemap);
   showToast(`Basemap: ${newBasemap}`);
+});
+
+const epcChannel = new BroadcastChannel('map_controller_channel');
+document.getElementById('epc-btn')?.addEventListener('click', () => {
+  setEpcMode(!epcModeActive);
+  epcChannel.postMessage({ type: 'animation_state', animationId: 'epc-btn', isActive: epcModeActive });
 });
 
 // expose setBasemap for debugging
