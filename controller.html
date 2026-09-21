@@ -5,6 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Map Controller</title>
     <link rel="stylesheet" href="style.css" />
+    <link rel="stylesheet" href="controller/ecom-controls.css" />
     <link href="https://fonts.googleapis.com/icon?family=Material+Icons" rel="stylesheet">
     <style>
         *, *::before, *::after {
@@ -844,6 +845,12 @@
                 </svg>
             </button>
         </div>
+        <div class="control-group">
+            <h3>Energy</h3>
+            <button class="control-btn animation-btn" data-action="click" data-target="ecom-energy-btn" title="ECOM Energy Community">
+                <span class="material-icons">bolt</span>
+            </button>
+        </div>
         
         <div class="control-group">
             <h3>Map Controls</h3>
@@ -940,7 +947,8 @@
         </section>
 
         <section id="metadata-section" class="panel-section" style="grid-column: 1 / -1; grid-row: 2;">
-            <h2>Metadata</h2>
+            <h2 id="metadata-title">Metadata</h2>
+            <div id="ecom-groups" class="ecom-groups" style="display: none;"></div>
             <div id="metadata-content">
                 <div class="metadata-item">
                     <div class="metadata-label">Current View</div>
@@ -983,6 +991,9 @@
     <script src="controller/auto-calibration.js"></script>
     <script src="controller/tour.js"></script>
     <script src="controller/bg-animation.js"></script>
+    <script src="ecom-palette.js"></script>
+    <script src="controller/ecom-controls.js"></script>
+    <script src="controller/ecom-dashboard.js"></script>
     <script src="controller.js"></script>
     
     <!-- Auto-fullscreen when launched from launcher -->

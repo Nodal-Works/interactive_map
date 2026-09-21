@@ -63,7 +63,8 @@ const ANIMATION_BUTTONS = [
     'bird-sounds-btn',
     'campus-demo-btn',
     'fcc-demo-btn',
-    'street-view-btn'
+    'street-view-btn',
+    'ecom-energy-btn'
 ];
 
 // Function buttons are buttons that perform actions (not toggleable animations)
@@ -211,11 +212,31 @@ function updateDashboard(targetId) {
     // Reset titles by default
     if (dashboardTitle) dashboardTitle.textContent = 'Dashboard';
     if (legendTitle) legendTitle.textContent = 'Legend';
+
+    const ecomGroups = document.getElementById('ecom-groups');
+    const metadataTitle = document.getElementById('metadata-title');
+    const metadataBody = document.getElementById('metadata-content');
+    if (ecomGroups) ecomGroups.style.display = 'none';
+    if (metadataBody) metadataBody.style.display = '';
+    if (metadataTitle) metadataTitle.textContent = 'Metadata';
     
     // Hide SAM segmentation section by default (only shown for street-view-btn)
     const samSection = document.getElementById('sam-segmentation-section');
     if (samSection && targetId !== 'street-view-btn') {
         samSection.style.display = 'none';
+    }
+
+    if (targetId === 'ecom-energy-btn') {
+        const campusLegend = document.getElementById('campus-demo-legend');
+        if (campusLegend) campusLegend.style.display = 'none';
+        if (legendContent) legendContent.style.display = '';
+        if (ecomGroups) ecomGroups.style.display = '';
+        if (metadataBody) metadataBody.style.display = 'none';
+        if (metadataTitle) metadataTitle.textContent = 'Community Parameters';
+        renderEcomDashboard();
+        channel.postMessage({ type: 'ecom_request_summary' });
+        window.ecomControls.load();
+        return;
     }
     
     // Campus Demo dashboard
@@ -1626,6 +1647,11 @@ function updateMetadata(layerId) {
     let legend = '<p>Select a simulation to view its legend.</p>';
 
     switch(layerId) {
+        case 'ecom-energy-btn':
+            name = 'Energy Community';
+            desc = 'Hourly electricity flows between campus members, their roof arrays, the battery and the grid.';
+            legend = '';
+            break;
         case 'cfd-simulation-btn':
             name = 'CFD Wind Simulation';
             desc = 'Computational Fluid Dynamics simulation showing wind flow patterns around buildings. Colors indicate wind speed.';
