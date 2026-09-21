@@ -25,7 +25,8 @@ const MSG_TYPES = {
     FCC_DEMO_PROGRESS: 'fcc_demo_progress',
     FCC_DEMO_READY: 'fcc_demo_ready',
     FCC_DEMO_STATS: 'fcc_demo_stats',
-    FCC_DEMO_PLAYBACK_STATE: 'fcc_demo_playback_state'
+    FCC_DEMO_PLAYBACK_STATE: 'fcc_demo_playback_state',
+    EPC_BUILDING_SELECTED: 'epc_building_selected'
 };
 
 // Debug mode - set to false in production
@@ -64,6 +65,7 @@ const ANIMATION_BUTTONS = [
     'campus-demo-btn',
     'fcc-demo-btn',
     'street-view-btn',
+    'epc-btn',
     'ecom-energy-btn'
 ];
 
@@ -96,6 +98,12 @@ function setAnimationState(targetId, isActive) {
         // Reset campus demo legend when it's deactivated
         if (targetId === 'campus-demo-btn') {
             resetCampusDemoLegend();
+        }
+        if (targetId === 'epc-btn') {
+            epcState.selected = null;
+            if (document.getElementById('main-panel')?.classList.contains('epc-mode')) {
+                renderEpcBuildingDashboard(null);
+            }
         }
     }
     syncAnimationButtonStates();
@@ -199,6 +207,7 @@ function updateDashboard(targetId) {
     const dashboardTitle = document.getElementById('dashboard-title');
     const legendTitle = document.getElementById('legend-title');
     const mainPanel = document.getElementById('main-panel');
+    if (mainPanel) mainPanel.classList.toggle('epc-mode', targetId === 'epc-btn');
 
     // Check if already in sun study mode to avoid duplicate setup
     if (targetId === 'sun-study-btn' && mainPanel && mainPanel.classList.contains('sun-study-mode')) {
@@ -226,6 +235,11 @@ function updateDashboard(targetId) {
         samSection.style.display = 'none';
     }
 
+    if (targetId === 'epc-btn') {
+        showEpcDashboard(dashboardTitle, legendTitle, legendContent);
+        return;
+    }
+
     if (targetId === 'ecom-energy-btn') {
         const campusLegend = document.getElementById('campus-demo-legend');
         if (campusLegend) campusLegend.style.display = 'none';
@@ -238,7 +252,7 @@ function updateDashboard(targetId) {
         window.ecomControls.load();
         return;
     }
-    
+
     // Campus Demo dashboard
     if (targetId === 'campus-demo-btn') {
         if (dashboardTitle) dashboardTitle.textContent = 'Campus Vision';
@@ -457,167 +471,10 @@ function updateDashboard(targetId) {
     }
 
     if (targetId === 'calibrate-btn') {
-        if (dashboardTitle) dashboardTitle.textContent = 'Calibration Controls';
-        if (legendTitle) legendTitle.textContent = 'Instructions';
-
-        dashboardContent.innerHTML = `
-            <div class="dashboard-container">
-                <div class="dashboard-card">
-                    <div class="dashboard-section-title">
-                        <span class="material-icons" style="font-size: 18px;">camera</span>
-                        Auto-Calibration
-                    </div>
-                    
-                    <div class="control-row">
-                        <span class="control-label">Camera</span>
-                        <select id="ctrl-camera-select" class="modern-date" style="width: 150px;">
-                            <option value="">Select camera...</option>
-                        </select>
-                    </div>
-                    
-                    <div id="camera-preview-container" style="width: 100%; aspect-ratio: 16/9; background: #1a1a1a; border-radius: 8px; margin: 0.75rem 0; overflow: hidden; position: relative;">
-                        <canvas id="camera-preview" style="width: 100%; height: 100%; object-fit: contain;"></canvas>
-                        <div id="camera-status" style="position: absolute; bottom: 8px; left: 8px; background: rgba(0,0,0,0.7); color: #888; padding: 4px 8px; border-radius: 4px; font-size: 0.8rem;">No camera selected</div>
-                    </div>
-                    
-                    <div class="action-grid">
-                        <button id="ctrl-start-auto-calibrate" class="modern-btn primary">
-                            <span class="material-icons" style="font-size: 16px;">auto_fix_high</span>
-                            Start Auto-Calibrate
-                        </button>
-                        <button id="ctrl-stop-auto-calibrate" class="modern-btn" disabled>
-                            <span class="material-icons" style="font-size: 16px;">stop</span>
-                            Stop
-                        </button>
-                    </div>
-                    
-                    <div id="calibration-progress" style="margin-top: 0.75rem; padding: 0.5rem; background: #1a1a1a; border-radius: 6px; display: none;">
-                        <div style="display: flex; justify-content: space-between; margin-bottom: 0.25rem;">
-                            <span id="calibration-phase">Initializing...</span>
-                            <span id="calibration-iteration">0/15</span>
-                        </div>
-                        <div style="height: 4px; background: #333; border-radius: 2px; overflow: hidden;">
-                            <div id="calibration-progress-bar" style="height: 100%; width: 0%; background: #4ade80; transition: width 0.3s;"></div>
-                        </div>
-                    </div>
-                </div>
-
-                <div class="dashboard-card">
-                    <div class="dashboard-section-title">Manual Calibration</div>
-                    
-                    <div class="control-row">
-                        <span class="control-label">Screen Width (cm)</span>
-                        <input type="number" id="ctrl-screen-w" class="modern-date" value="111.93" step="0.1" style="width: 80px;">
-                    </div>
-                    <div class="control-row">
-                        <span class="control-label">Screen Height (cm)</span>
-                        <input type="number" id="ctrl-screen-h" class="modern-date" value="62.96" step="0.1" style="width: 80px;">
-                    </div>
-                    <div class="control-row">
-                        <span class="control-label">Table Width (cm)</span>
-                        <input type="number" id="ctrl-table-w" class="modern-date" value="100" step="0.1" style="width: 80px;">
-                    </div>
-                    <div class="control-row">
-                        <span class="control-label">Table Height (cm)</span>
-                        <input type="number" id="ctrl-table-h" class="modern-date" value="60" step="0.1" style="width: 80px;">
-                    </div>
-
-                    <div class="action-grid">
-                        <button id="ctrl-show-overlay" class="modern-btn">Show Overlay</button>
-                        <button id="ctrl-hide-overlay" class="modern-btn">Hide Overlay</button>
-                    </div>
-                    
-                    <div style="margin-top: 1rem;">
-                        <button id="ctrl-calibrate-fit" class="modern-btn primary" style="width: 100%;">Copy Current Calibration</button>
-                    </div>
-                </div>
-
-                <div class="dashboard-card">
-                    <div class="dashboard-section-title">Map Adjustment</div>
-                    <div class="action-grid" style="grid-template-columns: repeat(3, 1fr);">
-                        <button id="ctrl-rotate-left" class="modern-btn"><span class="material-icons">rotate_left</span></button>
-                        <button id="ctrl-reset-rotation" class="modern-btn">Reset</button>
-                        <button id="ctrl-rotate-right" class="modern-btn"><span class="material-icons">rotate_right</span></button>
-                    </div>
-                    <div class="action-grid">
-                        <button id="ctrl-zoom-in" class="modern-btn"><span class="material-icons">add</span> Zoom</button>
-                        <button id="ctrl-zoom-out" class="modern-btn"><span class="material-icons">remove</span> Zoom</button>
-                    </div>
-                    <div style="margin-top: 1rem;">
-                        <button id="ctrl-lock-center" class="modern-btn" style="width: 100%;">Lock Center</button>
-                    </div>
-                    <div style="margin-top: 0.5rem;">
-                        <button id="ctrl-toggle-table-markers" class="modern-btn" style="width: 100%;">Toggle Table Markers</button>
-                    </div>
-                </div>
-            </div>
-        `;
-        
-        legendContent.innerHTML = `
-            <div class="dashboard-card">
-                <div class="dashboard-section-title">Auto-Calibration</div>
-                <p class="info-text">
-                    1. Position a camera to view the entire table<br>
-                    2. Select the camera from the dropdown<br>
-                    3. Click "Start Auto-Calibrate"<br>
-                    4. The system will detect projected markers and automatically adjust zoom/rotation<br>
-                    5. Wait for convergence or click Stop
-                </p>
-            </div>
-            <div class="dashboard-card">
-                <div class="dashboard-section-title">Manual Calibration</div>
-                <p class="info-text">
-                    1. Measure your physical screen dimensions<br>
-                    2. Measure your physical table dimensions<br>
-                    3. Enter values in the settings<br>
-                    4. Click "Show Overlay" to see the target area<br>
-                    5. Adjust map zoom/rotation to fit<br>
-                    6. Click "Copy Current Calibration" to save
-                </p>
-            </div>
-        `;
-
-        // Initialize auto-calibrator
-        initAutoCalibrator();
-
-        // Add event listeners for manual calibration
-        document.getElementById('ctrl-show-overlay').addEventListener('click', () => {
-            const sw = document.getElementById('ctrl-screen-w').value;
-            const sh = document.getElementById('ctrl-screen-h').value;
-            const tw = document.getElementById('ctrl-table-w').value;
-            const th = document.getElementById('ctrl-table-h').value;
-            channel.postMessage({ type: MSG_TYPES.CALIBRATE_ACTION, action: 'show_overlay', params: { sw, sh, tw, th } });
-        });
-        
-        document.getElementById('ctrl-hide-overlay').addEventListener('click', () => {
-            channel.postMessage({ type: MSG_TYPES.CALIBRATE_ACTION, action: 'hide_overlay' });
-        });
-
-        document.getElementById('ctrl-calibrate-fit').addEventListener('click', () => {
-            channel.postMessage({ type: MSG_TYPES.CALIBRATE_ACTION, action: 'copy_calibration' });
-        });
-
-        document.getElementById('ctrl-zoom-in').addEventListener('click', () => channel.postMessage({ type: MSG_TYPES.CALIBRATE_ACTION, action: 'zoom_in' }));
-        document.getElementById('ctrl-zoom-out').addEventListener('click', () => channel.postMessage({ type: MSG_TYPES.CALIBRATE_ACTION, action: 'zoom_out' }));
-        document.getElementById('ctrl-rotate-left').addEventListener('click', () => channel.postMessage({ type: MSG_TYPES.CALIBRATE_ACTION, action: 'rotate_left' }));
-        document.getElementById('ctrl-rotate-right').addEventListener('click', () => channel.postMessage({ type: MSG_TYPES.CALIBRATE_ACTION, action: 'rotate_right' }));
-        document.getElementById('ctrl-reset-rotation').addEventListener('click', () => channel.postMessage({ type: MSG_TYPES.CALIBRATE_ACTION, action: 'reset_rotation' }));
-        
-        const lockBtn = document.getElementById('ctrl-lock-center');
-        lockBtn.addEventListener('click', () => {
-            lockBtn.classList.toggle('active');
-            channel.postMessage({ type: MSG_TYPES.CALIBRATE_ACTION, action: 'lock_center', value: lockBtn.classList.contains('active') });
-        });
-
-        const toggleTableMarkersBtn = document.getElementById('ctrl-toggle-table-markers');
-        toggleTableMarkersBtn.addEventListener('click', () => {
-            toggleTableMarkersBtn.classList.toggle('active');
-            channel.postMessage({ type: MSG_TYPES.CALIBRATE_ACTION, action: 'toggle_table_markers', value: toggleTableMarkersBtn.classList.contains('active') });
-        });
-
+        renderManualCalibration(dashboardTitle, legendTitle, dashboardContent, legendContent);
         return;
     }
-    
+
     if (targetId === 'stormwater-btn') {
         dashboardContent.innerHTML = `
             <div class="dashboard-container">
@@ -1492,6 +1349,11 @@ channel.onmessage = (event) => {
     } else if (data.type === MSG_TYPES.STATE_UPDATE) {
         // Legacy state update - ignore for animation buttons now
         // We use ANIMATION_STATE for that instead
+    } else if (data.type === MSG_TYPES.EPC_BUILDING_SELECTED) {
+        epcState.selected = data.building || null;
+        if (document.getElementById('main-panel')?.classList.contains('epc-mode')) {
+            renderEpcBuildingDashboard(epcState.selected);
+        }
     } else if (data.type === MSG_TYPES.SLIDESHOW_UPDATE) {
         // Update slideshow state and display
         slideshowState = {
@@ -1566,6 +1428,13 @@ channel.onmessage = (event) => {
             alert('Failed to copy to clipboard. Check console for data.');
             console.log(calibrationText);
         });
+    } else if (data.type === 'calibration_saved') {
+        localStorage.setItem('interactive_map_selected_calibration', data.calibration.id);
+        refreshSavedCalibrationSelect();
+        const calibrateButton = document.querySelector('.control-btn[data-target="calibrate-btn"]');
+        if (calibrateButton && calibrateButton.classList.contains('selected')) {
+            renderCalibrationHistory(document.getElementById('legend-content'));
+        }
     } else if (data.type === 'isovist_stats') {
         updateIsovistChart(data.data);
     } else if (data.type === 'fcc_demo_progress') {
@@ -1735,6 +1604,11 @@ function updateMetadata(layerId) {
             desc = 'Visual field analysis from a specific point. Shows what is visible from the selected location.';
             legend = '<p>Click on map to set view point.</p>';
             break;
+        case 'epc-btn':
+            name = 'Energy Performance Certificates';
+            desc = 'Building energy classes and certificate details.';
+            legend = '<p>Click a building to inspect its EPC.</p>';
+            break;
         case 'calibrate-btn':
             name = 'Projector Calibration';
             desc = 'Configure map projection to align with physical model.';
@@ -1801,8 +1675,6 @@ document.addEventListener('keydown', (e) => {
 });
 
 
-// Auto-Calibration loaded from controller/auto-calibration.js
 
 
 // Street View + SAM loaded from controller/street-view.js
-

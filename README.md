@@ -144,7 +144,29 @@ python -m http.server 8000
 # Then open http://localhost:8000/launcher.html
 ```
 
-> **TODO:** Camera-based calibration is currently disabled—see [calibration/README.md](calibration/README.md) for notes. Re-enable when fixed.
+Manual calibration is available from the controller. Adjust the map, save named presets, or overwrite the default calibration there.
+
+### EPC mode
+
+The controller's EPC button colors the map's buildings by energy class and
+shows a compact certificate summary when a building is clicked. The map uses
+the generated [media/building-footprints-epc.geojson](media/building-footprints-epc.geojson)
+artifact, so the EPC Browser does not need to run at presentation time.
+
+Regenerate the artifact from the EPC Browser's read-only DuckDB database after
+refreshing EPC data:
+
+```bash
+python3 scripts/export_epc_geojson.py \
+    --database ../chalmers_epc_browser/epc_sweden.duckdb
+```
+
+The exporter matches the map's `objektidentitet` values against the EPC
+Browser's enriched Gothenburg footprints and uses `FormularId` as the
+certificate identifier. The current export contains 788 map footprints, 455
+EPC-linked features, and 333 features without a match. The generated file
+contains summary fields and selected detail fields only; the full EPC
+database and any credentials must remain in the EPC Browser environment.
 
 ---
 

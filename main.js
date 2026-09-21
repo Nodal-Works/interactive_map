@@ -45,9 +45,11 @@ function showToast(msg, timeout = 3000) {
 }
 
 // Default fallback values (used if calibration file fails to load)
-let tableCenter = [11.977770568930168, 57.68839377903814]; // [lon, lat]
-let initialZoom = 15.806953679037164;
+let tableCenter = [11.97776390135823, 57.6883812195459]; // [lon, lat]
+let initialZoom = 16.22141031611213;
 let initialBearing = -92.58546386659737; // degrees
+let mapboxToken = '';
+let defaultCalibrationOverride = null;
 
 // Try to load calibration synchronously via XMLHttpRequest (for compatibility with other scripts)
 try {
@@ -65,6 +67,37 @@ try {
   console.warn('Could not load map-calibration.json, using defaults:', e);
 }
 
+try {
+  const savedDefault = localStorage.getItem('interactive_map_default_calibration');
+  if (savedDefault) defaultCalibrationOverride = JSON.parse(savedDefault);
+  const selectedId = localStorage.getItem('interactive_map_selected_calibration');
+  const saved = JSON.parse(localStorage.getItem('interactive_map_calibrations') || '[]');
+  const selected = selectedId && selectedId !== 'original'
+    ? saved.find(calibration => calibration.id === selectedId)
+    : null;
+  const calibration = selectedId === 'original' ? null : selected || defaultCalibrationOverride;
+  if (calibration?.center && Number.isFinite(calibration.zoom) && Number.isFinite(calibration.bearing)) {
+    tableCenter = [calibration.center.lng, calibration.center.lat];
+    initialZoom = calibration.zoom;
+    initialBearing = calibration.bearing;
+    console.log('Loaded selected calibration from local storage');
+  }
+} catch (e) {
+  console.warn('Could not load saved calibration');
+}
+
+try {
+  const xhr = new XMLHttpRequest();
+  xhr.open('GET', 'trafik-config.json', false);
+  xhr.send(null);
+  if (xhr.status === 200) {
+    const config = JSON.parse(xhr.responseText);
+    mapboxToken = config.mapboxtoken || config.mapboxToken || '';
+  }
+} catch (e) {
+  console.warn('Could not load Mapbox token from trafik-config.json');
+}
+
 // Create the map with loaded (or default) calibration
 const map = new maplibregl.Map({
   container: 'map',
@@ -78,6 +111,84 @@ const map = new maplibregl.Map({
   bearing: initialBearing,
   pitch: 0
 });
+
+const EPC_CLASS_COLORS = {
+  A: '#16803c',
+  B: '#4f9f3e',
+  C: '#91b93e',
+  D: '#d1c83b',
+  E: '#e7a832',
+  F: '#dd702d',
+  G: '#bd3c2f'
+};
+let epcModeActive = false;
+let epcSelectedFeature = null;
+
+function epcColorExpression() {
+  return ['match', ['get', 'energy_class'],
+    ...Object.entries(EPC_CLASS_COLORS).flat(), '#6b7280'];
+}
+
+function setEpcMode(active) {
+  epcModeActive = active;
+  ['epc-buildings-fill', 'epc-buildings-line'].forEach(layerId => {
+    if (map.getLayer(layerId)) map.setLayoutProperty(layerId, 'visibility', active ? 'visible' : 'none');
+  });
+  if (!active) {
+    epcSelectedFeature = null;
+    const selectedSource = map.getSource('epc-selected');
+    if (selectedSource) selectedSource.setData({ type: 'FeatureCollection', features: [] });
+  }
+  const button = document.getElementById('epc-btn');
+  if (button) button.classList.toggle('active', active);
+}
+
+async function loadEpcBuildings() {
+  try {
+    const response = await fetch('media/building-footprints-epc.geojson');
+    if (!response.ok) throw new Error(`HTTP ${response.status}`);
+    const data = await response.json();
+    map.addSource('epc-buildings', { type: 'geojson', data });
+    map.addLayer({
+      id: 'epc-buildings-fill', type: 'fill', source: 'epc-buildings',
+      paint: { 'fill-color': epcColorExpression(), 'fill-opacity': 0.72 },
+      layout: { visibility: epcModeActive ? 'visible' : 'none' }
+    });
+    map.addLayer({
+      id: 'epc-buildings-line', type: 'line', source: 'epc-buildings',
+      paint: { 'line-color': '#111827', 'line-width': 0.7, 'line-opacity': 0.65 },
+      layout: { visibility: epcModeActive ? 'visible' : 'none' }
+    });
+    map.addSource('epc-selected', { type: 'geojson', data: { type: 'FeatureCollection', features: [] } });
+    map.addLayer({
+      id: 'epc-selected-fill', type: 'fill', source: 'epc-selected',
+      paint: { 'fill-color': '#ffffff', 'fill-opacity': 0.12 }
+    });
+    map.addLayer({
+      id: 'epc-selected-line', type: 'line', source: 'epc-selected',
+      paint: { 'line-color': '#ffffff', 'line-width': 3 }
+    });
+    map.on('mouseenter', 'epc-buildings-fill', () => { map.getCanvas().style.cursor = 'pointer'; });
+    map.on('mouseleave', 'epc-buildings-fill', () => { map.getCanvas().style.cursor = ''; });
+    map.on('click', 'epc-buildings-fill', event => {
+      const feature = event.features?.[0];
+      if (!feature) return;
+      epcSelectedFeature = feature;
+      map.getSource('epc-selected').setData({ type: 'FeatureCollection', features: [feature] });
+      new maplibregl.Popup({ closeButton: false })
+        .setLngLat(event.lngLat)
+        .setHTML(`<strong>EPC ${feature.properties?.energy_class || 'No data'}</strong>`)
+        .addTo(map);
+      epcChannel.postMessage({
+        type: 'epc_building_selected',
+        building: { type: 'Feature', geometry: feature.geometry, properties: feature.properties }
+      });
+    });
+  } catch (error) {
+    console.error('[EPC] Could not load EPC GeoJSON:', error);
+    showToast('EPC data could not be loaded');
+  }
+}
 
 // Navigation controls hidden - map is calibrated for projection
 
@@ -134,19 +245,78 @@ const basemaps = {
   }
 };
 
+if (mapboxToken) {
+  basemaps.mapboxDark = {
+    id: 'mapbox-dark-source',
+    tiles: [`https://api.mapbox.com/styles/v1/mapbox/dark-v11/tiles/256/{z}/{x}/{y}?access_token=${encodeURIComponent(mapboxToken)}`],
+    tileSize: 256,
+    attribution: '&copy; Mapbox &copy; OpenStreetMap'
+  };
+  basemaps.mapboxLight = {
+    id: 'mapbox-light-source',
+    tiles: [`https://api.mapbox.com/styles/v1/mapbox/light-v11/tiles/256/{z}/{x}/{y}?access_token=${encodeURIComponent(mapboxToken)}`],
+    tileSize: 256,
+    attribution: '&copy; Mapbox &copy; OpenStreetMap'
+  };
+  basemaps.mapboxOutdoors = {
+    id: 'mapbox-outdoors-source',
+    tiles: [`https://api.mapbox.com/styles/v1/mapbox/outdoors-v12/tiles/256/{z}/{x}/{y}?access_token=${encodeURIComponent(mapboxToken)}`],
+    tileSize: 256,
+    attribution: '&copy; Mapbox &copy; OpenStreetMap'
+  };
+  basemaps.mapboxSatellite = {
+    id: 'mapbox-satellite-source',
+    tiles: [`https://api.mapbox.com/styles/v1/mapbox/satellite-v9/tiles/256/{z}/{x}/{y}?access_token=${encodeURIComponent(mapboxToken)}`],
+    tileSize: 256,
+    attribution: '&copy; Mapbox'
+  };
+  basemaps.mapboxSatelliteStreets = {
+    id: 'mapbox-satellite-streets-source',
+    tiles: [`https://api.mapbox.com/styles/v1/mapbox/satellite-streets-v12/tiles/256/{z}/{x}/{y}?access_token=${encodeURIComponent(mapboxToken)}`],
+    tileSize: 256,
+    attribution: '&copy; Mapbox &copy; OpenStreetMap'
+  };
+  basemaps.mapboxStreets = {
+    id: 'mapbox-streets-source',
+    tiles: [`https://api.mapbox.com/styles/v1/mapbox/streets-v12/tiles/256/{z}/{x}/{y}?access_token=${encodeURIComponent(mapboxToken)}`],
+    tileSize: 256,
+    attribution: '&copy; Mapbox &copy; OpenStreetMap'
+  };
+}
+
+basemaps.black = {
+  id: 'black-source',
+  type: 'background',
+  color: '#000000',
+  attribution: ''
+};
+
+const defaultBasemap = mapboxToken ? 'mapboxDark' : 'cartoDark';
+
 // When map loads, add raster sources and layers
 map.on('load', () => {
-  // add each source and a raster layer; only cartoDark will be visible by default
+  // Add each source and show the configured Mapbox dark layer when available.
   Object.keys(basemaps).forEach(key => {
     const bm = basemaps[key];
-    map.addSource(bm.id, { type: 'raster', tiles: bm.tiles, tileSize: bm.tileSize });
-    map.addLayer({
-      id: bm.id + '-layer',
-      type: 'raster',
-      source: bm.id,
-      layout: { visibility: key === 'cartoDark' ? 'visible' : 'none' }
-    });
+    if (bm.type === 'background') {
+      map.addLayer({
+        id: bm.id + '-layer',
+        type: 'background',
+        layout: { visibility: key === defaultBasemap ? 'visible' : 'none' },
+        paint: { 'background-color': bm.color }
+      });
+    } else {
+      map.addSource(bm.id, { type: 'raster', tiles: bm.tiles, tileSize: bm.tileSize });
+      map.addLayer({
+        id: bm.id + '-layer',
+        type: 'raster',
+        source: bm.id,
+        layout: { visibility: key === defaultBasemap ? 'visible' : 'none' }
+      });
+    }
   });
+
+  loadEpcBuildings();
 
   // Add table polygon and markers as a GeoJSON source
   const tableCorners = [
@@ -347,8 +517,11 @@ window.addEventListener('resize', () => {
 });
 
 // Basemap switcher
-const basemapKeys = ['cartoDark', 'cartoPositron', 'osm', 'esri', 'opentopo'];
-let currentBasemapIndex = 0; // Start with cartoDark
+const basemapKeys = [defaultBasemap, 'mapboxLight', 'mapboxOutdoors', 'mapboxSatellite', 'mapboxSatelliteStreets', 'mapboxStreets', 'cartoPositron', 'osm', 'esri', 'opentopo', 'black'];
+if (!mapboxToken) {
+  basemapKeys.splice(1, 6);
+}
+let currentBasemapIndex = 0;
 
 const basemapToggleBtn = document.getElementById('basemap-toggle');
 basemapToggleBtn.addEventListener('click', () => {
@@ -356,6 +529,12 @@ basemapToggleBtn.addEventListener('click', () => {
   const newBasemap = basemapKeys[currentBasemapIndex];
   setBasemap(newBasemap);
   showToast(`Basemap: ${newBasemap}`);
+});
+
+const epcChannel = new BroadcastChannel('map_controller_channel');
+document.getElementById('epc-btn')?.addEventListener('click', () => {
+  setEpcMode(!epcModeActive);
+  epcChannel.postMessage({ type: 'animation_state', animationId: 'epc-btn', isActive: epcModeActive });
 });
 
 // expose setBasemap for debugging
@@ -465,11 +644,63 @@ ${JSON.stringify(calibration, null, 2)}`;
                 type: 'calibration_data',
                 text: calibrationText
             });
+
+            } else if (action === 'save_calibration' || action === 'overwrite_default_calibration') {
+              const center = map.getCenter();
+              const calibration = {
+                id: `saved-${Date.now()}`,
+                name: data.name || 'Default Calibration',
+                author: data.author || '',
+                timestamp: new Date().toISOString(),
+                center: { lng: center.lng, lat: center.lat },
+                zoom: map.getZoom(),
+                bearing: map.getBearing(),
+                dimensions: data.dimensions || null
+              };
+
+              try {
+                const saved = JSON.parse(localStorage.getItem('interactive_map_calibrations') || '[]');
+                saved.unshift(calibration);
+                localStorage.setItem('interactive_map_calibrations', JSON.stringify(saved));
+                localStorage.setItem('interactive_map_selected_calibration', calibration.id);
+                if (action === 'overwrite_default_calibration') {
+                  localStorage.setItem('interactive_map_default_calibration', JSON.stringify(calibration));
+                  tableCenter = [calibration.center.lng, calibration.center.lat];
+                  initialZoom = calibration.zoom;
+                  initialBearing = calibration.bearing;
+                }
+                showToast(action === 'overwrite_default_calibration'
+                  ? 'Default calibration overwritten'
+                  : `Calibration saved: ${calibration.name}`);
+                controllerChannel.postMessage({ type: 'calibration_saved', calibration });
+              } catch (error) {
+                console.error('Could not save calibration:', error);
+                showToast('Could not save calibration');
+              }
+
+            } else if (action === 'load_calibration') {
+              const calibration = data.calibration;
+              if (!calibration?.center) return;
+              localStorage.setItem('interactive_map_selected_calibration', calibration.id || 'original');
+              map.jumpTo({
+                center: [calibration.center.lng, calibration.center.lat],
+                zoom: calibration.zoom,
+                bearing: calibration.bearing
+              });
+              showToast(`Calibration restored: ${calibration.name || 'Saved calibration'}`);
             
         } else if (action === 'zoom_in') {
-            map.zoomTo(Math.min(map.getZoom()+0.1, 22));
+            map.zoomTo(Math.min(map.getZoom()+0.01, 22));
         } else if (action === 'zoom_out') {
-            map.zoomTo(Math.max(map.getZoom()-0.1, 0));
+          map.zoomTo(Math.max(map.getZoom()-0.01, 0));
+        } else if (action === 'pan_up') {
+          map.panBy([0, -50]);
+        } else if (action === 'pan_left') {
+          map.panBy([-50, 0]);
+        } else if (action === 'pan_right') {
+          map.panBy([50, 0]);
+        } else if (action === 'pan_down') {
+          map.panBy([0, 50]);
         } else if (action === 'rotate_left') {
             map.rotateTo((map.getBearing() - 0.1) % 360);
         } else if (action === 'rotate_right') {
@@ -485,365 +716,9 @@ ${JSON.stringify(calibration, null, 2)}`;
                     map.setLayoutProperty(layerId, 'visibility', visibility);
                 }
             });
-        } else if (action === 'show_calibration_markers') {
-            // Show bright calibration markers at table corners for camera detection
-            showCalibrationMarkers(data.params || {});
-        } else if (action === 'hide_calibration_markers') {
-            hideCalibrationMarkers();
-        } else if (action === 'get_overlay_positions') {
-            // Return current calibration marker positions in screen coordinates
-            const positions = getCalibrationMarkerPositions();
-            controllerChannel.postMessage({
-                type: 'calibration_overlay_positions',
-                positions: positions
-            });
-        } else if (action === 'show_calibration_tile') {
-            // Show a single calibration tile (20x20cm) in top-left for camera detection
-            showCalibrationTile(data.params || {});
-        } else if (action === 'hide_calibration_tile') {
-            hideCalibrationTile();
-        } else if (action === 'get_tile_position') {
-            // Return expected tile position in screen coordinates
-            const tile = getCalibrationTilePosition();
-            controllerChannel.postMessage({
-                type: 'calibration_tile_position',
-                tile: tile
-            });
-        } else if (action === 'apply_calibration') {
-            // Apply new calibration values from auto-calibrator
-            const cal = data.calibration;
-            if (cal) {
-                map.jumpTo({
-                    zoom: cal.zoom,
-                    bearing: cal.bearing,
-                    center: cal.center ? [cal.center.lng, cal.center.lat] : undefined
-                });
-                showToast(`Calibration updated: zoom=${cal.zoom.toFixed(3)}, bearing=${cal.bearing.toFixed(2)}°`);
-            }
-        } else if (action === 'show_white_screen') {
-            // Project white screen to illuminate markers during calibration
-            showWhiteScreen();
-        } else if (action === 'hide_white_screen') {
-            hideWhiteScreen();
         }
     }
 };
-
-// ===========================================
-// White Screen for Calibration
-// ===========================================
-
-let whiteScreenOverlay = null;
-
-function showWhiteScreen() {
-    hideWhiteScreen();
-    
-    whiteScreenOverlay = document.createElement('div');
-    whiteScreenOverlay.id = 'white-screen-overlay';
-    whiteScreenOverlay.style.cssText = `
-        position: fixed;
-        top: 0;
-        left: 0;
-        width: 100%;
-        height: 100%;
-        background: white;
-        z-index: 10000;
-    `;
-    document.body.appendChild(whiteScreenOverlay);
-}
-
-function hideWhiteScreen() {
-    if (whiteScreenOverlay) {
-        whiteScreenOverlay.remove();
-        whiteScreenOverlay = null;
-    }
-}
-
-// ===========================================
-// Calibration Markers for Auto-Calibration
-// ===========================================
-
-let calibrationMarkersContainer = null;
-
-function showCalibrationMarkers(params = {}) {
-    // Remove existing markers
-    hideCalibrationMarkers();
-    
-    // Get table overlay dimensions
-    const { sw = 111.93, sh = 62.96, tw = 100, th = 60 } = params;
-    const px = window.innerWidth / parseFloat(sw);
-    const tableW = Math.round(parseFloat(tw) * px);
-    const tableH = Math.round(parseFloat(th) * px);
-    
-    // Calculate table overlay position (centered on screen)
-    const offsetX = (window.innerWidth - tableW) / 2;
-    const offsetY = (window.innerHeight - tableH) / 2;
-    
-    // Create markers container
-    calibrationMarkersContainer = document.createElement('div');
-    calibrationMarkersContainer.id = 'calibration-markers';
-    calibrationMarkersContainer.style.cssText = `
-        position: fixed;
-        top: 0;
-        left: 0;
-        width: 100%;
-        height: 100%;
-        pointer-events: none;
-        z-index: 9000;
-    `;
-    
-    // Marker positions relative to table (corners with margin)
-    const markerPositions = [
-        { id: 0, x: 0.08, y: 0.08 },   // Top-left
-        { id: 1, x: 0.92, y: 0.08 },   // Top-right
-        { id: 2, x: 0.92, y: 0.92 },   // Bottom-right
-        { id: 3, x: 0.08, y: 0.92 }    // Bottom-left
-    ];
-    
-    const markerColors = ['#ff0000', '#00ff00', '#0088ff', '#ffff00'];
-    const markerSize = 60;
-    
-    markerPositions.forEach((pos, i) => {
-        const marker = document.createElement('div');
-        marker.className = 'calibration-marker';
-        marker.dataset.markerId = pos.id;
-        
-        const x = offsetX + tableW * pos.x - markerSize / 2;
-        const y = offsetY + tableH * pos.y - markerSize / 2;
-        
-        marker.style.cssText = `
-            position: absolute;
-            left: ${x}px;
-            top: ${y}px;
-            width: ${markerSize}px;
-            height: ${markerSize}px;
-            background: ${markerColors[i]};
-            border: 4px solid white;
-            border-radius: 50%;
-            box-shadow: 0 0 20px ${markerColors[i]}, 0 0 40px ${markerColors[i]};
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            font-size: 24px;
-            font-weight: bold;
-            color: white;
-            text-shadow: 0 0 5px black;
-        `;
-        marker.textContent = pos.id;
-        
-        calibrationMarkersContainer.appendChild(marker);
-    });
-    
-    // Add center crosshair
-    const crosshair = document.createElement('div');
-    crosshair.style.cssText = `
-        position: absolute;
-        left: ${window.innerWidth / 2 - 30}px;
-        top: ${window.innerHeight / 2 - 30}px;
-        width: 60px;
-        height: 60px;
-        border: 3px solid rgba(255,255,255,0.8);
-        border-radius: 50%;
-    `;
-    
-    const crossH = document.createElement('div');
-    crossH.style.cssText = `
-        position: absolute;
-        left: ${window.innerWidth / 2 - 40}px;
-        top: ${window.innerHeight / 2}px;
-        width: 80px;
-        height: 2px;
-        background: rgba(255,255,255,0.8);
-    `;
-    
-    const crossV = document.createElement('div');
-    crossV.style.cssText = `
-        position: absolute;
-        left: ${window.innerWidth / 2}px;
-        top: ${window.innerHeight / 2 - 40}px;
-        width: 2px;
-        height: 80px;
-        background: rgba(255,255,255,0.8);
-    `;
-    
-    calibrationMarkersContainer.appendChild(crosshair);
-    calibrationMarkersContainer.appendChild(crossH);
-    calibrationMarkersContainer.appendChild(crossV);
-    
-    document.body.appendChild(calibrationMarkersContainer);
-    showToast('Calibration markers shown');
-}
-
-function hideCalibrationMarkers() {
-    if (calibrationMarkersContainer) {
-        calibrationMarkersContainer.remove();
-        calibrationMarkersContainer = null;
-    }
-}
-
-function getCalibrationMarkerPositions() {
-    const positions = {};
-    
-    if (calibrationMarkersContainer) {
-        calibrationMarkersContainer.querySelectorAll('.calibration-marker').forEach(marker => {
-            const id = marker.dataset.markerId;
-            const rect = marker.getBoundingClientRect();
-            positions[id] = {
-                x: rect.left + rect.width / 2,
-                y: rect.top + rect.height / 2
-            };
-        });
-    }
-    
-    return positions;
-}
-
-// ===========================================
-// Single Tile Calibration (20x20cm reference)
-// ===========================================
-
-let calibrationTileContainer = null;
-let calibrationTileParams = { tileSize: 20, offsetX: 5, offsetY: 5 };
-
-function showCalibrationTile(params = {}) {
-    // Remove existing tile
-    hideCalibrationTile();
-    
-    // Store params for position calculation
-    calibrationTileParams = {
-        tileSize: params.tileSize || 20,
-        offsetX: params.offsetX || 5,
-        offsetY: params.offsetY || 5,
-        sw: params.sw || 111.93,
-        sh: params.sh || 62.96,
-        tw: params.tw || 100,
-        th: params.th || 60
-    };
-    
-    const { tileSize, offsetX, offsetY, sw, tw, th } = calibrationTileParams;
-    
-    // Calculate pixel dimensions
-    const pxPerCm = window.innerWidth / parseFloat(sw);
-    const tableW = Math.round(parseFloat(tw) * pxPerCm);
-    const tableH = Math.round(parseFloat(th) * pxPerCm);
-    const tilePx = Math.round(tileSize * pxPerCm);
-    
-    // Table overlay position (centered on screen)
-    const tableOffsetX = (window.innerWidth - tableW) / 2;
-    const tableOffsetY = (window.innerHeight - tableH) / 2;
-    
-    // Tile position within table
-    const tileX = tableOffsetX + offsetX * pxPerCm;
-    const tileY = tableOffsetY + offsetY * pxPerCm;
-    
-    // Create tile container
-    calibrationTileContainer = document.createElement('div');
-    calibrationTileContainer.id = 'calibration-tile';
-    calibrationTileContainer.style.cssText = `
-        position: fixed;
-        top: 0;
-        left: 0;
-        width: 100%;
-        height: 100%;
-        pointer-events: none;
-        z-index: 9000;
-    `;
-    
-    // Create the tile (bright white square)
-    const tile = document.createElement('div');
-    tile.className = 'calibration-tile-marker';
-    tile.style.cssText = `
-        position: absolute;
-        left: ${tileX}px;
-        top: ${tileY}px;
-        width: ${tilePx}px;
-        height: ${tilePx}px;
-        background: white;
-        border: 4px solid #00ff00;
-        box-shadow: 0 0 30px white, 0 0 60px white;
-    `;
-    
-    // Add corner markers for better detection
-    const corners = [
-        { x: 0, y: 0, color: '#ff0000' },          // TL - red
-        { x: tilePx - 10, y: 0, color: '#00ff00' }, // TR - green  
-        { x: tilePx - 10, y: tilePx - 10, color: '#0088ff' }, // BR - blue
-        { x: 0, y: tilePx - 10, color: '#ffff00' }  // BL - yellow
-    ];
-    
-    corners.forEach(c => {
-        const corner = document.createElement('div');
-        corner.style.cssText = `
-            position: absolute;
-            left: ${c.x}px;
-            top: ${c.y}px;
-            width: 10px;
-            height: 10px;
-            background: ${c.color};
-        `;
-        tile.appendChild(corner);
-    });
-    
-    // Add label
-    const label = document.createElement('div');
-    label.style.cssText = `
-        position: absolute;
-        left: ${tileX}px;
-        top: ${tileY + tilePx + 10}px;
-        color: white;
-        font-size: 14px;
-        font-weight: bold;
-        text-shadow: 0 0 5px black;
-    `;
-    label.textContent = `Calibration Tile (${tileSize}×${tileSize}cm)`;
-    
-    calibrationTileContainer.appendChild(tile);
-    calibrationTileContainer.appendChild(label);
-    document.body.appendChild(calibrationTileContainer);
-    
-    showToast('Calibration tile shown');
-}
-
-function hideCalibrationTile() {
-    if (calibrationTileContainer) {
-        calibrationTileContainer.remove();
-        calibrationTileContainer = null;
-    }
-}
-
-function getCalibrationTilePosition() {
-    const { tileSize, offsetX, offsetY, sw = 111.93, tw = 100, th = 60 } = calibrationTileParams;
-    
-    // Calculate pixel dimensions (same as showCalibrationTile)
-    const pxPerCm = window.innerWidth / parseFloat(sw);
-    const tableW = Math.round(parseFloat(tw) * pxPerCm);
-    const tableH = Math.round(parseFloat(th) * pxPerCm);
-    const tilePx = Math.round(tileSize * pxPerCm);
-    
-    // Table overlay position
-    const tableOffsetX = (window.innerWidth - tableW) / 2;
-    const tableOffsetY = (window.innerHeight - tableH) / 2;
-    
-    // Tile position
-    const tileX = tableOffsetX + offsetX * pxPerCm;
-    const tileY = tableOffsetY + offsetY * pxPerCm;
-    
-    // Return corners and center
-    return {
-        corners: [
-            { x: tileX, y: tileY },                      // TL
-            { x: tileX + tilePx, y: tileY },             // TR
-            { x: tileX + tilePx, y: tileY + tilePx },    // BR
-            { x: tileX, y: tileY + tilePx }              // BL
-        ],
-        center: {
-            x: tileX + tilePx / 2,
-            y: tileY + tilePx / 2
-        },
-        width: tilePx,
-        height: tilePx
-    };
-}
 
 // Broadcast state changes to controller
 function broadcastState(activeLayerId) {
@@ -862,5 +737,4 @@ function broadcastState(activeLayerId) {
         });
     }
 });
-
 
