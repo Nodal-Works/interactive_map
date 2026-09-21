@@ -882,46 +882,6 @@ function updateDashboard(targetId) {
         dashboardContent.innerHTML = `
             <div class="dashboard-container">
                 <div class="dashboard-card">
-                    <div class="dashboard-section-title">
-                        <span class="material-icons" style="font-size: 18px;">camera</span>
-                        Auto-Calibration
-                    </div>
-                    
-                    <div class="control-row">
-                        <span class="control-label">Camera</span>
-                        <select id="ctrl-camera-select" class="modern-date" style="width: 150px;">
-                            <option value="">Select camera...</option>
-                        </select>
-                    </div>
-                    
-                    <div id="camera-preview-container" style="width: 100%; aspect-ratio: 16/9; background: #1a1a1a; border-radius: 8px; margin: 0.75rem 0; overflow: hidden; position: relative;">
-                        <canvas id="camera-preview" style="width: 100%; height: 100%; object-fit: contain;"></canvas>
-                        <div id="camera-status" style="position: absolute; bottom: 8px; left: 8px; background: rgba(0,0,0,0.7); color: #888; padding: 4px 8px; border-radius: 4px; font-size: 0.8rem;">No camera selected</div>
-                    </div>
-                    
-                    <div class="action-grid">
-                        <button id="ctrl-start-auto-calibrate" class="modern-btn primary">
-                            <span class="material-icons" style="font-size: 16px;">auto_fix_high</span>
-                            Start Auto-Calibrate
-                        </button>
-                        <button id="ctrl-stop-auto-calibrate" class="modern-btn" disabled>
-                            <span class="material-icons" style="font-size: 16px;">stop</span>
-                            Stop
-                        </button>
-                    </div>
-                    
-                    <div id="calibration-progress" style="margin-top: 0.75rem; padding: 0.5rem; background: #1a1a1a; border-radius: 6px; display: none;">
-                        <div style="display: flex; justify-content: space-between; margin-bottom: 0.25rem;">
-                            <span id="calibration-phase">Initializing...</span>
-                            <span id="calibration-iteration">0/15</span>
-                        </div>
-                        <div style="height: 4px; background: #333; border-radius: 2px; overflow: hidden;">
-                            <div id="calibration-progress-bar" style="height: 100%; width: 0%; background: #4ade80; transition: width 0.3s;"></div>
-                        </div>
-                    </div>
-                </div>
-
-                <div class="dashboard-card">
                     <div class="dashboard-section-title">Manual Calibration</div>
                     
                     <div class="control-row">
@@ -949,6 +909,24 @@ function updateDashboard(targetId) {
                     <div style="margin-top: 1rem;">
                         <button id="ctrl-calibrate-fit" class="modern-btn primary" style="width: 100%;">Copy Current Calibration</button>
                     </div>
+                    <div class="control-row" style="margin-top: 1rem;">
+                        <span class="control-label">Calibration Name</span>
+                        <input type="text" id="ctrl-calibration-name" class="modern-date" placeholder="e.g. Projector 1" style="width: 150px;">
+                    </div>
+                    <div class="control-row">
+                        <span class="control-label">Author</span>
+                        <input type="text" id="ctrl-calibration-author" class="modern-date" placeholder="Your name" style="width: 150px;">
+                    </div>
+                    <div class="action-grid">
+                        <button id="ctrl-save-calibration" class="modern-btn">Save Calibration</button>
+                        <button id="ctrl-overwrite-calibration" class="modern-btn primary">Overwrite Existing Calibration Settings</button>
+                    </div>
+                    <div class="control-row">
+                        <span class="control-label">Restore Saved Calibration</span>
+                        <select id="ctrl-saved-calibration" class="modern-date" style="width: 150px;">
+                            <option value="">Select saved calibration...</option>
+                        </select>
+                    </div>
                 </div>
 
                 <div class="dashboard-card">
@@ -962,6 +940,17 @@ function updateDashboard(targetId) {
                         <button id="ctrl-zoom-in" class="modern-btn"><span class="material-icons">add</span> Zoom</button>
                         <button id="ctrl-zoom-out" class="modern-btn"><span class="material-icons">remove</span> Zoom</button>
                     </div>
+                    <div class="action-grid" style="grid-template-columns: repeat(3, 1fr);">
+                        <span></span>
+                        <button id="ctrl-pan-up" class="modern-btn" title="Pan up"><span class="material-icons">keyboard_arrow_up</span></button>
+                        <span></span>
+                        <button id="ctrl-pan-left" class="modern-btn" title="Pan left"><span class="material-icons">keyboard_arrow_left</span></button>
+                        <span></span>
+                        <button id="ctrl-pan-right" class="modern-btn" title="Pan right"><span class="material-icons">keyboard_arrow_right</span></button>
+                        <span></span>
+                        <button id="ctrl-pan-down" class="modern-btn" title="Pan down"><span class="material-icons">keyboard_arrow_down</span></button>
+                        <span></span>
+                    </div>
                     <div style="margin-top: 1rem;">
                         <button id="ctrl-lock-center" class="modern-btn" style="width: 100%;">Lock Center</button>
                     </div>
@@ -972,32 +961,7 @@ function updateDashboard(targetId) {
             </div>
         `;
         
-        legendContent.innerHTML = `
-            <div class="dashboard-card">
-                <div class="dashboard-section-title">Auto-Calibration</div>
-                <p class="info-text">
-                    1. Position a camera to view the entire table<br>
-                    2. Select the camera from the dropdown<br>
-                    3. Click "Start Auto-Calibrate"<br>
-                    4. The system will detect projected markers and automatically adjust zoom/rotation<br>
-                    5. Wait for convergence or click Stop
-                </p>
-            </div>
-            <div class="dashboard-card">
-                <div class="dashboard-section-title">Manual Calibration</div>
-                <p class="info-text">
-                    1. Measure your physical screen dimensions<br>
-                    2. Measure your physical table dimensions<br>
-                    3. Enter values in the settings<br>
-                    4. Click "Show Overlay" to see the target area<br>
-                    5. Adjust map zoom/rotation to fit<br>
-                    6. Click "Copy Current Calibration" to save
-                </p>
-            </div>
-        `;
-
-        // Initialize auto-calibrator
-        initAutoCalibrator();
+        renderCalibrationHistory(legendContent);
 
         // Add event listeners for manual calibration
         document.getElementById('ctrl-show-overlay').addEventListener('click', () => {
@@ -1016,8 +980,99 @@ function updateDashboard(targetId) {
             channel.postMessage({ type: MSG_TYPES.CALIBRATE_ACTION, action: 'copy_calibration' });
         });
 
+        const calibrationNameInput = document.getElementById('ctrl-calibration-name');
+        const calibrationAuthorInput = document.getElementById('ctrl-calibration-author');
+        const savedCalibrationSelect = document.getElementById('ctrl-saved-calibration');
+        const savedCalibrationsKey = 'interactive_map_calibrations';
+        const calibrationDimensionInputs = {
+            screenWidth: document.getElementById('ctrl-screen-w'),
+            screenHeight: document.getElementById('ctrl-screen-h'),
+            tableWidth: document.getElementById('ctrl-table-w'),
+            tableHeight: document.getElementById('ctrl-table-h')
+        };
+
+        try {
+            const defaultCalibration = JSON.parse(localStorage.getItem('interactive_map_default_calibration') || 'null');
+            if (defaultCalibration?.dimensions) {
+                Object.entries(calibrationDimensionInputs).forEach(([key, input]) => {
+                    if (defaultCalibration.dimensions[key] !== undefined) input.value = defaultCalibration.dimensions[key];
+                });
+            }
+        } catch (error) {
+            console.warn('Could not load saved calibration dimensions');
+        }
+
+        function readSavedCalibrations() {
+            try {
+                return JSON.parse(localStorage.getItem(savedCalibrationsKey) || '[]');
+            } catch (error) {
+                return [];
+            }
+        }
+
+        function refreshSavedCalibrationList() {
+            const savedCalibrations = readSavedCalibrations();
+            savedCalibrationSelect.innerHTML = '<option value="">Select saved calibration...</option>';
+            savedCalibrations.forEach((calibration, index) => {
+                const option = document.createElement('option');
+                option.value = String(index);
+                option.textContent = `${calibration.name} - ${calibration.author || 'Unknown'} (${new Date(calibration.timestamp).toLocaleString()})`;
+                savedCalibrationSelect.appendChild(option);
+            });
+        }
+
+        refreshSavedCalibrationList();
+
+        document.getElementById('ctrl-save-calibration').addEventListener('click', () => {
+            const name = calibrationNameInput.value.trim();
+            if (!name) {
+                alert('Enter a calibration name first.');
+                calibrationNameInput.focus();
+                return;
+            }
+            channel.postMessage({
+                type: MSG_TYPES.CALIBRATE_ACTION,
+                action: 'save_calibration',
+                name,
+                author: calibrationAuthorInput.value.trim(),
+                dimensions: Object.fromEntries(Object.entries(calibrationDimensionInputs).map(([key, input]) => [key, Number(input.value)]))
+            });
+            setTimeout(refreshSavedCalibrationList, 100);
+        });
+
+        document.getElementById('ctrl-overwrite-calibration').addEventListener('click', () => {
+            const name = calibrationNameInput.value.trim() || 'Default Calibration';
+            channel.postMessage({
+                type: MSG_TYPES.CALIBRATE_ACTION,
+                action: 'overwrite_default_calibration',
+                name,
+                author: calibrationAuthorInput.value.trim(),
+                dimensions: Object.fromEntries(Object.entries(calibrationDimensionInputs).map(([key, input]) => [key, Number(input.value)]))
+            });
+            setTimeout(refreshSavedCalibrationList, 100);
+        });
+
+        savedCalibrationSelect.addEventListener('change', () => {
+            const index = Number(savedCalibrationSelect.value);
+            if (!Number.isInteger(index)) return;
+            const calibration = readSavedCalibrations()[index];
+            if (calibration) {
+                localStorage.setItem('interactive_map_selected_calibration', calibration.id);
+                if (calibration.dimensions) {
+                    Object.entries(calibrationDimensionInputs).forEach(([key, input]) => {
+                        if (calibration.dimensions[key] !== undefined) input.value = calibration.dimensions[key];
+                    });
+                }
+                channel.postMessage({ type: MSG_TYPES.CALIBRATE_ACTION, action: 'load_calibration', calibration });
+            }
+        });
+
         document.getElementById('ctrl-zoom-in').addEventListener('click', () => channel.postMessage({ type: MSG_TYPES.CALIBRATE_ACTION, action: 'zoom_in' }));
         document.getElementById('ctrl-zoom-out').addEventListener('click', () => channel.postMessage({ type: MSG_TYPES.CALIBRATE_ACTION, action: 'zoom_out' }));
+        document.getElementById('ctrl-pan-up').addEventListener('click', () => channel.postMessage({ type: MSG_TYPES.CALIBRATE_ACTION, action: 'pan_up' }));
+        document.getElementById('ctrl-pan-left').addEventListener('click', () => channel.postMessage({ type: MSG_TYPES.CALIBRATE_ACTION, action: 'pan_left' }));
+        document.getElementById('ctrl-pan-right').addEventListener('click', () => channel.postMessage({ type: MSG_TYPES.CALIBRATE_ACTION, action: 'pan_right' }));
+        document.getElementById('ctrl-pan-down').addEventListener('click', () => channel.postMessage({ type: MSG_TYPES.CALIBRATE_ACTION, action: 'pan_down' }));
         document.getElementById('ctrl-rotate-left').addEventListener('click', () => channel.postMessage({ type: MSG_TYPES.CALIBRATE_ACTION, action: 'rotate_left' }));
         document.getElementById('ctrl-rotate-right').addEventListener('click', () => channel.postMessage({ type: MSG_TYPES.CALIBRATE_ACTION, action: 'rotate_right' }));
         document.getElementById('ctrl-reset-rotation').addEventListener('click', () => channel.postMessage({ type: MSG_TYPES.CALIBRATE_ACTION, action: 'reset_rotation' }));
@@ -1895,6 +1950,60 @@ document.getElementById('fullscreen-btn').addEventListener('click', () => {
     }
 });
 
+const ORIGINAL_CALIBRATION = {
+    id: 'original',
+    name: 'Original Calibration',
+    author: 'Project default',
+    timestamp: null,
+    center: { lng: 11.97776390135823, lat: 57.6883812195459 },
+    zoom: 16.22141031611213,
+    bearing: -92.58546386659737,
+    dimensions: { screenWidth: 111.93, screenHeight: 62.96, tableWidth: 100, tableHeight: 60 }
+};
+
+function escapeCalibrationText(value) {
+    return String(value ?? '').replace(/[&<>\'"]/g, character => ({
+        '&': '&amp;', '<': '&lt;', '>': '&gt;', "'": '&#39;', '"': '&quot;'
+    }[character]));
+}
+
+function readCalibrationHistory() {
+    try {
+        return [ORIGINAL_CALIBRATION, ...JSON.parse(localStorage.getItem('interactive_map_calibrations') || '[]')];
+    } catch (error) {
+        return [ORIGINAL_CALIBRATION];
+    }
+}
+
+function renderCalibrationHistory(container) {
+    if (!container) return;
+    const selectedId = localStorage.getItem('interactive_map_selected_calibration') || 'original';
+    const calibrations = readCalibrationHistory();
+    container.innerHTML = `
+        <div class="dashboard-card">
+            <div class="dashboard-section-title">Saved Calibrations</div>
+            <p class="info-text">Select a calibration to restore it. The original calibration is always available.</p>
+            <div style="display: grid; gap: 0.5rem;">
+                ${calibrations.map(calibration => `
+                    <button class="calibration-tile${calibration.id === selectedId ? ' active' : ''}" data-calibration-id="${escapeCalibrationText(calibration.id)}" style="text-align: left; padding: 0.65rem; border: 1px solid ${calibration.id === selectedId ? '#4ade80' : '#4a4a4a'}; border-radius: 6px; background: ${calibration.id === selectedId ? '#263b2b' : '#333'}; color: #e0e0e0; cursor: pointer;">
+                        <strong>${escapeCalibrationText(calibration.name)}</strong><br>
+                        <small>${escapeCalibrationText(calibration.author || 'Unknown author')} · ${calibration.timestamp ? escapeCalibrationText(new Date(calibration.timestamp).toLocaleString()) : 'Built-in default'}</small>
+                    </button>
+                `).join('')}
+            </div>
+        </div>
+    `;
+    container.querySelectorAll('[data-calibration-id]').forEach(tile => {
+        tile.addEventListener('click', () => {
+            const calibration = calibrations.find(item => item.id === tile.dataset.calibrationId);
+            if (!calibration) return;
+            localStorage.setItem('interactive_map_selected_calibration', calibration.id);
+            channel.postMessage({ type: MSG_TYPES.CALIBRATE_ACTION, action: 'load_calibration', calibration });
+            renderCalibrationHistory(container);
+        });
+    });
+}
+
 // Listen for messages from main app
 channel.onmessage = (event) => {
     const data = event.data;
@@ -1986,6 +2095,12 @@ channel.onmessage = (event) => {
             alert('Failed to copy to clipboard. Check console for data.');
             console.log(calibrationText);
         });
+    } else if (data.type === 'calibration_saved') {
+        localStorage.setItem('interactive_map_selected_calibration', data.calibration.id);
+        const calibrateButton = document.querySelector('.control-btn[data-target="calibrate-btn"]');
+        if (calibrateButton && calibrateButton.classList.contains('selected')) {
+            renderCalibrationHistory(document.getElementById('legend-content'));
+        }
     } else if (data.type === 'isovist_stats') {
         updateIsovistChart(data.data);
     } else if (data.type === 'fcc_demo_progress') {
@@ -3988,273 +4103,6 @@ document.addEventListener('keydown', (e) => {
         return;
     }
 });
-
-// ===========================================
-// Auto-Calibration System
-// ===========================================
-
-let autoCalibrator = null;
-let calibratorScriptLoaded = false;
-
-async function loadAutoCalibrator() {
-    if (calibratorScriptLoaded) return true;
-    
-    return new Promise((resolve, reject) => {
-        const script = document.createElement('script');
-        script.src = 'calibration/auto-calibrate.js';
-        script.onload = () => {
-            calibratorScriptLoaded = true;
-            console.log('[Controller] AutoCalibrator script loaded');
-            resolve(true);
-        };
-        script.onerror = () => {
-            console.error('[Controller] Failed to load AutoCalibrator script');
-            reject(new Error('Failed to load auto-calibrate.js'));
-        };
-        document.head.appendChild(script);
-    });
-}
-
-async function initAutoCalibrator() {
-    // Prevent re-initialization
-    if (autoCalibrator) {
-        return;
-    }
-    
-    try {
-        await loadAutoCalibrator();
-    } catch (err) {
-        console.error('Could not load auto-calibrator:', err);
-        const statusEl = document.getElementById('camera-status');
-        if (statusEl) statusEl.textContent = 'Error: Could not load calibrator';
-        return;
-    }
-    
-    // Initialize calibrator
-    autoCalibrator = new window.AutoCalibrator({
-        debug: true,
-        tableWidth: parseFloat(document.getElementById('ctrl-table-w')?.value || 100),
-        tableHeight: parseFloat(document.getElementById('ctrl-table-h')?.value || 60),
-        screenWidth: parseFloat(document.getElementById('ctrl-screen-w')?.value || 111.93),
-        screenHeight: parseFloat(document.getElementById('ctrl-screen-h')?.value || 62.96)
-    });
-    
-    // Set up callbacks
-    autoCalibrator.onDebugFrame = (canvas) => {
-        const preview = document.getElementById('camera-preview');
-        if (preview) {
-            const ctx = preview.getContext('2d');
-            preview.width = canvas.width;
-            preview.height = canvas.height;
-            ctx.drawImage(canvas, 0, 0);
-        }
-    };
-    
-    autoCalibrator.onStatusUpdate = (message) => {
-        const statusEl = document.getElementById('camera-status');
-        if (statusEl) statusEl.textContent = message;
-    };
-    
-    autoCalibrator.onProgress = (progress) => {
-        const progressContainer = document.getElementById('calibration-progress');
-        const phaseEl = document.getElementById('calibration-phase');
-        const iterationEl = document.getElementById('calibration-iteration');
-        const progressBar = document.getElementById('calibration-progress-bar');
-        
-        if (!progressContainer) return;
-        
-        progressContainer.style.display = 'block';
-        
-        if (progress.phase === 'detecting') {
-            phaseEl.textContent = `Detecting markers (${progress.markersFound}/4)`;
-            iterationEl.textContent = `Sample ${progress.sample}/${progress.total}`;
-            progressBar.style.width = `${(progress.sample / progress.total) * 100}%`;
-        } else if (progress.phase === 'calibrating') {
-            phaseEl.textContent = 'Calibrating...';
-            iterationEl.textContent = `Iteration ${progress.iteration}/${progress.maxIterations}`;
-            progressBar.style.width = `${(progress.iteration / progress.maxIterations) * 100}%`;
-        } else if (progress.phase === 'adjusting') {
-            phaseEl.textContent = `Adjusting (error: ${progress.error?.toFixed(1) || '?'}px)`;
-            iterationEl.textContent = `Iteration ${progress.iteration}/${progress.maxIterations}`;
-        }
-    };
-    
-    // Populate camera list
-    const cameraSelect = document.getElementById('ctrl-camera-select');
-    if (cameraSelect) {
-        try {
-            // Request permission first to get device labels
-            await navigator.mediaDevices.getUserMedia({ video: true })
-                .then(stream => stream.getTracks().forEach(t => t.stop()))
-                .catch(() => {});
-            
-            const cameras = await autoCalibrator.getCameras();
-            console.log('[Controller] Available cameras:', cameras.map(c => c.label));
-            
-            cameraSelect.innerHTML = '<option value="">Select camera...</option>';
-            cameras.forEach(cam => {
-                const option = document.createElement('option');
-                option.value = cam.deviceId;
-                option.textContent = cam.label;
-                cameraSelect.appendChild(option);
-            });
-            
-            // Don't auto-start camera - let user manually select
-            // Just pre-select an external camera if available
-            if (cameras.length > 0) {
-                const builtInKeywords = ['facetime', 'macbook', 'built-in', 'isight', 'internal', 'iphone'];
-                const externalCamera = cameras.find(cam => {
-                    const label = cam.label.toLowerCase();
-                    return !builtInKeywords.some(keyword => label.includes(keyword));
-                });
-                
-                if (externalCamera) {
-                    // Pre-select the external camera in the dropdown, but don't start it
-                    cameraSelect.value = externalCamera.deviceId;
-                    console.log('[Controller] Pre-selected external camera:', externalCamera.label);
-                }
-                
-                const statusEl = document.getElementById('camera-status');
-                if (statusEl) statusEl.textContent = 'Select camera to start preview';
-            }
-        } catch (err) {
-            console.error('Error getting cameras:', err);
-            const statusEl = document.getElementById('camera-status');
-            if (statusEl) statusEl.textContent = 'Camera access denied';
-        }
-        
-        // Handle camera change
-        cameraSelect.addEventListener('change', async () => {
-            if (cameraSelect.value) {
-                await startCameraPreview(cameraSelect.value);
-            } else {
-                autoCalibrator.stopPreview();
-                const statusEl = document.getElementById('camera-status');
-                if (statusEl) statusEl.textContent = 'No camera selected';
-            }
-        });
-    }
-    
-    // Start auto-calibration button
-    const startBtn = document.getElementById('ctrl-start-auto-calibrate');
-    const stopBtn = document.getElementById('ctrl-stop-auto-calibrate');
-    
-    if (startBtn) {
-        startBtn.addEventListener('click', async () => {
-            if (!autoCalibrator) return;
-            
-            startBtn.disabled = true;
-            stopBtn.disabled = false;
-            
-            try {
-                // Get current calibration values (we'll request from main window)
-                const currentCalibration = await getCurrentCalibration();
-                
-                const cameraId = cameraSelect?.value || null;
-                const result = await autoCalibrator.calibrate(channel, currentCalibration, cameraId);
-                
-                // Show result
-                const statusEl = document.getElementById('camera-status');
-                if (statusEl) {
-                    statusEl.textContent = `Done! Zoom: ${result.zoom.toFixed(3)}, Bearing: ${result.bearing.toFixed(2)}°`;
-                }
-                
-                // Restart preview
-                if (cameraId) {
-                    setTimeout(() => startCameraPreview(cameraId), 500);
-                }
-            } catch (err) {
-                console.error('Calibration error:', err);
-                const statusEl = document.getElementById('camera-status');
-                if (statusEl) statusEl.textContent = 'Error: ' + err.message;
-            } finally {
-                startBtn.disabled = false;
-                stopBtn.disabled = true;
-            }
-        });
-    }
-    
-    if (stopBtn) {
-        stopBtn.addEventListener('click', () => {
-            console.log('[Controller] Stop button clicked');
-            if (autoCalibrator) {
-                autoCalibrator.cancel();
-                // Restart preview after stopping
-                const cameraId = cameraSelect?.value;
-                if (cameraId) {
-                    setTimeout(() => startCameraPreview(cameraId), 300);
-                }
-            }
-            startBtn.disabled = false;
-            stopBtn.disabled = true;
-            
-            // Hide calibration markers
-            channel.postMessage({
-                type: MSG_TYPES.CALIBRATE_ACTION,
-                action: 'hide_calibration_markers'
-            });
-        });
-    }
-}
-
-async function startCameraPreview(deviceId) {
-    if (!autoCalibrator) return;
-    
-    // Stop any existing preview first
-    autoCalibrator.stopPreview();
-    
-    const statusEl = document.getElementById('camera-status');
-    if (statusEl) statusEl.textContent = 'Starting preview...';
-    
-    try {
-        await autoCalibrator.startPreview(deviceId);
-    } catch (err) {
-        console.error('Preview error:', err);
-        if (statusEl) statusEl.textContent = 'Camera error: ' + err.message;
-    }
-}
-
-function getCurrentCalibration() {
-    return new Promise((resolve, reject) => {
-        const timeout = setTimeout(() => {
-            // Use default values if we can't get current
-            resolve({
-                center: { lng: 11.977770568930168, lat: 57.68839377903814 },
-                zoom: 15.806953679037164,
-                bearing: -92.58546386659737
-            });
-        }, 2000);
-        
-        const handler = (event) => {
-            if (event.data.type === 'calibration_data') {
-                clearTimeout(timeout);
-                channel.removeEventListener('message', handler);
-                // Parse the calibration from the text response
-                try {
-                    const match = event.data.text.match(/JSON:\s*(\{[\s\S]*\})/);
-                    if (match) {
-                        resolve(JSON.parse(match[1]));
-                    } else {
-                        resolve({
-                            center: { lng: 11.977770568930168, lat: 57.68839377903814 },
-                            zoom: 15.806953679037164,
-                            bearing: -92.58546386659737
-                        });
-                    }
-                } catch (e) {
-                    resolve({
-                        center: { lng: 11.977770568930168, lat: 57.68839377903814 },
-                        zoom: 15.806953679037164,
-                        bearing: -92.58546386659737
-                    });
-                }
-            }
-        };
-        
-        channel.addEventListener('message', handler);
-        channel.postMessage({ type: MSG_TYPES.CALIBRATE_ACTION, action: 'copy_calibration' });
-    });
-}
 
 // ============================================
 // STREET VIEW STATIC API SYSTEM (Controller Side)

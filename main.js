@@ -48,6 +48,8 @@ function showToast(msg, timeout = 3000) {
 let tableCenter = [11.97776390135823, 57.6883812195459]; // [lon, lat]
 let initialZoom = 16.22141031611213;
 let initialBearing = -92.58546386659737; // degrees
+let mapboxToken = '';
+let defaultCalibrationOverride = null;
 
 // Try to load calibration synchronously via XMLHttpRequest (for compatibility with other scripts)
 try {
@@ -63,6 +65,32 @@ try {
   }
 } catch (e) {
   console.warn('Could not load map-calibration.json, using defaults:', e);
+}
+
+try {
+  const savedDefault = localStorage.getItem('interactive_map_default_calibration');
+  if (savedDefault) defaultCalibrationOverride = JSON.parse(savedDefault);
+  if (defaultCalibrationOverride?.center && Number.isFinite(defaultCalibrationOverride.zoom) && Number.isFinite(defaultCalibrationOverride.bearing)) {
+    localStorage.setItem('interactive_map_selected_calibration', defaultCalibrationOverride.id || 'original');
+    tableCenter = [defaultCalibrationOverride.center.lng, defaultCalibrationOverride.center.lat];
+    initialZoom = defaultCalibrationOverride.zoom;
+    initialBearing = defaultCalibrationOverride.bearing;
+    console.log('Loaded default calibration override from local storage');
+  }
+} catch (e) {
+  console.warn('Could not load saved default calibration');
+}
+
+try {
+  const xhr = new XMLHttpRequest();
+  xhr.open('GET', 'trafik-config.json', false);
+  xhr.send(null);
+  if (xhr.status === 200) {
+    const config = JSON.parse(xhr.responseText);
+    mapboxToken = config.mapboxtoken || config.mapboxToken || '';
+  }
+} catch (e) {
+  console.warn('Could not load Mapbox token from trafik-config.json');
 }
 
 // Create the map with loaded (or default) calibration
@@ -212,18 +240,75 @@ const basemaps = {
   }
 };
 
+if (mapboxToken) {
+  basemaps.mapboxDark = {
+    id: 'mapbox-dark-source',
+    tiles: [`https://api.mapbox.com/styles/v1/mapbox/dark-v11/tiles/256/{z}/{x}/{y}?access_token=${encodeURIComponent(mapboxToken)}`],
+    tileSize: 256,
+    attribution: '&copy; Mapbox &copy; OpenStreetMap'
+  };
+  basemaps.mapboxLight = {
+    id: 'mapbox-light-source',
+    tiles: [`https://api.mapbox.com/styles/v1/mapbox/light-v11/tiles/256/{z}/{x}/{y}?access_token=${encodeURIComponent(mapboxToken)}`],
+    tileSize: 256,
+    attribution: '&copy; Mapbox &copy; OpenStreetMap'
+  };
+  basemaps.mapboxOutdoors = {
+    id: 'mapbox-outdoors-source',
+    tiles: [`https://api.mapbox.com/styles/v1/mapbox/outdoors-v12/tiles/256/{z}/{x}/{y}?access_token=${encodeURIComponent(mapboxToken)}`],
+    tileSize: 256,
+    attribution: '&copy; Mapbox &copy; OpenStreetMap'
+  };
+  basemaps.mapboxSatellite = {
+    id: 'mapbox-satellite-source',
+    tiles: [`https://api.mapbox.com/styles/v1/mapbox/satellite-v9/tiles/256/{z}/{x}/{y}?access_token=${encodeURIComponent(mapboxToken)}`],
+    tileSize: 256,
+    attribution: '&copy; Mapbox'
+  };
+  basemaps.mapboxSatelliteStreets = {
+    id: 'mapbox-satellite-streets-source',
+    tiles: [`https://api.mapbox.com/styles/v1/mapbox/satellite-streets-v12/tiles/256/{z}/{x}/{y}?access_token=${encodeURIComponent(mapboxToken)}`],
+    tileSize: 256,
+    attribution: '&copy; Mapbox &copy; OpenStreetMap'
+  };
+  basemaps.mapboxStreets = {
+    id: 'mapbox-streets-source',
+    tiles: [`https://api.mapbox.com/styles/v1/mapbox/streets-v12/tiles/256/{z}/{x}/{y}?access_token=${encodeURIComponent(mapboxToken)}`],
+    tileSize: 256,
+    attribution: '&copy; Mapbox &copy; OpenStreetMap'
+  };
+}
+
+basemaps.black = {
+  id: 'black-source',
+  type: 'background',
+  color: '#000000',
+  attribution: ''
+};
+
+const defaultBasemap = mapboxToken ? 'mapboxDark' : 'cartoDark';
+
 // When map loads, add raster sources and layers
 map.on('load', () => {
-  // add each source and a raster layer; only cartoDark will be visible by default
+  // Add each source and show the configured Mapbox dark layer when available.
   Object.keys(basemaps).forEach(key => {
     const bm = basemaps[key];
-    map.addSource(bm.id, { type: 'raster', tiles: bm.tiles, tileSize: bm.tileSize });
-    map.addLayer({
-      id: bm.id + '-layer',
-      type: 'raster',
-      source: bm.id,
-      layout: { visibility: key === 'cartoDark' ? 'visible' : 'none' }
-    });
+    if (bm.type === 'background') {
+      map.addLayer({
+        id: bm.id + '-layer',
+        type: 'background',
+        layout: { visibility: key === defaultBasemap ? 'visible' : 'none' },
+        paint: { 'background-color': bm.color }
+      });
+    } else {
+      map.addSource(bm.id, { type: 'raster', tiles: bm.tiles, tileSize: bm.tileSize });
+      map.addLayer({
+        id: bm.id + '-layer',
+        type: 'raster',
+        source: bm.id,
+        layout: { visibility: key === defaultBasemap ? 'visible' : 'none' }
+      });
+    }
   });
 
   loadEpcBuildings();
@@ -427,8 +512,11 @@ window.addEventListener('resize', () => {
 });
 
 // Basemap switcher
-const basemapKeys = ['cartoDark', 'cartoPositron', 'osm', 'esri', 'opentopo'];
-let currentBasemapIndex = 0; // Start with cartoDark
+const basemapKeys = [defaultBasemap, 'mapboxLight', 'mapboxOutdoors', 'mapboxSatellite', 'mapboxSatelliteStreets', 'mapboxStreets', 'cartoPositron', 'osm', 'esri', 'opentopo', 'black'];
+if (!mapboxToken) {
+  basemapKeys.splice(1, 6);
+}
+let currentBasemapIndex = 0;
 
 const basemapToggleBtn = document.getElementById('basemap-toggle');
 basemapToggleBtn.addEventListener('click', () => {
@@ -551,11 +639,62 @@ ${JSON.stringify(calibration, null, 2)}`;
                 type: 'calibration_data',
                 text: calibrationText
             });
+
+            } else if (action === 'save_calibration' || action === 'overwrite_default_calibration') {
+              const center = map.getCenter();
+              const calibration = {
+                id: `saved-${Date.now()}`,
+                name: data.name || 'Default Calibration',
+                author: data.author || '',
+                timestamp: new Date().toISOString(),
+                center: { lng: center.lng, lat: center.lat },
+                zoom: map.getZoom(),
+                bearing: map.getBearing(),
+                dimensions: data.dimensions || null
+              };
+
+              try {
+                const saved = JSON.parse(localStorage.getItem('interactive_map_calibrations') || '[]');
+                saved.unshift(calibration);
+                localStorage.setItem('interactive_map_calibrations', JSON.stringify(saved));
+                localStorage.setItem('interactive_map_selected_calibration', calibration.id);
+                if (action === 'overwrite_default_calibration') {
+                  localStorage.setItem('interactive_map_default_calibration', JSON.stringify(calibration));
+                  tableCenter = [calibration.center.lng, calibration.center.lat];
+                  initialZoom = calibration.zoom;
+                  initialBearing = calibration.bearing;
+                }
+                showToast(action === 'overwrite_default_calibration'
+                  ? 'Default calibration overwritten'
+                  : `Calibration saved: ${calibration.name}`);
+                controllerChannel.postMessage({ type: 'calibration_saved', calibration });
+              } catch (error) {
+                console.error('Could not save calibration:', error);
+                showToast('Could not save calibration');
+              }
+
+            } else if (action === 'load_calibration') {
+              const calibration = data.calibration;
+              if (!calibration?.center) return;
+              map.jumpTo({
+                center: [calibration.center.lng, calibration.center.lat],
+                zoom: calibration.zoom,
+                bearing: calibration.bearing
+              });
+              showToast(`Calibration restored: ${calibration.name || 'Saved calibration'}`);
             
         } else if (action === 'zoom_in') {
             map.zoomTo(Math.min(map.getZoom()+0.01, 22));
         } else if (action === 'zoom_out') {
-            map.zoomTo(Math.max(map.getZoom()-0.1, 0));
+          map.zoomTo(Math.max(map.getZoom()-0.01, 0));
+        } else if (action === 'pan_up') {
+          map.panBy([0, -50]);
+        } else if (action === 'pan_left') {
+          map.panBy([-50, 0]);
+        } else if (action === 'pan_right') {
+          map.panBy([50, 0]);
+        } else if (action === 'pan_down') {
+          map.panBy([0, 50]);
         } else if (action === 'rotate_left') {
             map.rotateTo((map.getBearing() - 0.1) % 360);
         } else if (action === 'rotate_right') {
