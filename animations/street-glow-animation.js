@@ -200,7 +200,7 @@ function drawStreetGlow(time) {
     const colorBase = streetColors[type] || streetColors['default'];
     
     // Reduced sampling: draw more segments for continuous roads
-    const maxSegments = 3000; // Increased from 1000
+    const maxSegments = 1500; // Reduced for low-end GPU performance
     const sampleRate = Math.max(1, Math.ceil(segments.length / maxSegments));
     
     // Set styles once per type (not per segment!)

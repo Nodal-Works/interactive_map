@@ -12,10 +12,71 @@
   let phaseStartTime = 0;
   let svgLoaded = false;
   let phaseComplete = false; // Track if current phase animation is done
+  let autoPlayActive = false; // Auto-advance through all phases
 
   // Remember previous states so we can restore when campus demo stops
   let prevStreetLifeActive = false;
   let prevTrafikActive = false;
+
+  // --- Performance: filter throttle & cache ---
+  let frameCount = 0;
+  const FILTER_THROTTLE = 4; // Update filters every 4th frame (~15fps)
+  const filterCache = new WeakMap(); // Cache last filter string per element
+
+  function shouldUpdateFilter() {
+    return (frameCount % FILTER_THROTTLE) === 0;
+  }
+
+  function setFilterCached(el, filterStr) {
+    if (filterCache.get(el) !== filterStr) {
+      el.style.filter = filterStr;
+      filterCache.set(el, filterStr);
+    }
+  }
+
+  // Promote an element to its own GPU compositor layer
+  function gpuPromote(el) {
+    if (!el.dataset.gpuPromoted) {
+      el.style.willChange = 'filter, transform, opacity';
+      el.dataset.gpuPromoted = '1';
+    }
+  }
+
+  // Inject CSS keyframe animations for steady-state glow once
+  let glowStylesInjected = false;
+  function injectGlowStyles() {
+    if (glowStylesInjected) return;
+    const style = document.createElement('style');
+    style.textContent = `
+      @keyframes campus-glow-pulse-boundary {
+        0%, 100% { filter: drop-shadow(0 0 6px rgba(200,200,255,0.8)) drop-shadow(0 0 18px rgba(140,140,240,0.4)); }
+        50% { filter: drop-shadow(0 0 16px rgba(200,200,255,1.0)) drop-shadow(0 0 32px rgba(140,140,240,0.6)); }
+      }
+      @keyframes campus-glow-pulse-path {
+        0%, 100% { filter: drop-shadow(0 0 4px var(--glow-color, rgba(219,87,19,0.8))); }
+        50% { filter: drop-shadow(0 0 14px var(--glow-color, rgba(219,87,19,0.8))); }
+      }
+      @keyframes campus-glow-pulse-marker {
+        0%, 100% { filter: drop-shadow(0 0 6px var(--glow-color, rgba(237,192,6,0.9))); }
+        50% { filter: drop-shadow(0 0 18px var(--glow-color, rgba(237,192,6,0.9))); }
+      }
+      @keyframes campus-glow-pulse-green {
+        0%, 100% { filter: drop-shadow(0 0 8px rgba(140,186,99,0.5)); transform: scale(1); }
+        50% { filter: drop-shadow(0 0 22px rgba(140,186,99,0.8)); transform: scale(1.04); }
+      }
+      @keyframes campus-glow-pulse-asterix-center {
+        0%, 100% { filter: drop-shadow(0 0 12px rgba(230,168,50,0.6)) drop-shadow(0 0 28px rgba(230,168,50,0.3)); }
+        50% { filter: drop-shadow(0 0 20px rgba(230,168,50,0.9)) drop-shadow(0 0 40px rgba(230,168,50,0.5)); }
+      }
+      .campus-glow-steady-boundary { animation: campus-glow-pulse-boundary 2.5s ease-in-out infinite; }
+      .campus-glow-steady-path { animation: campus-glow-pulse-path 2s ease-in-out infinite; }
+      .campus-glow-steady-marker { animation: campus-glow-pulse-marker 1.5s ease-in-out infinite; transform-origin: center; transform-box: fill-box; }
+      .campus-glow-steady-green { animation: campus-glow-pulse-green 3s ease-in-out infinite; transform-origin: center; transform-box: fill-box; }
+      .campus-glow-steady-asterix-center { animation: campus-glow-pulse-asterix-center 2.5s ease-in-out infinite; }
+    `;
+    document.head.appendChild(style);
+    glowStylesInjected = true;
+  }
 
   // Positioning controls state
   let positionControls = null;
@@ -75,7 +136,7 @@
     phaseIndicator.innerHTML = `
       <span class="phase-label" style="min-width: 200px;">Press → to start</span>
       <span class="phase-dots" style="display: flex; gap: 6px;"></span>
-      <span class="phase-hint" style="opacity: 0.6; font-size: 12px;">← →</span>
+      <span class="phase-hint" style="opacity: 0.6; font-size: 12px;">← → &nbsp; Space: Auto</span>
     `;
     document.body.appendChild(phaseIndicator);
     updatePhaseIndicator();
@@ -85,13 +146,18 @@
     if (!phaseIndicator) return;
     const label = phaseIndicator.querySelector('.phase-label');
     const dots = phaseIndicator.querySelector('.phase-dots');
+    const hint = phaseIndicator.querySelector('.phase-hint');
     
     if (animationPhase < 0) {
-      label.textContent = 'Press → to start';
+      label.textContent = autoPlayActive ? '▶ Auto-playing…' : 'Press → to start';
     } else if (animationPhase < PHASES.length) {
-      label.textContent = PHASES[animationPhase].label;
+      label.textContent = (autoPlayActive ? '▶ ' : '') + PHASES[animationPhase].label;
     } else {
       label.textContent = 'Complete - Press ← to review';
+    }
+    
+    if (hint) {
+      hint.textContent = autoPlayActive ? 'Space: Stop auto' : '← →   Space: Auto';
     }
     
     // Update dots
@@ -569,7 +635,7 @@
     }
   }
 
-  // Animate a group of paths with draw effect and intense glow
+  // Animate a group of paths with draw effect and glow
   function animatePathGroup(group, progress, glowColor, layer) {
     if (!group) return;
     
@@ -581,52 +647,53 @@
     group.style.opacity = '1';
     registerShownGroup(group, layer);
     
+    const updateFilter = shouldUpdateFilter();
     const time = performance.now() * 0.001;
     const paths = group.querySelectorAll('path');
     
     paths.forEach((path, i) => {
+      gpuPromote(path);
       const title = path.querySelector('title');
       const isArrow = title && title.textContent === 'Arrow';
       
       if (isArrow) {
-        // Arrows fade in at the end with glow
         const arrowProgress = Math.max(0, (progress - 0.7) / 0.3);
         path.style.opacity = arrowProgress;
-        if (arrowProgress > 0) {
+        if (arrowProgress > 0 && updateFilter) {
           const pulse = 0.5 + Math.sin(time * 3) * 0.5;
-          path.style.filter = `
-            drop-shadow(0 0 ${6 * arrowProgress}px ${glowColor})
-            drop-shadow(0 0 ${12 * arrowProgress * pulse}px ${glowColor})
-          `;
+          const size = Math.round(8 * arrowProgress * (0.7 + pulse * 0.3));
+          setFilterCached(path, `drop-shadow(0 0 ${size}px ${glowColor})`);
         }
       } else if (path.dataset.pathLength) {
-        // Draw paths with intense pulsing glow
         const length = parseFloat(path.dataset.pathLength);
         const delay = i * 0.03;
         const localProgress = Math.max(0, Math.min(1, (progress - delay) * 1.2));
         
-        // Set up dasharray for draw effect
+        // Draw effect (update every frame — cheap)
         path.style.strokeDasharray = length;
         path.style.strokeDashoffset = length * (1 - localProgress);
         path.style.opacity = '1';
         
-        // Intense multi-layer pulsing glow
-        const pulse = 0.5 + Math.sin(time * 2.5 + i * 0.3) * 0.5;
-        const glowIntensity = 8 + pulse * 12;
+        // Glow (throttled)
+        if (localProgress > 0 && updateFilter) {
+          const pulse = 0.5 + Math.sin(time * 2.5 + i * 0.3) * 0.5;
+          const g = Math.round((8 + pulse * 12) * localProgress);
+          setFilterCached(path, `drop-shadow(0 0 ${g}px ${glowColor})`);
+        }
         
-        if (localProgress > 0) {
-          path.style.filter = `
-            drop-shadow(0 0 ${glowIntensity * 0.5 * localProgress}px ${glowColor})
-            drop-shadow(0 0 ${glowIntensity * localProgress}px ${glowColor})
-            drop-shadow(0 0 ${glowIntensity * 1.5 * localProgress}px ${glowColor.replace('0.8', '0.4').replace('0.6', '0.3')})
-          `;
+        // Switch to CSS animation once draw-in completes
+        if (localProgress >= 1 && !path.classList.contains('campus-glow-steady-path')) {
+          path.style.setProperty('--glow-color', glowColor);
+          path.classList.add('campus-glow-steady-path');
+          path.style.filter = ''; // Hand off to CSS
+          filterCache.delete(path);
         }
       } else {
-        // Paths without length - fade in with glow
         path.style.opacity = progress;
-        if (progress > 0) {
+        if (progress > 0 && updateFilter) {
           const pulse = 0.5 + Math.sin(time * 2) * 0.5;
-          path.style.filter = `drop-shadow(0 0 ${8 * pulse * progress}px ${glowColor})`;
+          const size = Math.round(8 * pulse * progress);
+          setFilterCached(path, `drop-shadow(0 0 ${size}px ${glowColor})`);
         }
       }
     });
@@ -646,6 +713,7 @@
     group.style.visibility = 'visible';
     registerShownGroup(group, layer);
     
+    const updateFilter = shouldUpdateFilter();
     const time = performance.now() * 0.001;
     const markers = group.querySelectorAll('path');
     
@@ -654,6 +722,7 @@
     }
     
     markers.forEach((marker, i) => {
+      gpuPromote(marker);
       const delay = i * 0.06;
       const localProgress = Math.max(0, Math.min(1, (progress - delay) * 1.5));
       
@@ -671,21 +740,19 @@
       marker.style.transformOrigin = 'center';
       marker.style.transformBox = 'fill-box';
       
-      if (localProgress > 0) {
-        // Multi-layer radiating glow effect
-        const wave1 = 0.5 + Math.sin(time * 2 + i * 0.3) * 0.5;
-        const wave2 = 0.5 + Math.sin(time * 3 + i * 0.5 + 1) * 0.5;
-        const wave3 = 0.5 + Math.sin(time * 4 + i * 0.7 + 2) * 0.5;
-        
-        const innerGlow = 6 + wave1 * 8;
-        const midGlow = 12 + wave2 * 15;
-        const outerGlow = 20 + wave3 * 25;
-        
-        marker.style.filter = `
-          drop-shadow(0 0 ${innerGlow * localProgress}px ${glowColor})
-          drop-shadow(0 0 ${midGlow * localProgress}px ${glowColor.replace(/[\d.]+\)$/, (m) => (parseFloat(m) * 0.6).toFixed(1) + ')')})
-          drop-shadow(0 0 ${outerGlow * localProgress}px ${glowColor.replace(/[\d.]+\)$/, (m) => (parseFloat(m) * 0.3).toFixed(1) + ')')})
-        `;
+      if (localProgress > 0 && updateFilter) {
+        // Single glow layer — blended to approximate the 3-layer look
+        const wave = 0.5 + Math.sin(time * 2.5 + i * 0.4) * 0.5;
+        const glowSize = Math.round((10 + wave * 14) * localProgress);
+        setFilterCached(marker, `drop-shadow(0 0 ${glowSize}px ${glowColor})`);
+      }
+      
+      // Switch to CSS animation once pop-in completes
+      if (localProgress >= 1 && !marker.classList.contains('campus-glow-steady-marker')) {
+        marker.style.setProperty('--glow-color', glowColor);
+        marker.classList.add('campus-glow-steady-marker');
+        marker.style.filter = '';
+        filterCache.delete(marker);
       }
     });
   }
@@ -807,32 +874,38 @@
         circleContainer.style.visibility = 'visible';
       }
       
+      const updateFilter = shouldUpdateFilter();
+      
       circles.forEach((circle) => {
+        gpuPromote(circle);
         const ringIndex = circle.getAttribute('data-ring');
         const isCenter = circle.getAttribute('data-center');
         
         if (isCenter) {
-          // Center dot pulses slowly
-          const pulse = 0.7 + Math.sin(time * 1.2 + i) * 0.3; // Slower pulse
-          const scale = 1 + Math.sin(time * 0.8 + i * 0.5) * 0.25; // Slower, bigger scale
+          const scale = 1 + Math.sin(time * 0.8 + i * 0.5) * 0.25;
           circle.style.opacity = localProgress;
           circle.style.visibility = localProgress > 0 ? 'visible' : 'hidden';
           circle.style.transform = `scale(${scale})`;
           circle.style.transformOrigin = 'center';
           circle.style.transformBox = 'fill-box';
-          // Much larger glow radius - warm golden glow
-          const glowColor = 'rgba(230, 168, 50, 0.8)';
-          circle.style.filter = `
-            drop-shadow(0 0 ${15 * pulse * localProgress}px ${glowColor})
-            drop-shadow(0 0 ${30 * pulse * localProgress}px ${glowColor})
-            drop-shadow(0 0 ${50 * pulse * localProgress}px rgba(230, 168, 50, 0.4))
-          `;
+          
+          if (updateFilter) {
+            const pulse = 0.7 + Math.sin(time * 1.2 + i) * 0.3;
+            const g = Math.round(20 * pulse * localProgress);
+            setFilterCached(circle, `drop-shadow(0 0 ${g}px rgba(230, 168, 50, 0.8))`);
+          }
+          
+          // Hand off to CSS once fully visible
+          if (localProgress >= 1 && !circle.classList.contains('campus-glow-steady-asterix-center')) {
+            circle.classList.add('campus-glow-steady-asterix-center');
+            circle.style.filter = '';
+            filterCache.delete(circle);
+          }
         } else {
-          // Rings radiate outward slowly with larger expansion
           const ringNum = parseInt(ringIndex);
-          const wavePhase = (time * 0.6 + ringNum * 0.5 + i * 0.2) % 1; // Much slower wave
+          const wavePhase = (time * 0.6 + ringNum * 0.5 + i * 0.2) % 1;
           const ringOpacity = Math.sin(wavePhase * Math.PI) * 0.9;
-          const ringScale = 1 + wavePhase * 0.8; // Expand more
+          const ringScale = 1 + wavePhase * 0.8;
           
           circle.style.opacity = ringOpacity * localProgress;
           circle.style.visibility = (ringOpacity * localProgress) > 0.01 ? 'visible' : 'hidden';
@@ -840,13 +913,10 @@
           circle.style.transformOrigin = 'center';
           circle.style.transformBox = 'fill-box';
           
-          // Much larger glow that fades as ring expands - warm golden
-          const glowSize = 10 + (1 - wavePhase) * 25;
-          const glowColor = 'rgba(230, 168, 50, 0.8)';
-          circle.style.filter = `
-            drop-shadow(0 0 ${glowSize * localProgress}px ${glowColor})
-            drop-shadow(0 0 ${glowSize * 2 * localProgress}px rgba(230, 168, 50, 0.3))
-          `;
+          if (updateFilter) {
+            const glowSize = Math.round((10 + (1 - wavePhase) * 25) * localProgress);
+            setFilterCached(circle, `drop-shadow(0 0 ${glowSize}px rgba(230, 168, 50, 0.7))`);
+          }
         }
       });
     });
@@ -867,6 +937,7 @@
     
     const path = layer.querySelector('path');
     if (path) {
+      gpuPromote(path);
       if (!path.dataset.pathLength && path.getTotalLength) {
         path.dataset.pathLength = path.getTotalLength();
       }
@@ -876,25 +947,21 @@
         const drawProgress = Math.min(1, progress * 1.2);
         const time = performance.now() * 0.001;
         
-        // Style is established from the start
         path.style.opacity = '1';
         path.style.strokeWidth = '5';
         
-        // Color shift for vibrancy (always active)
-        const hue = 230 + Math.sin(time * 0.8) * 25;
-        path.style.stroke = `hsl(${hue}, 50%, 70%)`;
-        
-        // INTENSE pulsing glow (always active)
-        const pulseSpeed = 2.5;
-        const glowPulse = 0.5 + Math.sin(time * pulseSpeed * Math.PI) * 0.5;
-        const glowIntensity = 15 + glowPulse * 25;
-        const glowColor = `rgba(200, 200, 255, ${0.8 + glowPulse * 0.2})`;
-        path.style.filter = `
-          drop-shadow(0 0 ${glowIntensity * 0.4}px ${glowColor})
-          drop-shadow(0 0 ${glowIntensity * 0.8}px rgba(170, 170, 255, 0.7))
-          drop-shadow(0 0 ${glowIntensity * 1.2}px rgba(140, 140, 240, 0.5))
-          drop-shadow(0 0 ${glowIntensity * 2}px rgba(100, 100, 220, 0.3))
-        `;
+        // Color shift (throttled — only recalc on filter frames)
+        if (shouldUpdateFilter()) {
+          const hue = 230 + Math.sin(time * 0.8) * 25;
+          path.style.stroke = `hsl(${hue}, 50%, 70%)`;
+          
+          // Single glow layer during draw-in
+          if (!path.classList.contains('campus-glow-steady-boundary')) {
+            const glowPulse = 0.5 + Math.sin(time * 2.5 * Math.PI) * 0.5;
+            const g = Math.round(10 + glowPulse * 20);
+            setFilterCached(path, `drop-shadow(0 0 ${g}px rgba(200, 200, 255, 0.85))`);
+          }
+        }
         
         // Dash pattern settings
         const dashLength = 25;
@@ -902,39 +969,21 @@
         const patternLength = dashLength + gapLength;
         const marchOffset = (time * 60) % patternLength;
         
-        // Draw-in animation: use the dashed pattern from the start
-        // but hide the undrawn portion with a large gap
         const drawnLength = length * drawProgress;
         
         if (drawProgress < 1) {
-          // During draw-in: show dashes for the drawn portion, then a huge gap
-          // Pattern: repeating [dash, gap] for visible part, then [0, remaining length]
-          // This creates dashes that appear to draw in
-          const numCompleteDashes = Math.floor(drawnLength / patternLength);
-          const partialDash = drawnLength % patternLength;
-          
-          // Build the dasharray: dashes for visible portion + huge gap for hidden
-          // Simplified approach: use dash pattern but mask with a virtual "pen"
-          // by setting dashoffset relative to how much is drawn
-          path.style.strokeDasharray = `${dashLength}, ${gapLength}`;
-          // Offset so dashes march, but clip the visible portion
-          path.style.strokeDashoffset = -marchOffset;
-          
-          // Use a clip-path that follows the path progress
-          // We'll use a polygon that reveals from top-left (approximate for this shape)
-          // Better: use stroke-dasharray trick with overlay
-          
-          // Actually, let's use two overlapping techniques:
-          // The path clips itself using a mask of sorts
-          // Simpler: just accept solid during draw, dashes after
-          
-          // BETTER APPROACH: Solid line draws in, then converts to dashes
           path.style.strokeDasharray = `${drawnLength}, ${length}`;
           path.style.strokeDashoffset = 0;
         } else {
-          // Fully drawn: marching dashes
           path.style.strokeDasharray = `${dashLength}, ${gapLength}`;
           path.style.strokeDashoffset = -marchOffset;
+          
+          // Hand off glow to CSS once fully drawn
+          if (!path.classList.contains('campus-glow-steady-boundary')) {
+            path.classList.add('campus-glow-steady-boundary');
+            path.style.filter = '';
+            filterCache.delete(path);
+          }
         }
       }
     }
@@ -1054,15 +1103,17 @@
     layer.style.visibility = 'visible';
     registerShownGroup(layer, layer);
 
+    const updateFilter = shouldUpdateFilter();
     const time = performance.now() * 0.001;
     const blobs = layer.querySelectorAll('path');
     
     blobs.forEach((blob, i) => {
+      gpuPromote(blob);
       const delay = i * 0.08;
       const localProgress = Math.max(0, Math.min(1, (progress - delay) * 1.5));
       
-      // Breathing scale animation - slow, organic rhythm
-      const breatheCycle = Math.sin(time * 0.6 + i * 0.5) * 0.5 + 0.5; // 0 to 1
+      // Breathing scale animation
+      const breatheCycle = Math.sin(time * 0.6 + i * 0.5) * 0.5 + 0.5;
       const breatheScale = 1 + breatheCycle * 0.08;
       const scale = localProgress * breatheScale;
       const opacity = localProgress * (0.75 + breatheCycle * 0.15);
@@ -1072,48 +1123,32 @@
       blob.style.transformOrigin = 'center';
       blob.style.transformBox = 'fill-box';
       
-      // Pulsing glow that breathes in sync - expands and contracts
-      const glowBreath = Math.sin(time * 0.6 + i * 0.5) * 0.5 + 0.5; // Same rhythm as scale
-      const innerGlow = 8 + glowBreath * 18;
-      const outerGlow = 15 + glowBreath * 30;
-      const glowOpacity = 0.5 + glowBreath * 0.4;
+      // Single glow layer (throttled)
+      if (updateFilter) {
+        const glowBreath = Math.sin(time * 0.6 + i * 0.5) * 0.5 + 0.5;
+        const glowSize = Math.round((10 + glowBreath * 16) * localProgress);
+        const glowOpacity = (0.5 + glowBreath * 0.4).toFixed(2);
+        setFilterCached(blob, `drop-shadow(0 0 ${glowSize}px rgba(140, 186, 99, ${glowOpacity}))`);
+      }
       
-      blob.style.filter = `
-        drop-shadow(0 0 ${innerGlow * localProgress}px rgba(140, 186, 99, ${glowOpacity}))
-        drop-shadow(0 0 ${outerGlow * localProgress}px rgba(100, 160, 70, ${glowOpacity * 0.6}))
-        drop-shadow(0 0 ${outerGlow * 1.5 * localProgress}px rgba(80, 140, 50, ${glowOpacity * 0.3}))
-      `;
+      // Hand off to CSS once fully faded in
+      if (localProgress >= 1 && !blob.classList.contains('campus-glow-steady-green')) {
+        blob.classList.add('campus-glow-steady-green');
+        blob.style.filter = '';
+        filterCache.delete(blob);
+      }
     });
   }
 
   function animateHold(progress) {
-    // Keep all visible with subtle ambient animation
-    const time = performance.now() * 0.001;
-    
-    // Pulse green spaces gently
-    const greenLayer = svgDoc?.getElementById('Gröna-mötesplatser');
-    if (greenLayer) {
-      greenLayer.querySelectorAll('path').forEach((blob, i) => {
-        const breathe = 0.7 + Math.sin(time * 1.5 + i * 0.5) * 0.3;
-        blob.style.filter = `drop-shadow(0 0 ${10 * breathe}px rgba(140, 186, 99, 0.5))`;
-      });
-    }
-
-    // Pulse markers gently
-    const livingLayer = svgDoc?.getElementById('LEVANDE-CAMPUS');
-    if (livingLayer) {
-      livingLayer.querySelectorAll('path').forEach((el, i) => {
-        const fill = (el.style.fill || el.getAttribute('fill') || '').toLowerCase();
-        if (fill.includes('edc006')) {
-          const pulse = 0.6 + Math.sin(time * 2 + i * 0.3) * 0.4;
-          el.style.filter = `drop-shadow(0 0 ${8 * pulse}px rgba(237, 192, 6, 0.7))`;
-        }
-      });
-    }
+    // All phases complete — CSS keyframes handle the steady-state glow.
+    // Only do minimal ambient work here (no per-element filter updates).
   }
 
   function animate(timestamp) {
     if (!active || !svgDoc) return;
+
+    frameCount++;
 
     // If no phase selected yet, just keep the loop running
     if (animationPhase < 0) {
@@ -1169,10 +1204,39 @@
     // Mark phase as complete when animation finishes
     if (progress >= 1) {
       phaseComplete = true;
+      
+      // Auto-advance to next phase if auto-play is active
+      if (autoPlayActive && animationPhase < PHASES.length - 1) {
+        nextPhase();
+      } else if (autoPlayActive && animationPhase >= PHASES.length - 1) {
+        // Reached the end — stop auto-play
+        autoPlayActive = false;
+        updatePhaseIndicator();
+        channel.postMessage({ type: 'campus_demo_autoplay', active: false });
+      }
     }
 
     // Continue animation loop (for glow effects etc)
     rafId = requestAnimationFrame(animate);
+  }
+
+  function toggleAutoPlay() {
+    if (!active) return;
+    autoPlayActive = !autoPlayActive;
+    console.log(`Campus Demo: Auto-play ${autoPlayActive ? 'ON' : 'OFF'}`);
+    
+    if (autoPlayActive) {
+      // If we haven't started yet, kick off the first phase
+      if (animationPhase < 0) {
+        nextPhase();
+      } else if (phaseComplete && animationPhase < PHASES.length - 1) {
+        // Current phase already done, advance immediately
+        nextPhase();
+      }
+    }
+    
+    updatePhaseIndicator();
+    channel.postMessage({ type: 'campus_demo_autoplay', active: autoPlayActive });
   }
 
   function nextPhase() {
@@ -1256,8 +1320,8 @@
       layer.style.visibility = 'hidden';
     });
     
-    // Reset all paths and lines
-    svgDoc.querySelectorAll('path, line').forEach(el => {
+    // Reset all paths, lines, and circles
+    svgDoc.querySelectorAll('path, line, circle').forEach(el => {
       // Reset route paths dashoffset
       if (el.dataset.isRoute === 'true' && el.dataset.pathLength) {
         el.style.strokeDashoffset = el.dataset.pathLength;
@@ -1265,6 +1329,17 @@
       el.style.opacity = '0';
       el.style.filter = '';
       el.style.transform = '';
+      el.style.willChange = '';
+      delete el.dataset.gpuPromoted;
+      // Remove CSS glow classes so JS can re-drive draw-in
+      el.classList.remove(
+        'campus-glow-steady-boundary',
+        'campus-glow-steady-path',
+        'campus-glow-steady-marker',
+        'campus-glow-steady-green',
+        'campus-glow-steady-asterix-center'
+      );
+      filterCache.delete(el);
     });
     
     // Reset nested groups in green spaces
@@ -1279,7 +1354,10 @@
   function handleKeydown(e) {
     if (!active) return;
     
-    if (e.key === 'ArrowRight' || e.key === ' ') {
+    if (e.key === ' ') {
+      e.preventDefault();
+      toggleAutoPlay();
+    } else if (e.key === 'ArrowRight') {
       e.preventDefault();
       nextPhase();
     } else if (e.key === 'ArrowLeft') {
@@ -1337,6 +1415,9 @@
     createContainer();
     await loadSVG();
     
+    // Inject CSS keyframe animations for steady-state glow
+    injectGlowStyles();
+    
     // Add buildings overlay on map
     await addBuildingsOverlay();
 
@@ -1344,6 +1425,7 @@
     animationPhase = -1; // Start before first phase
     phaseStartTime = performance.now();
     phaseComplete = false;
+    frameCount = 0;
 
     // Reset all layers to hidden
     resetAllLayers();
@@ -1374,6 +1456,7 @@
   function stop() {
     if (!active) return;
     active = false;
+    autoPlayActive = false;
     
     channel.postMessage({ type: 'animation_state', animationId: 'campus-demo-btn', isActive: false });
     
@@ -1449,6 +1532,8 @@
         nextPhase();
       } else if (d.action === 'previous') {
         prevPhase();
+      } else if (d.action === 'autoplay') {
+        toggleAutoPlay();
       } else if (d.action === 'stop') {
         stop();
       }

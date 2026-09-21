@@ -27,7 +27,8 @@
   
   // Isovist settings (mirrors isovist.js)
   let MAX_VIEW_DISTANCE = 200;
-  const RAY_COUNT = 360;
+  const RAY_COUNT = 180;
+  const DEG2RAD = Math.PI / 180;
   let HUMAN_FOV = 120;
   let USE_HUMAN_FOV = true;
   
@@ -943,33 +944,23 @@
     return ((Math.atan2(y, x) * 180 / Math.PI) + 360) % 360;
   }
   
-  function destination(origin, distanceMeters, bearingDegrees) {
-    const R = 6371000; // Earth radius in meters
-    const d = distanceMeters / R;
-    const brng = bearingDegrees * Math.PI / 180;
-    
-    const lat1 = origin[1] * Math.PI / 180;
-    const lon1 = origin[0] * Math.PI / 180;
-    
-    const lat2 = Math.asin(Math.sin(lat1) * Math.cos(d) + Math.cos(lat1) * Math.sin(d) * Math.cos(brng));
-    const lon2 = lon1 + Math.atan2(Math.sin(brng) * Math.sin(d) * Math.cos(lat1), Math.cos(d) - Math.sin(lat1) * Math.sin(lat2));
-    
-    return [lon2 * 180 / Math.PI, lat2 * 180 / Math.PI];
+  function destination(origin, distMeters, bearingDegrees) {
+    // Fast flat-earth approximation (accurate within 0.1% for distances < 1km)
+    const brng = bearingDegrees * DEG2RAD;
+    const cosLat = Math.cos(origin[1] * DEG2RAD);
+    return [
+      origin[0] + Math.sin(brng) * distMeters / (111320 * cosLat),
+      origin[1] + Math.cos(brng) * distMeters / 110540
+    ];
   }
   
   function distance(point1, point2) {
-    const R = 6371000; // Earth radius in meters
-    const lat1 = point1[1] * Math.PI / 180;
-    const lat2 = point2[1] * Math.PI / 180;
-    const dLat = (point2[1] - point1[1]) * Math.PI / 180;
-    const dLon = (point2[0] - point1[0]) * Math.PI / 180;
-    
-    const a = Math.sin(dLat / 2) * Math.sin(dLat / 2) +
-              Math.cos(lat1) * Math.cos(lat2) *
-              Math.sin(dLon / 2) * Math.sin(dLon / 2);
-    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-    
-    return R * c;
+    // Fast flat-earth approximation (accurate within 0.1% for distances < 1km)
+    const latMid = (point1[1] + point2[1]) * 0.5 * DEG2RAD;
+    const cosLat = Math.cos(latMid);
+    const dx = (point2[0] - point1[0]) * 111320 * cosLat;
+    const dy = (point2[1] - point1[1]) * 110540;
+    return Math.sqrt(dx * dx + dy * dy);
   }
   
   function lineIntersection(p1, p2, p3, p4) {

@@ -144,7 +144,7 @@ python -m http.server 8000
 # Then open http://localhost:8000/launcher.html
 ```
 
-> **TODO:** Camera-based calibration is currently disabled—see [calibration/README.md](calibration/README.md) for notes. Re-enable when fixed.
+Manual calibration is available from the controller. Adjust the map, save named presets, or overwrite the default calibration there.
 
 ### EPC mode
 
