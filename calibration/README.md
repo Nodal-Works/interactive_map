@@ -8,7 +8,7 @@ If your camera cannot see all 4 corners of the table, use the **single-tile cali
 
 1. **Position camera**: Point your webcam at the **top-left corner** of the table
 2. **Launch main display**: Open the projection on your table
-3. **Run calibration**: Click Auto-Calibrate in Launcher or Controller
+3. **Run calibration**: Use the auto-calibration workflow when it is re-enabled
 4. A bright **20×20cm square** will be projected in the top-left
 5. The system adjusts zoom/rotation until the tile matches expected size
 
@@ -92,18 +92,7 @@ If your camera CAN see all 4 corners, you can use the original 4-marker mode:
 
 ## Using Auto-Calibration
 
-### From Launcher (`launcher.html`)
-1. Launch the Main Display first
-2. Select your camera from the dropdown
-3. Verify tile/table is visible in preview
-4. Click **Auto-Calibrate**
-5. Wait for convergence (5-15 seconds)
-
-### From Controller (`controller.html`)
-1. Navigate to Calibrate section (wrench icon)
-2. Select camera from dropdown
-3. Click **Start Auto-Calibrate**
-4. Monitor progress in the preview
+Camera-based auto-calibration is currently disabled in the launcher and controller. The setup and troubleshooting notes below are retained for future work on this feature.
 
 ## Troubleshooting
 
