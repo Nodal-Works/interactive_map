@@ -1482,7 +1482,8 @@ function isAnyVisualizationActive() {
     'grid-animation-btn',
     'isovist-btn',
     'bird-sounds-btn',
-    'fcc-demo-btn'
+    'fcc-demo-btn',
+    'ecom-energy-btn'
   ];
   
   for (const id of activeButtons) {
