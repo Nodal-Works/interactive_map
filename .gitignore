@@ -25,6 +25,9 @@ dist/
 build/
 *.log
 
+# Local ECOM meter exports and source workbooks
+media/ecom/energy_data/
+
 # OS
 Thumbs.db
 .DS_Store
