@@ -11,11 +11,11 @@ the API resolves them when it loads the scenario.
 From the repository root, start the backend on port 8000:
 
 ```bash
-cd Dashboard/backend
-python3 -m venv .venv
-.venv/bin/python -m pip install -r requirements.txt
-.venv/bin/python -m uvicorn app.main:app --host 127.0.0.1 --port 8000
+./launch_ecom_backend.sh
 ```
+
+The launcher creates the backend virtual environment and installs its Python
+requirements when needed. Keep its terminal open while using the live controls.
 
 Serve the map separately, for example with Live Server on port 5500–5599 or
 `python3 -m http.server 8090` from the repository root. The API allows those

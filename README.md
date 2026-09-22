@@ -179,10 +179,7 @@ backend in this repository. Place the campus demand CSVs in
 terminal:
 
 ```bash
-cd Dashboard/backend
-python3 -m venv .venv
-.venv/bin/python -m pip install -r requirements.txt
-.venv/bin/python -m uvicorn app.main:app --host 127.0.0.1 --port 8000
+./launch_ecom_backend.sh
 ```
 
 The controller can run from Live Server on port 5500–5599 or the static server
