@@ -97,6 +97,25 @@ are included in the generated manifest.
 The PET GeoTIFFs and PNGs carry product/source tags, while each hourly street
 value file includes its date, hour, units, and sampling source.
 
+The same CoolPaths dashboard includes a six-step **How CoolPaths works** tour.
+Start playback or select any step to reveal buildings, canopy, vegetation,
+water, terrain, reflectivity, shadows, sky view, radiation, PET, or walking
+streets. The sun step advances through the prepared hours. The last step
+uses your selected walk, or computes a real example on the prepared graph.
+The projection's extent and camera never change during the tour.
+
+Select **Inspect** and click the map to sample PET, radiant temperature, air
+temperature, shade, sky view and canopy height in the dashboard. Inspection
+preserves route selections; **Route** or **Back to routing** restores normal
+three-click routing. The PET summary sits at the bottom of the map. The tour
+uses cached local inputs and requires no new Earth Engine preparation.
+
+The dashboard credits Deepank Verma, Olaf Mumm and Vanessa Miriam Carlow:
+*CoolPaths: Street-scale Physiological Equivalent Temperature (PET) mapping
+and cooler-routes planning using open data*. **City and Environment
+Interactions, 30**, 100349 (2026).
+[Publication](https://doi.org/10.1016/j.cacint.2026.100349).
+
 ### ☀️ Sun Study
 
 3D shadow analysis using Three.js. Loads STL models of buildings and computes solar shadow positions based on date, time, and location (Gothenburg, Sweden). Supports time-lapse animation through the day and includes SSAO post-processing for realistic ambient occlusion.

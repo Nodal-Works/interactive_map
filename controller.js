@@ -205,7 +205,7 @@ document.querySelectorAll('.control-btn[data-target]').forEach(btn => {
 });
 
 function thermalNumber(value, digits = 1) {
-    return Number.isFinite(Number(value)) ? Number(value).toFixed(digits) : '--';
+    return value != null && Number.isFinite(Number(value)) ? Number(value).toFixed(digits) : '--';
 }
 
 function thermalProfileSvg(route) {
@@ -229,6 +229,87 @@ function thermalProfileSvg(route) {
         <path d="${line(route.shortest)}" fill="none" stroke="#f8fafc" stroke-width="2.5" stroke-dasharray="5 4" />
         <path d="${line(route.coolest)}" fill="none" stroke="#48e7ff" stroke-width="3" />
     </svg>`;
+}
+
+function updateCoolpathsExplorer(state, dashboardContent) {
+    const tour = state.tour || { open: false, playing: false, step: 0 };
+    const step = window.COOLPATHS_GUIDE[tour.step] || window.COOLPATHS_GUIDE[0];
+    const usable = state.active && state.ready;
+    const specialNames = { buildings: 'Building geometry', streets: 'Walking network', routes: 'Shortest & coolest routes' };
+    const element = id => document.getElementById(id);
+    element('coolpaths-tour-count').textContent = tour.open ? `${tour.step + 1} / 6` : '6 steps';
+    element('coolpaths-step-title').textContent = tour.open ? step.title : 'Explore the data behind every route';
+    element('coolpaths-step-body').textContent = tour.open ? step.body : 'Follow the preparation from city geometry to a cooler walk. Each step reveals its actual map layer.';
+    element('coolpaths-step-hint').textContent = tour.open ? step.hint : 'Start the tour or choose any step above.';
+    dashboardContent.querySelectorAll('[data-tour-step]').forEach(button => {
+        const selected = tour.open && Number(button.dataset.tourStep) === tour.step;
+        button.setAttribute('aria-current', selected ? 'step' : 'false');
+        button.disabled = !usable;
+    });
+    element('coolpaths-tour-play').textContent = tour.playing ? 'Pause' : tour.open ? 'Play tour' : 'Start tour';
+    element('coolpaths-tour-play').disabled = !usable;
+    element('coolpaths-tour-back').disabled = !usable || !tour.open || tour.step === 0;
+    element('coolpaths-tour-next').disabled = !usable || !tour.open || tour.step === 5;
+    element('coolpaths-tour-explore').disabled = !usable || !tour.open;
+    element('coolpaths-tour-end').disabled = !tour.open;
+    element('coolpaths-layer-controls').hidden = !tour.open;
+    const select = element('coolpaths-input-layer');
+    const signature = `${tour.step}:${!!state.catalog}`;
+    if (select.dataset.options !== signature) {
+        select.replaceChildren(...step.choices.map(name => {
+            const option = document.createElement('option');
+            option.value = name;
+            option.textContent = specialNames[name] || state.catalog?.layers[name]?.title || name;
+            return option;
+        }));
+        select.dataset.options = signature;
+    }
+    select.value = tour.layer || step.layer;
+    const selected = state.catalog?.layers[tour.layer];
+    const scale = element('coolpaths-input-scale');
+    scale.replaceChildren();
+    if (selected) {
+        const bar = document.createElement('div');
+        bar.style.background = `linear-gradient(90deg, ${selected.colors.join(',')})`;
+        const labels = document.createElement('span');
+        labels.textContent = selected.unit === 'mask' ?
+            (tour.layer === 'shade' ? 'Indigo: cast shadow · clear: no cast shadow' : 'Blue: water · clear: land') :
+            `${selected.stops[0]} → ${selected.stops.at(-1)} ${selected.unit}`;
+        scale.append(bar, labels);
+    }
+    element('coolpaths-layer-source').textContent = selected?.source ||
+        (tour.layer === 'buildings' ? 'Local and OpenStreetMap footprints · heights inferred where absent' :
+            tour.layer === 'streets' ? 'OpenStreetMap walking graph · sampled PET per street' :
+                tour.layer === 'routes' ? (state.route ? 'Your selected walk' : 'Example walk calculated live on the prepared graph') : '');
+    const weather = state.status?.hours?.[String(state.hour)];
+    const sun = state.catalog?.sun;
+    element('coolpaths-tour-weather').innerHTML = usable ?
+        `<span>Air <strong>${thermalNumber(weather?.air_temperature_c)}°C</strong></span>
+         <span>Humidity <strong>${thermalNumber(weather?.relative_humidity_pct, 0)}%</strong></span>
+         <span>Wind at 10 m <strong>${thermalNumber(weather?.wind_10m_ms)} m/s</strong></span>
+         ${tour.open && sun ? `<span>☀ ${thermalNumber(sun.elevation_deg, 0)}° high · ${thermalNumber(sun.azimuth_deg, 0)}° bearing</span>` : ''}` : '';
+    element('coolpaths-tour-status').textContent = tour.error || (tour.loading ? 'Loading the prepared map layer…' :
+        tour.playing ? 'Playing · the sun step also moves through the study hours' : '');
+    ['route', 'inspect'].forEach(mode => {
+        element(`coolpaths-mode-${mode}`).setAttribute('aria-pressed', String((state.mode || 'route') === mode));
+        element(`coolpaths-mode-${mode}`).disabled = !usable;
+    });
+    const sample = state.inspection;
+    const values = sample?.values;
+    element('coolpaths-inspector-message').textContent = state.inspectionLoading ? 'Sampling this location…' :
+        state.inspectionError || sample?.message || (state.mode === 'inspect' ?
+            'Click a location on the map. The pink ring marks your sample.' : 'Choose Inspect, then click the map to sample a location.');
+    element('coolpaths-sample-pet').textContent = values?.pet == null ? '--' : `${thermalNumber(values.pet)}°C`;
+    element('coolpaths-sample-mrt').textContent = values?.mrt == null ? '--' : `${thermalNumber(values.mrt)}°C`;
+    element('coolpaths-sample-air').textContent = sample ? `${thermalNumber(sample.weather.air_temperature_c)}°C` : '--';
+    element('coolpaths-sample-shade').textContent = sample?.building ? 'Building' : values?.shade == null ? '--' :
+        values.shade > 0.5 ? 'Cast shade' : values.canopy > 0.1 ? 'Under canopy' : 'Sunlit';
+    element('coolpaths-sample-sky').textContent = values?.svf == null ? '--' : `${thermalNumber(values.svf * 100, 0)}%`;
+    element('coolpaths-sample-canopy').textContent = values?.canopy == null ? '--' : `${thermalNumber(values.canopy)} m`;
+    element('coolpaths-sample-detail').textContent = sample ?
+        `${sample.point[1].toFixed(5)}, ${sample.point[0].toFixed(5)} · ${String(sample.hour).padStart(2, '0')}:00 · ` +
+        (sample.building ? `${thermalNumber(sample.building.height_m)} m building (${sample.building.source})` :
+            `NDVI ${thermalNumber(values.ndvi, 2)} · direct sunlight ${thermalNumber(values.direct, 0)} W/m²`) : '';
 }
 
 function updateThermalDashboard() {
@@ -264,6 +345,55 @@ function updateThermalDashboard() {
                     <div class="coolpaths-metric coolpaths-benefit"><span>Difference</span><strong id="thermal-reduction">--</strong><small id="thermal-detour">-- distance</small><small>50% detour limit</small></div>
                 </div>
                 <div class="coolpaths-profile"><div><strong>PET along route</strong><span>°C by walking distance</span></div><div id="thermal-profile"></div></div>
+                <section class="coolpaths-tour" aria-labelledby="coolpaths-tour-heading">
+                    <div class="coolpaths-card-heading"><div><span class="coolpaths-eyebrow">FROM INPUTS TO A WALK</span>
+                        <h3 id="coolpaths-tour-heading">How CoolPaths works</h3></div><span id="coolpaths-tour-count">6 steps</span></div>
+                    <nav class="coolpaths-steps" aria-label="CoolPaths processing steps">
+                        ${window.COOLPATHS_GUIDE.map((step, index) => `<button type="button" data-tour-step="${index}" aria-label="Step ${index + 1}: ${step.title}"><span>${index + 1}</span>${step.short}</button>`).join('')}
+                    </nav>
+                    <h4 id="coolpaths-step-title">Explore the data behind every route</h4>
+                    <p id="coolpaths-step-body">Follow the preparation from city geometry to a cooler walk. Each step reveals its actual map layer.</p>
+                    <p id="coolpaths-step-hint" class="coolpaths-muted">Start the tour or choose any step above.</p>
+                    <div id="coolpaths-layer-controls" hidden>
+                        <label class="coolpaths-layer-label" for="coolpaths-input-layer">On the map <select id="coolpaths-input-layer"></select></label>
+                        <div id="coolpaths-input-scale" class="coolpaths-input-scale"></div>
+                        <p id="coolpaths-layer-source" class="coolpaths-muted"></p>
+                    </div>
+                    <div class="coolpaths-tour-actions">
+                        <button type="button" id="coolpaths-tour-back" class="modern-btn" aria-label="Previous tour step">←</button>
+                        <button type="button" id="coolpaths-tour-play" class="modern-btn coolpaths-primary">Start tour</button>
+                        <button type="button" id="coolpaths-tour-next" class="modern-btn" aria-label="Next tour step">→</button>
+                        <button type="button" id="coolpaths-tour-explore" class="modern-btn">Explore this layer</button>
+                        <button type="button" id="coolpaths-tour-end" class="modern-btn">Back to routing</button>
+                    </div>
+                    <div id="coolpaths-tour-weather" class="coolpaths-tour-weather"></div>
+                    <p id="coolpaths-tour-status" class="coolpaths-muted" role="status"></p>
+                </section>
+                <section class="coolpaths-inspector" aria-labelledby="coolpaths-inspector-heading">
+                    <div class="coolpaths-card-heading"><h3 id="coolpaths-inspector-heading">At this location</h3>
+                        <div class="coolpaths-mode" role="group" aria-label="Map click action">
+                            <button type="button" id="coolpaths-mode-route" aria-pressed="true">Route</button>
+                            <button type="button" id="coolpaths-mode-inspect" aria-pressed="false">Inspect</button>
+                        </div>
+                    </div>
+                    <p id="coolpaths-inspector-message" class="coolpaths-muted" role="status">Choose Inspect, then click the map to sample a location.</p>
+                    <dl class="coolpaths-samples">
+                        <div><dt>PET</dt><dd id="coolpaths-sample-pet">--</dd></div>
+                        <div><dt>Radiant temperature</dt><dd id="coolpaths-sample-mrt">--</dd></div>
+                        <div><dt>Air temperature</dt><dd id="coolpaths-sample-air">--</dd></div>
+                        <div><dt>Sun exposure</dt><dd id="coolpaths-sample-shade">--</dd></div>
+                        <div><dt>Sky visible</dt><dd id="coolpaths-sample-sky">--</dd></div>
+                        <div><dt>Canopy height</dt><dd id="coolpaths-sample-canopy">--</dd></div>
+                    </dl>
+                    <p id="coolpaths-sample-detail" class="coolpaths-muted"></p>
+                </section>
+                <footer class="coolpaths-credit">
+                    <strong>Based on CoolPaths</strong> · Deepank Verma, Olaf Mumm &amp; Vanessa Miriam Carlow (2026).<br>
+                    <a href="https://doi.org/10.1016/j.cacint.2026.100349" target="_blank" rel="noopener noreferrer">CoolPaths: Street-scale Physiological Equivalent Temperature (PET) mapping and cooler-routes planning using open data.</a>
+                    <em>City and Environment Interactions, 30</em>, 100349. ·
+                    <a href="https://github.com/deepankverma/coolpaths" target="_blank" rel="noopener noreferrer">Original project ↗</a>
+                    <span>Gothenburg adaptation: local geometry, 2 m rasters, MEMI PET and a revised radiation calculation.</span>
+                </footer>
             </div>`;
         document.getElementById('thermal-hour')?.addEventListener('input', event => {
             document.getElementById('thermal-hour-display').textContent = `${String(event.target.value).padStart(2, '0')}:00`;
@@ -275,9 +405,16 @@ function updateThermalDashboard() {
             channel.postMessage({ type: 'thermal_control', action: 'show_streets', value: event.target.checked }));
         document.getElementById('thermal-clear')?.addEventListener('click', () =>
             channel.postMessage({ type: 'thermal_control', action: 'clear_route' }));
+        const send = (action, value) => channel.postMessage({ type: 'thermal_control', action, value });
+        dashboardContent.querySelectorAll('[data-tour-step]').forEach(button =>
+            button.addEventListener('click', () => send('tour_step', Number(button.dataset.tourStep))));
+        ['back', 'play', 'next', 'explore', 'end'].forEach(action =>
+            document.getElementById(`coolpaths-tour-${action}`).addEventListener('click', () => send(`tour_${action}`)));
+        document.getElementById('coolpaths-input-layer').addEventListener('change', event => send('tour_layer', event.target.value));
+        ['route', 'inspect'].forEach(mode => document.getElementById(`coolpaths-mode-${mode}`).addEventListener('click', () => send('set_mode', mode)));
     }
     const state = thermalComfortState;
-    const route = state.route;
+    const route = state.route || (state.tour?.open && state.tour.step === 5 ? state.demoRoute : null);
     const short = route?.shortest?.properties;
     const cool = route?.coolest?.properties;
     document.getElementById('coolpaths-date').textContent = state.studyDate || '15 July 2026';
@@ -288,7 +425,9 @@ function updateThermalDashboard() {
     document.getElementById('thermal-hour-display').textContent = `${String(state.hour ?? 14).padStart(2, '0')}:00`;
     document.getElementById('thermal-raster').checked = state.showRaster !== false;
     document.getElementById('thermal-streets').checked = state.showStreets !== false;
-    document.getElementById('coolpaths-instruction').textContent = state.message || (state.active ? 'Click once for origin, twice for destination; the third click starts a new route.' : 'Activate the layer on the map.');
+    document.getElementById('coolpaths-instruction').textContent = state.mode === 'inspect' && state.active ?
+        'Inspect mode · click the map to sample a location. Choose Route to set walking points.' :
+        state.message || (state.active ? 'Click once for origin, twice for destination; the third click starts a new route.' : 'Activate the layer on the map.');
     document.getElementById('thermal-short-distance').textContent = short ? `${thermalNumber(short.distance_m, 0)} m` : '--';
     document.getElementById('thermal-cool-distance').textContent = cool ? `${thermalNumber(cool.distance_m, 0)} m` : '--';
     document.getElementById('thermal-short-pet').textContent = short ? `${thermalNumber(short.mean_pet_c)}°C mean PET` : '-- mean PET';
@@ -298,6 +437,7 @@ function updateThermalDashboard() {
     document.getElementById('thermal-reduction').textContent = route ? `${thermalNumber(route.comparison.heat_reduction_pct)}% less heat` : '--';
     document.getElementById('thermal-detour').textContent = route ? `+${thermalNumber(route.comparison.extra_distance_m, 0)} m (${thermalNumber(route.comparison.extra_distance_pct)}%)` : '-- distance';
     document.getElementById('thermal-profile').innerHTML = thermalProfileSvg(route);
+    updateCoolpathsExplorer(state, dashboardContent);
     legendContent.innerHTML = `
         <div class="thermal-legend-gradient"></div>
         <div class="thermal-legend-labels"><span>≤20°C</span><span>24°C</span><span>30°C</span><span>36°C</span><span>≥44°C</span></div>
@@ -306,6 +446,9 @@ function updateThermalDashboard() {
 }
 
 function updateDashboard(targetId) {
+    if (targetId !== 'thermal-comfort-btn' && thermalComfortState.tour?.playing) {
+        channel.postMessage({ type: 'thermal_control', action: 'tour_pause' });
+    }
     const dashboardContent = document.getElementById('dashboard-content');
     const legendContent = document.getElementById('legend-content');
     const dashboardTitle = document.getElementById('dashboard-title');

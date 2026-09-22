@@ -552,11 +552,13 @@ html, body {
 
 #thermal-comfort-hud {
   position: fixed;
-  top: 18px;
+  top: auto;
+  bottom: max(24px, env(safe-area-inset-bottom));
   left: 50%;
   transform: translateX(-50%);
   z-index: 1100;
   min-width: 190px;
+  max-width: calc(100vw - 180px);
   padding: 10px 14px 11px;
   color: #ecfeff;
   background: rgba(8, 15, 27, 0.9);
@@ -591,36 +593,72 @@ html, body {
 #main-panel.thermal-mode #dashboard-section { grid-column: 1 / -1 !important; grid-row: 1 !important; }
 #main-panel.thermal-mode #legend-section { grid-column: 1 !important; grid-row: 2 !important; }
 #main-panel.thermal-mode #metadata-section { grid-column: 2 !important; grid-row: 2 !important; }
-.coolpaths-dashboard { display: grid; grid-template-columns: minmax(210px, .8fr) minmax(0, 1.5fr); gap: .9rem; color: #e2e8f0; }
-.coolpaths-heading { grid-column: 1 / -1; display: flex; justify-content: space-between; align-items: center; gap: 1rem; padding: .2rem .2rem .6rem; border-bottom: 1px solid #475569; }
+.coolpaths-dashboard { display: grid; grid-template-columns: minmax(300px, 1fr) minmax(340px, 1.12fr); grid-template-areas: "heading heading" "controls tour" "instruction tour" "metrics tour" "profile inspector" "credit credit"; gap: .75rem; color: #e2e8f0; align-content: start; }
+.coolpaths-heading { grid-area: heading; display: flex; justify-content: space-between; align-items: center; gap: 1rem; padding: .2rem .2rem .6rem; border-bottom: 1px solid #475569; }
 .coolpaths-heading > div { display: flex; flex-direction: column; gap: .1rem; }
 .coolpaths-eyebrow { color: #67e8f9; font-size: .65rem; letter-spacing: .12em; font-weight: 700; }
 .coolpaths-heading strong { font-size: 1.05rem; }
 .coolpaths-state { color: #fbbf24; font-size: .8rem; }
 .coolpaths-state[data-ready="true"] { color: #5eead4; }
-.coolpaths-controls { background: #202d3b; border: 1px solid #3d586c; border-radius: 9px; padding: .9rem; }
+.coolpaths-controls { grid-area: controls; background: #202d3b; border: 1px solid #3d586c; border-radius: 9px; padding: .9rem; }
 .coolpaths-controls > label { display: flex; justify-content: space-between; gap: 1rem; font-size: .82rem; }
 .coolpaths-controls input[type="range"] { display: block; width: 100%; margin: .8rem 0 .2rem; }
 .coolpaths-hour-ends { display: flex; justify-content: space-between; color: #94a3b8; font-size: .7rem; }
 .coolpaths-options { display: flex; flex-wrap: wrap; gap: .7rem 1.1rem; align-items: center; margin-top: 1rem; font-size: .8rem; }
 .coolpaths-options label { display: flex; align-items: center; gap: .3rem; }
 .coolpaths-options button { padding: .4rem .7rem; font-size: .75rem; }
-.coolpaths-instruction { grid-column: 2; grid-row: 2; border-left: 3px solid #22d3ee; background: #193042; padding: .8rem; font-size: .84rem; line-height: 1.35; }
-.coolpaths-metrics { grid-column: 1 / -1; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: .65rem; }
+.coolpaths-instruction { grid-area: instruction; border-left: 3px solid #22d3ee; background: #193042; padding: .8rem; font-size: .84rem; line-height: 1.35; }
+.coolpaths-metrics { grid-area: metrics; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: .65rem; }
 .coolpaths-metric { display: flex; flex-direction: column; gap: .22rem; padding: .8rem; border-radius: 8px; background: #1e293b; border: 1px solid #334155; }
 .coolpaths-metric > span { text-transform: uppercase; letter-spacing: .08em; font-size: .68rem; color: #94a3b8; }
 .coolpaths-metric strong { font-size: 1.15rem; color: #f8fafc; }
 .coolpaths-metric small { color: #cbd5e1; font-size: .75rem; }
 .coolpaths-cool { border-color: #0e7490; }
 .coolpaths-benefit { border-color: #15803d; }
-.coolpaths-profile { grid-column: 1 / -1; padding: .8rem; border: 1px solid #334155; border-radius: 8px; background: #171f2b; }
+.coolpaths-profile { grid-area: profile; padding: .8rem; border: 1px solid #334155; border-radius: 8px; background: #171f2b; }
 .coolpaths-profile > div:first-child { display: flex; justify-content: space-between; gap: 1rem; font-size: .8rem; }
 .coolpaths-profile span, .thermal-empty-profile { color: #94a3b8; }
 .coolpaths-profile svg { display: block; width: 100%; height: min(140px, 17vh); margin-top: .25rem; }
 .thermal-empty-profile { margin: .8rem 0 .2rem; font-size: .78rem; }
-@media (max-width: 850px) {
-  .coolpaths-dashboard { grid-template-columns: 1fr; }
-  .coolpaths-instruction { grid-column: 1; grid-row: auto; }
+.coolpaths-tour { grid-area: tour; background: linear-gradient(145deg, #1f3242, #1c2636); border: 1px solid #386071; border-radius: 10px; padding: .9rem; min-width: 0; }
+.coolpaths-inspector { grid-area: inspector; background: #202538; border: 1px solid #51466b; border-radius: 10px; padding: .85rem; min-width: 0; }
+.coolpaths-card-heading { display: flex; justify-content: space-between; gap: .7rem; align-items: center; }
+.coolpaths-card-heading h3 { margin: .15rem 0 .45rem; font-size: .98rem; }
+.coolpaths-card-heading > span { font-size: .72rem; color: #94a3b8; }
+.coolpaths-steps { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: .3rem; margin: .7rem 0; }
+.coolpaths-steps button { display: flex; flex-direction: column; align-items: center; gap: .2rem; padding: .4rem .2rem; background: #182533; color: #cbd5e1; border: 1px solid #3e5165; border-radius: 6px; font: inherit; font-size: .7rem; cursor: pointer; }
+.coolpaths-steps button span { font-size: .65rem; color: #94a3b8; }
+.coolpaths-steps button[aria-current="step"] { background: #155e75; border-color: #67e8f9; color: #ecfeff; }
+.coolpaths-steps button[aria-current="step"] span { color: #a5f3fc; }
+.coolpaths-tour h4 { margin: .5rem 0 .25rem; font-size: .95rem; color: #e0f2fe; }
+#coolpaths-step-body { font-size: .82rem; line-height: 1.5; margin: .3rem 0; }
+.coolpaths-muted { color: #aab8cc; font-size: .72rem; line-height: 1.45; margin: .35rem 0; }
+.coolpaths-layer-label { display: flex; align-items: center; gap: .6rem; font-size: .74rem; margin: .65rem 0 .4rem; }
+.coolpaths-layer-label select { flex: 1; min-width: 0; background: #101c2c; color: #e2e8f0; border: 1px solid #476079; border-radius: 5px; padding: .4rem; font: inherit; }
+.coolpaths-input-scale { display: flex; align-items: center; gap: .65rem; font-size: .68rem; color: #cbd5e1; }
+.coolpaths-input-scale > div { height: 7px; flex: 1; min-width: 40px; max-width: 140px; border-radius: 6px; }
+.coolpaths-tour-actions { display: flex; flex-wrap: wrap; gap: .4rem; margin-top: .7rem; }
+.coolpaths-tour-actions .modern-btn { padding: .4rem .55rem; font-size: .72rem; }
+.coolpaths-tour-actions .coolpaths-primary { color: #ecfeff; border-color: #22d3ee; background: #155e75; }
+.coolpaths-tour-weather { display: flex; flex-wrap: wrap; gap: .35rem .8rem; padding-top: .65rem; font-size: .68rem; color: #a5b4c8; }
+.coolpaths-tour-weather strong { color: #e2e8f0; }
+.coolpaths-mode { display: flex; gap: 2px; padding: 2px; background: #151e2b; border-radius: 6px; }
+.coolpaths-mode button { border: 0; background: transparent; color: #94a3b8; border-radius: 4px; padding: .35rem .6rem; font: inherit; font-size: .72rem; cursor: pointer; }
+.coolpaths-mode button[aria-pressed="true"] { background: #51416f; color: #faf5ff; }
+.coolpaths-samples { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: .65rem; margin: .65rem 0; }
+.coolpaths-samples dt { font-size: .65rem; color: #94a3b8; }
+.coolpaths-samples dd { margin: .15rem 0 0; font-size: .95rem; color: #f5f3ff; font-weight: 600; }
+.coolpaths-credit { grid-area: credit; color: #9bacbf; border-top: 1px solid #3a4b61; padding: .6rem .15rem .15rem; font-size: .69rem; line-height: 1.6; }
+.coolpaths-credit strong { color: #cbd5e1; }
+.coolpaths-credit a { color: #a5e5f3; text-decoration: underline; text-underline-offset: 2px; }
+.coolpaths-credit > span { display: block; color: #a0aec0; }
+.coolpaths-dashboard button:disabled { opacity: .4; cursor: default; }
+.coolpaths-dashboard button:focus-visible, .coolpaths-dashboard select:focus-visible { outline: 2px solid #a5f3fc; outline-offset: 3px; }
+@media (max-width: 1080px) {
+  .coolpaths-dashboard { grid-template-columns: 1fr; grid-template-areas: "heading" "controls" "instruction" "tour" "inspector" "metrics" "profile" "credit"; }
+}
+@media (max-width: 650px) {
+  .coolpaths-steps { grid-template-columns: repeat(3, minmax(0, 1fr)); }
   .coolpaths-metrics { grid-template-columns: 1fr; }
   #main-panel.thermal-mode { grid-template-columns: 1fr !important; grid-template-rows: auto auto auto !important; }
   #main-panel.thermal-mode #legend-section { grid-column: 1 !important; grid-row: 2 !important; }

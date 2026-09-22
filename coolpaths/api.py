@@ -6,13 +6,14 @@ import json
 from pathlib import Path
 from typing import Annotated
 
-from fastapi import FastAPI, HTTPException, Path as ApiPath
+from fastapi import FastAPI, HTTPException, Path as ApiPath, Query
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 from pydantic import BaseModel, Field
 
 from .prepare import DATA_ROOT, STUDY_DATE
 from .routing import Router, RouteError
+from . import explore
 
 
 app = FastAPI(title="CoolPaths routing API", version="1.0")
@@ -134,3 +135,52 @@ def snap(request: SnapRequest):
     except RouteError as exc:
         raise HTTPException(400, str(exc)) from exc
     return {"coordinate": graph["nodes"][node], "snap_distance_m": round(distance, 1)}
+
+
+@app.get("/api/coolpaths/layers")
+def layers(hour: Annotated[int, Query(ge=8, le=20)] = 14):
+    manifest, _ = current_study()
+    hourly_pet(hour)
+    return explore.catalog(manifest, hour)
+
+
+@app.get("/api/coolpaths/buildings")
+def input_buildings():
+    current_study()
+    try:
+        return explore.buildings(study_folder(), _cache["manifest_mtime"])
+    except FileNotFoundError as exc:
+        raise HTTPException(404, "Prepared building geometry is unavailable") from exc
+
+
+@app.get("/api/coolpaths/layers/{name}/{hour}.png")
+def input_raster(name: str, hour: Annotated[int, ApiPath(ge=8, le=20)]):
+    manifest, _ = current_study()
+    hourly_pet(hour)
+    try:
+        path = explore.render_layer(study_folder(), _cache["manifest_mtime"], manifest, name, hour)
+    except (ValueError, FileNotFoundError) as exc:
+        raise HTTPException(404, str(exc)) from exc
+    return FileResponse(path, media_type="image/png")
+
+
+@app.post("/api/coolpaths/inspect")
+def inspect(request: SnapRequest):
+    manifest, _ = current_study()
+    hourly_pet(request.hour)
+    try:
+        return explore.inspect_point(study_folder(), _cache["manifest_mtime"], manifest,
+                                     request.point, request.hour)
+    except ValueError as exc:
+        raise HTTPException(400, str(exc)) from exc
+    except FileNotFoundError as exc:
+        raise HTTPException(503, str(exc)) from exc
+
+
+@app.get("/api/coolpaths/demo-route/{hour}")
+def demonstration_route(hour: Annotated[int, ApiPath(ge=8, le=20)]):
+    manifest, graph = current_study()
+    try:
+        return {"hour": hour, **explore.demo_route(graph, hourly_pet(hour), manifest)}
+    except RouteError as exc:
+        raise HTTPException(400, str(exc)) from exc

@@ -18,6 +18,8 @@ class BroadcastChannel {
 const sources = new Map();
 const handlers = {};
 const layers = new Map();
+const timers = new Map();
+let nextTimer = 0;
 const map = {
   loaded: () => true,
   once: () => {},
@@ -35,7 +37,12 @@ const map = {
   addLayer: layer => layers.set(layer.id, layer),
   getLayer: name => layers.get(name),
   setLayoutProperty(name, property, value) { layers.get(name)[property] = value; },
-  getCanvas: () => ({ style: {} })
+  getCanvas: () => ({ style: {} }),
+  // The installation is projection-calibrated. Any camera call is a failure.
+  fitBounds() { throw new Error('Tour must never fit the map'); },
+  easeTo() { throw new Error('Tour must never change the camera'); },
+  flyTo() { throw new Error('Tour must never fly the camera'); },
+  jumpTo() { throw new Error('Tour must never change the camera'); }
 };
 
 const route = {
@@ -45,19 +52,29 @@ const route = {
   comparison: { heat_reduction_pct: 12 }
 };
 let routeCalls = 0;
+let inspections = 0;
+const weather = Object.fromEntries(Array.from({ length: 13 }, (_, i) => [String(i + 8), { air_temperature_c: 26 }]));
 const fetch = async (url, options = {}) => {
   let body;
   if (url.endsWith('/status')) body = {
     ready: true, study_date: '2026-07-15', image_bounds: [11.8, 57.6, 12, 57.8],
-    hours: { '14': { air_temperature_c: 26 }, '17': { air_temperature_c: 24 } }
+    hours: weather, bounds: [11.8, 57.6, 12, 57.8]
   };
   else if (url.includes('/streets/')) body = {
     type: 'FeatureCollection', features: [], properties: { mean_pet_c: 32 }
   };
   else if (url.endsWith('/snap')) body = { coordinate: JSON.parse(options.body).point };
   else if (url.endsWith('/route')) { routeCalls++; body = route; }
+  else if (url.includes('/layers?')) body = { layers: {}, sun: { azimuth_deg: 180, elevation_deg: 40 } };
+  else if (url.endsWith('/buildings')) body = { type: 'FeatureCollection', features: [] };
+  else if (url.includes('/layers/')) body = {};
+  else if (url.includes('/demo-route/')) body = { ...route, example: true };
+  else if (url.endsWith('/inspect')) {
+    inspections++;
+    body = { ...JSON.parse(options.body), values: { pet: 31, mrt: 43, shade: 0, svf: .8, canopy: 0 }, weather: { air_temperature_c: 26 } };
+  }
   else throw new Error(`Unexpected request: ${url}`);
-  return { ok: true, json: async () => body };
+  return { ok: true, json: async () => body, arrayBuffer: async () => new ArrayBuffer(0) };
 };
 
 const elements = new Map();
@@ -65,9 +82,12 @@ for (const id of ['thermal-comfort-hud', 'thermal-hud-pet', 'thermal-hud-caption
   elements.set(id, { textContent: '', addEventListener() {} });
 }
 const context = { map, BroadcastChannel, fetch, console,
+  setTimeout(callback) { const id = ++nextTimer; timers.set(id, callback); return id; },
+  clearTimeout(id) { timers.delete(id); },
   location: { protocol: 'http:', hostname: '127.0.0.1' },
   document: { getElementById: id => elements.get(id) },
   window: {} };
+vm.runInNewContext(fs.readFileSync('animations/coolpaths-guide.js', 'utf8'), context);
 vm.runInNewContext(fs.readFileSync('animations/thermal-comfort.js', 'utf8'), context);
 const layer = context.window.thermalComfortLayer;
 const controller = new BroadcastChannel();
@@ -100,5 +120,53 @@ const settle = () => new Promise(resolve => setTimeout(resolve, 15));
   controller.postMessage({ type: 'thermal_control', action: 'show_raster', value: false });
   assert.equal(layers.get('coolpaths-pet-raster').visibility, 'none');
   assert.equal(states.at(-1).showRaster, false);
-  console.log('Map three-click cycle, hour change, visibility, and BroadcastChannel passed');
+  // Fill the user's destination, then inspect without altering that route.
+  handlers.click({ lngLat: { lng: 11.91, lat: 57.71 } });
+  await settle();
+  const userOrigin = JSON.stringify(layer.getState().origin);
+  controller.postMessage({ type: 'thermal_control', action: 'tour_step', value: 0 });
+  await settle();
+  assert.equal(layer.getState().tour.open, true);
+  assert.equal(layers.get('coolpaths-building-volume').visibility, 'visible');
+  assert.equal(layers.get('coolpaths-pet-raster').visibility, 'none');
+  handlers.click({ lngLat: { lng: 11.95, lat: 57.72 } });
+  await settle();
+  assert.equal(layer.getState().inspection.values.pet, 31);
+  assert.equal(JSON.stringify(layer.getState().origin), userOrigin);
+  assert.equal(layers.get('coolpaths-inspection-circle').visibility, 'visible');
+  controller.postMessage({ type: 'thermal_control', action: 'tour_step', value: 2 });
+  await settle();
+  assert.equal(layers.get('coolpaths-input-raster').visibility, 'visible');
+  assert.equal(layers.get('coolpaths-sun-dot').visibility, 'visible');
+  controller.postMessage({ type: 'thermal_control', action: 'tour_play' });
+  await settle();
+  assert.equal(timers.size, 1);
+  const [timerId, callback] = [...timers.entries()][0];
+  timers.delete(timerId);
+  await callback();
+  assert.equal(layer.getState().hour, 8);
+  assert.equal(layer.getState().inspection.hour, 8);
+  assert.ok(inspections > 1);
+  assert.equal(sources.get('coolpaths-input-image').image.url.includes('/shade/8.png'), true);
+  controller.postMessage({ type: 'thermal_control', action: 'tour_play' });
+  assert.equal(layer.getState().tour.playing, false);
+  assert.equal(timers.size, 0);
+  controller.postMessage({ type: 'thermal_control', action: 'tour_end' });
+  assert.equal(layer.getState().mode, 'route');
+  assert.equal(layer.getState().tour.open, false);
+  assert.equal(layers.get('coolpaths-input-raster').visibility, 'none');
+  assert.equal(layers.get('coolpaths-pet-raster').visibility, 'none'); // preserves prior toggle
+  assert.equal(JSON.stringify(layer.getState().origin), userOrigin);
+  controller.postMessage({ type: 'thermal_control', action: 'clear_route' });
+  controller.postMessage({ type: 'thermal_control', action: 'tour_step', value: 5 });
+  await settle();
+  assert.equal(layer.getState().demoRoute.example, true);
+  assert.equal(layer.getState().origin, null); // demo does not replace user's selections
+  assert.equal(sources.get('coolpaths-routes').data.features.length, 2);
+  controller.postMessage({ type: 'thermal_control', action: 'tour_play' });
+  await settle();
+  await layer.toggle();
+  assert.equal(timers.size, 0);
+  assert.equal(layers.get('coolpaths-building-volume').visibility, 'none');
+  console.log('Routing, inspection, guided playback, hour synchronization and fixed camera checks passed');
 })().catch(error => { console.error(error); process.exitCode = 1; });

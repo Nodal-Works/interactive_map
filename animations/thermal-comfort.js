@@ -6,20 +6,42 @@
   const API = `http://${host}:8001/api/coolpaths`;
   const channel = new BroadcastChannel('map_controller_channel');
   const EMPTY = { type: 'FeatureCollection', features: [] };
+  const STEPS = window.COOLPATHS_GUIDE;
   const ids = {
     image: 'coolpaths-pet-image', raster: 'coolpaths-pet-raster',
     streets: 'coolpaths-streets', streetLine: 'coolpaths-street-line',
     routes: 'coolpaths-routes', shortest: 'coolpaths-shortest', coolest: 'coolpaths-coolest',
-    stops: 'coolpaths-stops', origin: 'coolpaths-origin', destination: 'coolpaths-destination'
+    stops: 'coolpaths-stops', origin: 'coolpaths-origin', destination: 'coolpaths-destination',
+    inputImage: 'coolpaths-input-image', inputRaster: 'coolpaths-input-raster',
+    buildings: 'coolpaths-buildings', buildingsFill: 'coolpaths-building-volume',
+    sample: 'coolpaths-inspection', sampleCircle: 'coolpaths-inspection-circle',
+    sun: 'coolpaths-sun', sunRay: 'coolpaths-sun-ray', sunDot: 'coolpaths-sun-dot'
   };
   const state = {
     active: false, ready: false, phase: 'idle', message: '', hour: 14,
     showRaster: true, showStreets: true, meanPet: null, airTemp: null, studyDate: '2026-07-15',
-    status: null, origin: null, destination: null, route: null
+    status: null, origin: null, destination: null, route: null,
+    mode: 'route', inspection: null, inspectionPoint: null, inspectionLoading: false, inspectionError: '',
+    catalog: null, demoRoute: null,
+    tour: { open: false, playing: false, step: 0, layer: 'buildings', loading: false, error: '' }
   };
   let layersAdded = false;
   let requestNumber = 0;
   let hoverPopup = null;
+  let tourRequest = 0;
+  let inspectionRequest = 0;
+  let tourTimer = null;
+  let buildingsLoaded = false;
+
+  function displayedRoute() {
+    return state.route || (state.tour.open && state.tour.step === 5 ? state.demoRoute : null);
+  }
+
+  function drawRoutes() {
+    const route = displayedRoute();
+    setSource(ids.routes, route ? { type: 'FeatureCollection', features: [route.shortest, route.coolest] } : EMPTY);
+    updateStops();
+  }
 
   function imageCoordinates(bounds) {
     const [west, south, east, north] = bounds;
@@ -49,14 +71,27 @@
     if (value) value.textContent = state.meanPet == null ? '--' : Number(state.meanPet).toFixed(1);
     if (air) air.textContent = state.airTemp == null ? 'Modeled clear-sky comfort, not air temperature' :
       `Air ${Number(state.airTemp).toFixed(1)}°C · modeled clear-sky PET`;
-    if (caption) caption.textContent = state.message || `${String(state.hour).padStart(2, '0')}:00 · click the map to set an origin`;
+    if (caption) caption.textContent = state.tour.open ?
+      `${STEPS[state.tour.step].title} · ${String(state.hour).padStart(2, '0')}:00 · click to inspect` :
+      state.mode === 'inspect' ? 'Click the map to inspect a location in the dashboard' :
+      state.message || `${String(state.hour).padStart(2, '0')}:00 · click the map to set an origin`;
   }
 
   function layerVisibility() {
     const visible = (choice) => state.active && state.ready && choice ? 'visible' : 'none';
     const settings = [
-      [ids.raster, state.showRaster], [ids.streetLine, state.showStreets],
-      [ids.shortest, true], [ids.coolest, true], [ids.origin, true], [ids.destination, true]
+      [ids.raster, state.tour.open ? state.tour.layer === 'pet' : state.showRaster],
+      [ids.streetLine, state.tour.open ? ['streets', 'routes'].includes(state.tour.layer) : state.showStreets],
+      [ids.shortest, !state.tour.open || state.tour.layer === 'routes'],
+      [ids.coolest, !state.tour.open || state.tour.layer === 'routes'],
+      [ids.origin, !state.tour.open || state.tour.layer === 'routes'],
+      [ids.destination, !state.tour.open || state.tour.layer === 'routes'],
+      [ids.inputRaster, state.tour.open && !state.tour.loading && !state.tour.error &&
+        !['buildings', 'pet', 'streets', 'routes'].includes(state.tour.layer)],
+      [ids.buildingsFill, state.tour.open && state.tour.layer === 'buildings' && !state.tour.loading],
+      [ids.sunRay, state.tour.open && state.tour.step === 2],
+      [ids.sunDot, state.tour.open && state.tour.step === 2],
+      [ids.sampleCircle, state.mode === 'inspect' && !!state.inspectionPoint]
     ];
     settings.forEach(([id, choice]) => {
       if (map.getLayer(id)) map.setLayoutProperty(id, 'visibility', visible(choice));
@@ -71,8 +106,15 @@
     map.addSource(ids.streets, { type: 'geojson', data: EMPTY });
     map.addSource(ids.routes, { type: 'geojson', data: EMPTY });
     map.addSource(ids.stops, { type: 'geojson', data: EMPTY });
+    map.addSource(ids.inputImage, { type: 'image', url: `${API}/raster/${state.hour}.png`, coordinates: imageCoordinates(bounds) });
+    [ids.buildings, ids.sample, ids.sun].forEach(id => map.addSource(id, { type: 'geojson', data: EMPTY }));
     map.addLayer({ id: ids.raster, type: 'raster', source: ids.image,
       paint: { 'raster-opacity': 0.55, 'raster-fade-duration': 0 } });
+    map.addLayer({ id: ids.inputRaster, type: 'raster', source: ids.inputImage,
+      paint: { 'raster-opacity': 0.85, 'raster-fade-duration': 200 } });
+    map.addLayer({ id: ids.buildingsFill, type: 'fill-extrusion', source: ids.buildings,
+      paint: { 'fill-extrusion-color': ['interpolate', ['linear'], ['get', 'height_m'], 0, '#a5b4fc', 30, '#6366f1'],
+        'fill-extrusion-height': ['get', 'height_m'], 'fill-extrusion-opacity': 0.85 } });
     map.addLayer({ id: ids.streetLine, type: 'line', source: ids.streets,
       paint: {
         'line-color': ['interpolate', ['linear'], ['get', 'pet'],
@@ -95,6 +137,15 @@
       filter: ['==', ['get', 'kind'], 'destination'],
       paint: { 'circle-radius': 8, 'circle-color': '#fff7ed', 'circle-stroke-color': '#f97316',
         'circle-stroke-width': 4 } });
+    map.addLayer({ id: ids.sampleCircle, type: 'circle', source: ids.sample,
+      paint: { 'circle-radius': 10, 'circle-color': '#e879f9', 'circle-opacity': 0.35,
+        'circle-stroke-color': '#fae8ff', 'circle-stroke-width': 3 } });
+    map.addLayer({ id: ids.sunRay, type: 'line', source: ids.sun,
+      filter: ['==', ['geometry-type'], 'LineString'],
+      paint: { 'line-color': '#fbbf24', 'line-width': 3, 'line-dasharray': [2, 2] } });
+    map.addLayer({ id: ids.sunDot, type: 'circle', source: ids.sun,
+      filter: ['==', ['geometry-type'], 'Point'],
+      paint: { 'circle-color': '#fbbf24', 'circle-radius': 11, 'circle-stroke-color': '#fef3c7', 'circle-stroke-width': 3 } });
     map.on('mouseenter', ids.streetLine, () => {
       if (state.active && state.ready) map.getCanvas().style.cursor = 'crosshair';
     });
@@ -121,11 +172,152 @@
 
   function updateStops() {
     const points = [];
-    if (state.origin) points.push({ type: 'Feature', geometry: { type: 'Point', coordinates: state.origin },
+    const demo = state.tour.open && state.tour.step === 5 && !state.route ? state.demoRoute : null;
+    const origin = demo?.snapped_origin || state.origin;
+    const destination = demo?.snapped_destination || state.destination;
+    if (origin) points.push({ type: 'Feature', geometry: { type: 'Point', coordinates: origin },
       properties: { kind: 'origin' } });
-    if (state.destination) points.push({ type: 'Feature', geometry: { type: 'Point', coordinates: state.destination },
+    if (destination) points.push({ type: 'Feature', geometry: { type: 'Point', coordinates: destination },
       properties: { kind: 'destination' } });
     setSource(ids.stops, { type: 'FeatureCollection', features: points });
+  }
+
+  function pauseTour() {
+    clearTimeout(tourTimer);
+    tourTimer = null;
+    state.tour.playing = false;
+  }
+
+  function sunDirection() {
+    if (!state.catalog?.sun) return;
+    const [w, s, e, n] = state.status.bounds;
+    const center = [(w + e) / 2, (s + n) / 2];
+    const angle = state.catalog.sun.azimuth_deg * Math.PI / 180;
+    const sun = [center[0] + Math.sin(angle) * 280 / (111320 * Math.cos(center[1] * Math.PI / 180)),
+      center[1] + Math.cos(angle) * 280 / 111320];
+    setSource(ids.sun, { type: 'FeatureCollection', features: [
+      { type: 'Feature', properties: {}, geometry: { type: 'LineString', coordinates: [center, sun] } },
+      { type: 'Feature', properties: {}, geometry: { type: 'Point', coordinates: sun } }
+    ] });
+  }
+
+  async function refreshTour() {
+    if (!state.tour.open || !state.ready || !state.active) return;
+    const ownRequest = ++tourRequest;
+    const layer = state.tour.layer;
+    const hour = state.hour;
+    state.tour.loading = true;
+    state.tour.error = '';
+    layerVisibility();
+    publish();
+    try {
+      const catalog = await requestJson(`/layers?hour=${hour}`);
+      let buildingData = null;
+      let demo = null;
+      if (layer === 'buildings' && !buildingsLoaded) buildingData = await requestJson('/buildings');
+      else if (layer === 'routes' && !state.route) demo = await requestJson(`/demo-route/${hour}`);
+      else if (!['buildings', 'routes', 'streets', 'pet'].includes(layer)) {
+        const response = await fetch(`${API}/layers/${layer}/${hour}.png`);
+        if (!response.ok) throw new Error(`${catalog.layers[layer]?.title || layer} is unavailable`);
+        await response.arrayBuffer();
+      }
+      if (ownRequest !== tourRequest || !state.tour.open || !state.active) return;
+      state.catalog = catalog;
+      if (buildingData) { setSource(ids.buildings, buildingData); buildingsLoaded = true; }
+      if (demo) state.demoRoute = demo;
+      if (!['buildings', 'routes', 'streets', 'pet'].includes(layer)) {
+        map.getSource(ids.inputImage).updateImage({ url: `${API}/layers/${layer}/${hour}.png`,
+          coordinates: imageCoordinates(state.status.image_bounds) });
+      }
+      sunDirection();
+      drawRoutes();
+      state.tour.loading = false;
+    } catch (error) {
+      if (ownRequest !== tourRequest) return;
+      state.tour.loading = false;
+      state.tour.error = error.message;
+      pauseTour();
+    }
+    layerVisibility();
+    publish();
+  }
+
+  async function chooseStep(index) {
+    if (!state.active || !state.ready || !Number.isInteger(index) || !STEPS[index]) return;
+    pauseTour();
+    state.tour.open = true;
+    state.tour.step = index;
+    state.tour.layer = STEPS[index].layer;
+    state.mode = 'inspect';
+    await refreshTour();
+  }
+
+  function endTour() {
+    pauseTour();
+    tourRequest += 1;
+    state.tour.open = false;
+    state.tour.loading = false;
+    state.mode = 'route';
+    drawRoutes();
+    layerVisibility();
+    publish();
+  }
+
+  function scheduleTour(sunFrame = 0) {
+    if (!state.tour.playing) return;
+    tourTimer = setTimeout(async () => {
+      if (!state.active || !state.tour.playing) return;
+      const step = state.tour.step;
+      if (step === 2 && sunFrame < 5) {
+        state.hour = [8, 11, 14, 17, 20][sunFrame];
+        await loadHour();
+        if (state.tour.playing && state.tour.step === step) scheduleTour(sunFrame + 1);
+        return;
+      }
+      if (step === STEPS.length - 1) { pauseTour(); publish(); return; }
+      await chooseStep(step + 1);
+      // chooseStep pauses; a user pause during the request must also stay paused.
+      if (state.active && state.tour.open && state.tour.step === step + 1 && !state.tour.error && autoAdvanceToken === playbackToken) {
+        state.tour.playing = true;
+        publish();
+        scheduleTour();
+      }
+    }, state.tour.step === 2 ? 2400 : 8000);
+    const autoAdvanceToken = playbackToken;
+  }
+
+  let playbackToken = 0;
+  async function playTour() {
+    const token = ++playbackToken;
+    if (!state.tour.open || state.tour.step === 5) await chooseStep(0);
+    if (token !== playbackToken || !state.active || !state.ready || state.tour.error) return;
+    state.tour.playing = true;
+    publish();
+    scheduleTour();
+  }
+
+  async function inspectPoint(point) {
+    const ownRequest = ++inspectionRequest;
+    state.inspectionPoint = point;
+    state.inspectionLoading = true;
+    state.inspectionError = '';
+    state.inspection = null;
+    setSource(ids.sample, { type: 'FeatureCollection', features: [
+      { type: 'Feature', properties: {}, geometry: { type: 'Point', coordinates: point } }
+    ] });
+    layerVisibility();
+    publish();
+    try {
+      const result = await requestJson('/inspect', { method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ point, hour: state.hour }) });
+      if (ownRequest !== inspectionRequest || !state.active) return;
+      state.inspection = result;
+    } catch (error) {
+      if (ownRequest !== inspectionRequest) return;
+      state.inspectionError = error.message;
+    }
+    state.inspectionLoading = false;
+    publish();
   }
 
   function clearRoute() {
@@ -157,8 +349,7 @@
       state.destination = route.snapped_destination;
       state.phase = 'route-ready';
       state.message = `Coolest route · ${route.comparison.heat_reduction_pct}% less heat exposure`;
-      setSource(ids.routes, { type: 'FeatureCollection', features: [route.shortest, route.coolest] });
-      updateStops();
+      drawRoutes();
     } catch (error) {
       if (ownRequest !== requestNumber) return;
       state.route = null;
@@ -172,8 +363,12 @@
   async function loadHour() {
     if (!state.ready || !state.active) return;
     const ownRequest = ++requestNumber;
+    const loadedHour = state.hour;
     state.phase = 'loading-hour';
     state.message = `Loading PET at ${String(state.hour).padStart(2, '0')}:00…`;
+    state.route = null;
+    state.demoRoute = null;
+    drawRoutes();
     publish();
     try {
       const streets = await requestJson(`/streets/${state.hour}`);
@@ -190,7 +385,12 @@
       state.message = state.origin && state.destination ? 'Updating route for selected hour…' :
         state.origin ? 'Click the map to set a destination' : 'Click the map to set an origin';
       publish();
-      if (state.origin && state.destination) fetchRoute();
+      if (state.origin && state.destination) await fetchRoute();
+      if (!state.active || state.hour !== loadedHour) return;
+      await Promise.all([
+        state.tour.open ? refreshTour() : Promise.resolve(),
+        state.inspectionPoint ? inspectPoint(state.inspectionPoint) : Promise.resolve()
+      ]);
     } catch (error) {
       if (ownRequest !== requestNumber) return;
       state.phase = 'error';
@@ -236,6 +436,10 @@
     channel.postMessage({ type: 'animation_state', animationId: 'thermal-comfort-btn', isActive: state.active });
     if (state.active) await initialize();
     else {
+      playbackToken += 1;
+      inspectionRequest += 1;
+      state.inspectionLoading = false;
+      endTour();
       map.getCanvas().style.cursor = '';
       if (hoverPopup) { hoverPopup.remove(); hoverPopup = null; }
       layerVisibility();
@@ -247,6 +451,12 @@
 
   map.on('click', async (event) => {
     if (!state.active || !state.ready || ['loading-hour', 'error', 'unavailable'].includes(state.phase)) return;
+    if (state.mode === 'inspect') {
+      playbackToken += 1;
+      pauseTour();
+      await inspectPoint([event.lngLat.lng, event.lngLat.lat]);
+      return;
+    }
     const startsNewRoute = !state.origin || !!state.destination;
     const ownRequest = ++requestNumber;
     const point = [event.lngLat.lng, event.lngLat.lat];
@@ -265,7 +475,7 @@
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ point, hour: state.hour })
       });
-      if (ownRequest !== requestNumber || !state.active) return;
+      if (ownRequest !== requestNumber || !state.active || state.mode !== 'route') return;
       if (startsNewRoute) {
         state.origin = snapped.coordinate;
         state.phase = 'choose-destination';
@@ -289,15 +499,48 @@
     const data = event.data || {};
     if (data.type !== 'thermal_control') return;
     if (data.action === 'request_state') publish();
-    if (data.action === 'clear_route') clearRoute();
+    if (data.action === 'clear_route') { playbackToken += 1; endTour(); clearRoute(); }
+    if (data.action === 'set_mode') {
+      playbackToken += 1;
+      pauseTour();
+      if (data.value === 'route') endTour();
+      else if (data.value === 'inspect') { state.mode = 'inspect'; layerVisibility(); publish(); }
+    }
+    if (data.action === 'tour_play') {
+      if (state.tour.playing) { playbackToken += 1; pauseTour(); publish(); }
+      else playTour();
+    }
+    if (data.action === 'tour_pause') { playbackToken += 1; pauseTour(); publish(); }
+    if (data.action === 'tour_step') { playbackToken += 1; chooseStep(Number(data.value)); }
+    if (data.action === 'tour_next' || data.action === 'tour_back') {
+      playbackToken += 1;
+      chooseStep(Math.max(0, Math.min(STEPS.length - 1, state.tour.step + (data.action === 'tour_next' ? 1 : -1))));
+    }
+    if (data.action === 'tour_end') { playbackToken += 1; endTour(); }
+    if (data.action === 'tour_explore') {
+      playbackToken += 1;
+      pauseTour();
+      state.mode = 'inspect';
+      layerVisibility();
+      publish();
+    }
+    if (data.action === 'tour_layer' && state.tour.open && STEPS[state.tour.step].choices.includes(data.value)) {
+      playbackToken += 1;
+      pauseTour();
+      state.tour.layer = data.value;
+      refreshTour();
+    }
     if (data.action === 'set_hour') {
       const next = Number(data.value);
       if (Number.isInteger(next) && next >= 8 && next <= 20 && next !== state.hour) {
+        playbackToken += 1;
+        pauseTour();
         state.hour = next;
         loadHour();
       }
     }
     if (data.action === 'show_raster' || data.action === 'show_streets') {
+      if (state.tour.open) { playbackToken += 1; endTour(); }
       state[data.action === 'show_raster' ? 'showRaster' : 'showStreets'] = !!data.value;
       layerVisibility();
       publish();
