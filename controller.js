@@ -923,7 +923,7 @@ function updateDashboard(targetId) {
                             Street View (Live)
                         </div>
                     </div>
-                    <div id="street-view-panel" style="width: 100%; height: 200px; background: #1a1a1a; position: relative;">
+                    <div id="street-view-panel" style="width: 100%; height: 620px; background: #1a1a1a; position: relative;">
                         <img id="street-view-image" style="width: 100%; height: 100%; object-fit: cover; display: none;" />
                         <div id="street-view-no-coverage" style="
                             position: absolute;
