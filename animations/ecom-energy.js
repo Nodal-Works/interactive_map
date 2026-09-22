@@ -6,10 +6,8 @@
 // no build step, so it reads plain GeoJSON until the controller supplies a live
 // layer from the backend in this repository.
 //
-// Nothing paints the building footprints. They are already drawn by the basemap
-// and, more to the point, they exist physically in the 3D print the projector is
-// aimed at. Only what the model cannot show is drawn: who is a member, and what
-// is moving between them.
+// Member footprints show demand. Nonmember footprints provide quiet context
+// while ECOM replaces the basemap with black.
 //
 // The footprints need no reprojection - the table's calibrated centre sits
 // about 50 m from the campus centroid and the export is CRS84.
@@ -24,6 +22,8 @@
     const FLOWS_URL = 'media/ecom/ecom-flows.geojson';
 
     const SOURCE_ID = 'ecom-buildings-source';
+    const CONTEXT_FILL_LAYER_ID = 'ecom-context-fill';
+    const CONTEXT_OUTLINE_LAYER_ID = 'ecom-context-outline';
     const FILL_LAYER_ID = 'ecom-buildings-fill';
     const OUTLINE_LAYER_ID = 'ecom-buildings-outline';
     const SOLAR_LAYER_ID = 'ecom-buildings-solar';
@@ -95,6 +95,7 @@
     // overwriting the other: without this, filtering to "buildings only" would
     // also drop the hasData test and start drawing footprints with no dispatch.
     const FILL_BASE_FILTER = ['==', ['get', 'hasData'], 1];
+    const CONTEXT_FILTER = ['==', ['get', 'hasData'], 0];
 
     // The colour a building sits at when it is drawing nothing. Not black: an
     // unlit member is still a member, and the table has to show it as one.
@@ -1059,11 +1060,34 @@
             });
         }
 
-        // Invisible, and only for hit-testing. The basemap already draws these
-        // buildings and the table projects onto a physical model of them, so
-        // filling them again would be the same footprint three times over.
-        // A zero-opacity fill is still queryable, which keeps the click popup
-        // working without painting anything.
+        // The black basemap has no building detail. Keep the exported
+        // nonmembers visible as subdued context beneath the ECOM members.
+        if (!map.getLayer(CONTEXT_FILL_LAYER_ID)) {
+            map.addLayer({
+                id: CONTEXT_FILL_LAYER_ID,
+                type: 'fill',
+                source: SOURCE_ID,
+                filter: CONTEXT_FILTER,
+                layout: { visibility: 'none' },
+                paint: { 'fill-color': '#26303a', 'fill-opacity': 0.55 }
+            });
+        }
+        if (!map.getLayer(CONTEXT_OUTLINE_LAYER_ID)) {
+            map.addLayer({
+                id: CONTEXT_OUTLINE_LAYER_ID,
+                type: 'line',
+                source: SOURCE_ID,
+                filter: CONTEXT_FILTER,
+                layout: { visibility: 'none' },
+                paint: {
+                    'line-color': '#667482',
+                    'line-width': 1.1,
+                    'line-opacity': 0.75
+                }
+            });
+        }
+
+        // Member footprints carry the hourly demand reading.
         if (!map.getLayer(FILL_LAYER_ID)) {
             map.addLayer({
                 id: FILL_LAYER_ID,
@@ -1946,6 +1970,7 @@
     function setLayerVisibility(visible) {
         const value = visible ? 'visible' : 'none';
         [
+            CONTEXT_FILL_LAYER_ID, CONTEXT_OUTLINE_LAYER_ID,
             FILL_LAYER_ID, OUTLINE_LAYER_ID, SOLAR_LAYER_ID,
             BATTERY_HOST_FILL_ID, BATTERY_LEVEL_ID, BATTERY_HOST_LINE_ID,
             FLOW_GLOW_ID, FLOW_LAYER_ID, FLOW_HEAD_GLOW_ID, FLOW_HEAD_ID,
@@ -3157,7 +3182,17 @@
         const ok = await loadData();
         if (!ok) return;
 
-        addLayers();
+        try {
+            addLayers();
+            // MapLibre can reject a symbol layer through its error event
+            // without throwing here. Filters must never start without nodes.
+            if (!map.getLayer(NODE_LAYER_ID)) {
+                throw new Error('ECOM node layer did not load');
+            }
+        } catch (error) {
+            setLayerVisibility(false);
+            throw error;
+        }
         // Visibility first, then filters. setLayerVisibility shows every layer
         // it knows about, halos included, so running it second would undo the
         // hiding a kind filter had just done - the introduction's first step
@@ -3356,7 +3391,11 @@
         // front of them had no way to do it, and the first step captioned a
         // table that was still showing bare streets.
         if (data.type === 'ecom_activate') {
-            if (!isActive) activate();
+            if (!isActive) activate().catch(function (error) {
+                console.error('ECOM: activation failed', error);
+                if (typeof showToast === 'function') showToast('ECOM layer failed - see console');
+                syncButton();
+            });
             return;
         }
 

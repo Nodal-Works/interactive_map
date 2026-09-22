@@ -103,6 +103,7 @@ const map = new maplibregl.Map({
   container: 'map',
   style: {
     version: 8,
+    glyphs: 'https://tiles.basemaps.cartocdn.com/fonts/{fontstack}/{range}.pbf',
     sources: {},
     layers: []
   },
