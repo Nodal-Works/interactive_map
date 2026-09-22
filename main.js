@@ -369,6 +369,13 @@ map.on('load', () => {
 });
 
 // Simple basemap switcher (call setBasemap('cartoDark') etc.)
+function getBasemap() {
+  return Object.keys(basemaps).find(key => {
+    const layerId = basemaps[key].id + '-layer';
+    return map.getLayer(layerId) && map.getLayoutProperty(layerId, 'visibility') === 'visible';
+  }) || defaultBasemap;
+}
+
 function setBasemap(key) {
   Object.keys(basemaps).forEach(k => {
     const layerId = basemaps[k].id + '-layer';
@@ -521,12 +528,10 @@ const basemapKeys = [defaultBasemap, 'mapboxLight', 'mapboxOutdoors', 'mapboxSat
 if (!mapboxToken) {
   basemapKeys.splice(1, 6);
 }
-let currentBasemapIndex = 0;
-
 const basemapToggleBtn = document.getElementById('basemap-toggle');
 basemapToggleBtn.addEventListener('click', () => {
-  currentBasemapIndex = (currentBasemapIndex + 1) % basemapKeys.length;
-  const newBasemap = basemapKeys[currentBasemapIndex];
+  const currentIndex = basemapKeys.indexOf(getBasemap());
+  const newBasemap = basemapKeys[(currentIndex + 1) % basemapKeys.length];
   setBasemap(newBasemap);
   showToast(`Basemap: ${newBasemap}`);
 });
@@ -539,6 +544,7 @@ document.getElementById('epc-btn')?.addEventListener('click', () => {
 
 // expose setBasemap for debugging
 window.setBasemap = setBasemap;
+window.getBasemap = getBasemap;
 window.map = map;
 
 // Laser pointer cursor tracking
@@ -737,4 +743,3 @@ function broadcastState(activeLayerId) {
         });
     }
 });
-

@@ -156,6 +156,7 @@
     let batteryHosts = {};
     let isLoaded = false;
     let isActive = false;
+    let previousBasemap = null;
     let currentHour = 0;
 
     // ---------------------------------------------------------------- data
@@ -3168,6 +3169,12 @@
         isActive = true;
         setHour(currentHour);
 
+        if (typeof window.setBasemap === 'function') {
+            previousBasemap = typeof window.getBasemap === 'function'
+                ? window.getBasemap() : null;
+            window.setBasemap('black');
+        }
+
         // Whatever arrived while this was loading.
         if (heldCaption) showCaption(heldCaption);
 
@@ -3200,6 +3207,11 @@
         showCaption(null);
         setLayerVisibility(false);
         isActive = false;
+        if (previousBasemap && typeof window.getBasemap === 'function' &&
+                window.getBasemap() === 'black') {
+            window.setBasemap(previousBasemap);
+        }
+        previousBasemap = null;
         syncButton();
         quietTheStreets(false);
 
