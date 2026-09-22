@@ -3074,38 +3074,13 @@
         }
 
         const kinds = filters.kinds || null;
-        const owners = filters.owners || null;
-        // A fraction of the largest flow in the horizon, matching how the line
-        // widths are scaled - an absolute kW threshold would mean something
-        // different every time the community is resized.
-        const minShare = filters.minFlow || 0;
 
         const nodeTests = [NODE_BASE_FILTER];
         const solarTests = [SOLAR_BASE_FILTER];
         if (kinds && kinds.length) {
             nodeTests.push(['in', ['get', 'kind'], ['literal', kinds]]);
         }
-        if (owners && owners.length) {
-            // Community assets - the grid tie, the battery, the charge point -
-            // carry an owner only sometimes. Keeping the unowned ones visible
-            // stops an owner filter from cutting the flows off at both ends.
-            nodeTests.push(['any',
-                ['==', ['get', 'owner'], ''],
-                ['in', ['get', 'owner'], ['literal', owners]]
-            ]);
-            solarTests.push(['any',
-                ['==', ['get', 'owner'], ''],
-                ['in', ['get', 'owner'], ['literal', owners]]
-            ]);
-        }
-        if (typeof filters.minCapacity === 'number' && filters.minCapacity > 0) {
-            nodeTests.push(['any',
-                ['!', ['has', 'capacity']],
-                ['>=', ['get', 'capacity'], filters.minCapacity]
-            ]);
-        }
 
-        const ceiling = flowCeiling || 1;
         const flowTests = [];
         if (kinds && kinds.length) {
             // Both ends, not just the source. A line needs somewhere to come
@@ -3115,18 +3090,6 @@
             flowTests.push(['in', ['get', 'kind'], ['literal', kinds]]);
             flowTests.push(['in', ['get', 'target_kind'], ['literal', kinds]]);
         }
-        if (owners && owners.length) {
-            flowTests.push(['any',
-                ['==', ['get', 'source_owner'], ''],
-                ['in', ['get', 'source_owner'], ['literal', owners]],
-                ['==', ['get', 'target_owner'], ''],
-                ['in', ['get', 'target_owner'], ['literal', owners]]
-            ]);
-        }
-        if (minShare > 0) {
-            flowTests.push(['>=', ['get', 'peak'], minShare * ceiling]);
-        }
-
         // An allow-list of source>target pairs, used to introduce the community
         // one relationship at a time. Both endpoints being visible is not
         // enough for that: building-to-building sharing would be on screen from

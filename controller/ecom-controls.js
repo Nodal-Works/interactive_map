@@ -222,11 +222,7 @@
         paramsError: null,     // why they are not here, if they are not
         paramsLoading: false,
         paramValues: {},       // overrides, by name
-        // Only what the panel can actually change. The layer still understands
-        // owners, minFlow and minCapacity - see applyFilters in
-        // animations/ecom-energy.js - but nothing here sets them any more, and
-        // carrying three fields frozen at their defaults made pushFilters read
-        // as though it did more than it does.
+        // Only what the panel can actually change.
         filters: {
             kinds: NODE_KINDS.map(function (k) { return k.key; })
         },
@@ -2351,10 +2347,6 @@
                    esc(k.label) + '</button>';
         }).join('');
 
-        // Owner chips and the two "hide below" sliders were here. The layer
-        // still supports all three - applyFilters in animations/ecom-energy.js
-        // reads owners, minFlow and minCapacity - so restoring them is markup,
-        // not plumbing. They are just not what anyone reaches for at the table.
         host.innerHTML =
             '<div class="ecom-ctl-chips">' + kinds + '</div>' +
             '<div class="ecom-legend-note">' +
