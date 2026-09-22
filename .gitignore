@@ -27,6 +27,9 @@ build/
 
 # Local ECOM meter exports and source workbooks
 media/ecom/energy_data/
+Dashboard/backend/cache/
+**/__pycache__/
+**/.pytest_cache/
 
 # OS
 Thumbs.db

@@ -1,11 +1,10 @@
 // ECOM Energy Community
 // =====================
-// The energy community drawn over the table: a node marker per member and the
-// hourly flows between them, in the same icons, colours and elbowed routing the
-// ECOM dashboard's 2D viewer uses, so the two read as one tool. Data comes from
-// that dashboard, exported by Dashboard/backend/scripts/export_mr_layer.py into
-// media/ecom/ - this site has no build step, so the layer reads a plain GeoJSON
-// rather than importing anything from that app.
+// The energy community drawn over the table: a node marker per member and
+// hourly flows routed along campus streets. The initial data is exported by
+// Dashboard/backend/scripts/export_mr_layer.py into media/ecom/. This site has
+// no build step, so it reads plain GeoJSON until the controller supplies a live
+// layer from the backend in this repository.
 //
 // Nothing paints the building footprints. They are already drawn by the basemap
 // and, more to the point, they exist physically in the 3D print the projector is

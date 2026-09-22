@@ -136,15 +136,33 @@ Open the app using the launcher: [launcher.html](launcher.html). You can double-
 ```bash
 # From the repository root (fallback only)
 # Use python3 on macOS/Linux, or python on Windows:
-python3 -m http.server 8000
+python3 -m http.server 8090
 
 # If python3 doesn't work, try:
-python -m http.server 8000
+python -m http.server 8090
 
-# Then open http://localhost:8000/launcher.html
+# Then open http://localhost:8090/launcher.html
 ```
 
 Manual calibration is available from the controller. Adjust the map, save named presets, or overwrite the default calibration there.
+
+### ECOM energy layer
+
+The map first shows the committed ECOM GeoJSON. Its live controls use the ECOM
+backend in this repository. Place the campus demand CSVs in
+`media/ecom/energy_data/` (kept out of Git), then start the API in a second
+terminal:
+
+```bash
+cd Dashboard/backend
+python3 -m venv .venv
+.venv/bin/python -m pip install -r requirements.txt
+.venv/bin/python -m uvicorn app.main:app --host 127.0.0.1 --port 8000
+```
+
+The controller can run from Live Server on port 5500–5599 or the static server
+on port 8090. Every ECOM connection follows `media/street-network.geojson`;
+the API reports an error if it cannot find a street route.
 
 ### EPC mode
 
