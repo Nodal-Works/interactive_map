@@ -1,114 +1,98 @@
 """
 Process DEM to calculate stormwater flow direction and accumulation.
-This script uses the D8 flow algorithm to determine flow paths and creates
-a flow direction raster and flow accumulation raster for visualization.
+Rasterizes building footprints as barriers, writes a two-band browser GeoTIFF,
+and computes D8 flow direction and accumulation. Water at/below 0 m is an outlet.
+Run from any directory; defaults resolve relative to this repository.
 """
 
-import numpy as np
-import rasterio
-from rasterio.transform import from_bounds, xy as rio_xy
-from scipy.ndimage import generic_filter
+import argparse
+from collections import deque
 import json
 from pathlib import Path
 
-def calculate_flow_direction_d8(dem):
-    """
-    Calculate flow direction using D8 algorithm.
-    Returns flow direction codes:
-    32  64  128
-    16  0   1
-    8   4   2
-    0 means no flow (sink/flat area)
-    """
+import numpy as np
+import rasterio
+from rasterio.features import rasterize
+from rasterio.transform import xy as rio_xy
+from rasterio.warp import transform_geom
+
+# Same D8 order as the browser, including deterministic ties.
+NEIGHBORS = [(-1, 1, 128), (0, 1, 1), (1, 1, 2), (1, 0, 4),
+             (1, -1, 8), (0, -1, 16), (-1, -1, 32), (-1, 0, 64)]
+OFFSETS = {code: (dr, dc) for dr, dc, code in NEIGHBORS}
+
+
+def resolve_dem_crs(crs):
+    # The original campus TIFF names SWEREF99 TM but omits its EPSG code.
+    if crs and crs.to_epsg():
+        return crs
+    if crs and 'SWEREF99 TM' in crs.to_wkt():
+        return rasterio.crs.CRS.from_epsg(3006)
+    raise ValueError('DEM needs a recognized CRS to align building footprints')
+
+
+def rasterize_buildings(footprints, shape, transform, crs):
+    source_crs = footprints.get('crs', {}).get('properties', {}).get('name', 'EPSG:4326')
+    geometries = [transform_geom(source_crs, crs, feature['geometry'])
+                  for feature in footprints['features']
+                  if feature.get('geometry', {}).get('type') in ('Polygon', 'MultiPolygon')]
+    if not geometries:
+        return np.zeros(shape, dtype=bool)
+    # Preserve polygon holes and every component of MultiPolygons.
+    return rasterize([(g, 1) for g in geometries], out_shape=shape,
+                     transform=transform, fill=0, dtype='uint8').astype(bool)
+
+
+def calculate_flow_direction_d8(dem, building_mask=None, water_mask=None, cell_size=(1, 1)):
+    """Route strictly downhill, excluding buildings and stopping in water bodies."""
     rows, cols = dem.shape
-    flow_dir = np.zeros((rows, cols), dtype=np.uint8)
-    
-    # D8 neighbor offsets (row, col) and their direction codes
-    neighbors = [
-        (-1, 1, 128),  # NE
-        (0, 1, 1),     # E
-        (1, 1, 2),     # SE
-        (1, 0, 4),     # S
-        (1, -1, 8),    # SW
-        (0, -1, 16),   # W
-        (-1, -1, 32),  # NW
-        (-1, 0, 64)    # N
-    ]
-    
-    for i in range(1, rows - 1):
-        for j in range(1, cols - 1):
-            center_elev = dem[i, j]
-            
-            # Skip nodata values
-            if np.isnan(center_elev):
+    buildings = np.zeros(dem.shape, dtype=bool) if building_mask is None else building_mask
+    water = np.zeros(dem.shape, dtype=bool) if water_mask is None else water_mask
+    valid = np.isfinite(dem) & ~buildings
+    flow_dir = np.zeros(dem.shape, dtype=np.uint8)
+    for i, j in zip(*np.nonzero(valid & ~water)):
+        max_slope = 0.0
+        for dr, dc, code in NEIGHBORS:
+            ni, nj = i + dr, j + dc
+            if not (0 <= ni < rows and 0 <= nj < cols and valid[ni, nj]):
                 continue
-            
-            max_slope = -np.inf
-            flow_direction = 0
-            
-            for dr, dc, direction_code in neighbors:
-                ni, nj = i + dr, j + dc
-                
-                if 0 <= ni < rows and 0 <= nj < cols:
-                    neighbor_elev = dem[ni, nj]
-                    
-                    if not np.isnan(neighbor_elev):
-                        # Calculate slope (elevation difference / distance)
-                        distance = np.sqrt(dr**2 + dc**2)
-                        slope = (center_elev - neighbor_elev) / distance
-                        
-                        if slope > max_slope:
-                            max_slope = slope
-                            flow_direction = direction_code
-            
-            flow_dir[i, j] = flow_direction
-    
+            # A diagonal must not cut across a building corner.
+            if dr and dc and (buildings[i, nj] or buildings[ni, j]):
+                continue
+            distance = np.hypot(dr * cell_size[1], dc * cell_size[0])
+            slope = (dem[i, j] - dem[ni, nj]) / distance
+            if slope > max_slope:
+                max_slope = slope
+                flow_dir[i, j] = code
     return flow_dir
 
-def calculate_flow_accumulation(flow_dir):
-    """
-    Calculate flow accumulation from flow direction.
-    This counts how many cells flow into each cell.
-    """
+
+def calculate_flow_accumulation(flow_dir, valid_mask=None):
+    """Count each upstream cell once, processing the drainage graph in order."""
     rows, cols = flow_dir.shape
-    flow_acc = np.ones((rows, cols), dtype=np.float32)
-    
-    # Direction code to offset mapping
-    dir_to_offset = {
-        128: (-1, 1),   # NE
-        1: (0, 1),      # E
-        2: (1, 1),      # SE
-        4: (1, 0),      # S
-        8: (1, -1),     # SW
-        16: (0, -1),    # W
-        32: (-1, -1),   # NW
-        64: (-1, 0)     # N
-    }
-    
-    # Process cells from highest to lowest elevation
-    # This ensures upstream cells are processed before downstream
-    # For simplicity, we'll iterate multiple times
-    for iteration in range(100):  # Usually converges quickly
-        changed = False
-        for i in range(rows):
-            for j in range(cols):
-                if flow_dir[i, j] == 0:
-                    continue
-                
-                # Get downstream cell
-                if flow_dir[i, j] in dir_to_offset:
-                    dr, dc = dir_to_offset[flow_dir[i, j]]
-                    ni, nj = i + dr, j + dc
-                    
-                    if 0 <= ni < rows and 0 <= nj < cols:
-                        old_acc = flow_acc[ni, nj]
-                        flow_acc[ni, nj] += flow_acc[i, j]
-                        if flow_acc[ni, nj] != old_acc:
-                            changed = True
-        
-        if not changed:
-            break
-    
+    valid = np.ones(flow_dir.shape, dtype=bool) if valid_mask is None else valid_mask
+    flow_acc = valid.astype(np.float32)
+    incoming = np.zeros(flow_dir.shape, dtype=np.uint8)
+    downstream = {}
+    for i, j in zip(*np.nonzero(valid & (flow_dir != 0))):
+        dr, dc = OFFSETS[int(flow_dir[i, j])]
+        ni, nj = i + dr, j + dc
+        if 0 <= ni < rows and 0 <= nj < cols and valid[ni, nj]:
+            downstream[i, j] = (ni, nj)
+            incoming[ni, nj] += 1
+    queue = deque(zip(*np.nonzero(valid & (incoming == 0))))
+    processed = 0
+    while queue:
+        cell = queue.popleft()
+        processed += 1
+        target = downstream.get(cell)
+        if target is not None:
+            flow_acc[target] += flow_acc[cell]
+            incoming[target] -= 1
+            if incoming[target] == 0:
+                queue.append(target)
+    if processed != np.count_nonzero(valid):
+        raise ValueError('Flow direction contains a cycle')
     return flow_acc
 
 def extract_flow_vectors(flow_dir, flow_acc, transform, dem_shape, threshold=10):
@@ -182,120 +166,69 @@ def create_flow_start_points(flow_acc, transform, spacing=5, min_accumulation=1)
     return start_points
 
 def main():
-    """Main processing function."""
-    print("Loading DEM...")
-    dem_path = Path("../media/clipped_dem.geotiff.tif")
-    
-    if not dem_path.exists():
-        print(f"Error: DEM file not found at {dem_path}")
-        return
-    
-    # Read DEM
-    with rasterio.open(dem_path) as src:
-        dem = src.read(1)
-        transform = src.transform
-        crs = src.crs
-        bounds = src.bounds
-        profile = src.profile
-        
-        print(f"DEM shape: {dem.shape}")
-        print(f"DEM bounds: {bounds}")
-        print(f"DEM CRS: {crs}")
-        print(f"DEM min elevation: {np.nanmin(dem):.2f}m")
-        print(f"DEM max elevation: {np.nanmax(dem):.2f}m")
-    
-    # Fill nodata values with interpolation for better flow calculation
-    print("\nPreprocessing DEM...")
-    mask = np.isnan(dem)
-    if mask.any():
-        # Simple fill: use mean of valid neighbors
-        from scipy.ndimage import generic_filter
-        def fill_func(x):
-            valid = x[~np.isnan(x)]
-            return np.mean(valid) if len(valid) > 0 else np.nan
-        
-        dem_filled = generic_filter(dem, fill_func, size=3, mode='constant', cval=np.nan)
-        dem = np.where(mask, dem_filled, dem)
-    
-    # Calculate flow direction
-    print("Calculating flow direction...")
-    flow_dir = calculate_flow_direction_d8(dem)
-    
-    # Calculate flow accumulation
-    print("Calculating flow accumulation...")
-    flow_acc = calculate_flow_accumulation(flow_dir)
-    
-    print(f"Max flow accumulation: {np.max(flow_acc):.0f} cells")
-    
-    # Save flow direction raster
-    print("\nSaving flow direction raster...")
-    profile.update(dtype=rasterio.uint8, count=1, nodata=0)
-    with rasterio.open("media/flow_direction.tif", 'w', **profile) as dst:
-        dst.write(flow_dir, 1)
-    
-    # Save flow accumulation raster
-    print("Saving flow accumulation raster...")
-    profile.update(dtype=rasterio.float32, nodata=-9999)
-    with rasterio.open("media/flow_accumulation.tif", 'w', **profile) as dst:
-        dst.write(flow_acc, 1)
-    
-    # Extract flow vectors for visualization
-    print("Extracting flow vectors...")
-    flow_lines = extract_flow_vectors(flow_dir, flow_acc, transform, dem.shape, threshold=50)
-    print(f"Extracted {len(flow_lines)} flow lines")
-    
-    # Create particle start points
-    print("Creating particle start points...")
-    start_points = create_flow_start_points(flow_acc, transform, spacing=3, min_accumulation=1)
-    print(f"Created {len(start_points)} start points")
-    
-    # Convert CRS info to JSON-serializable format
-    crs_info = {
-        'epsg': int(crs.to_epsg()) if crs.to_epsg() else None,
-        'wkt': crs.to_wkt()
-    }
-    
-    # Save flow data as JSON
-    print("Saving flow data...")
-    flow_data = {
-        'bounds': {
-            'west': bounds.left,
-            'south': bounds.bottom,
-            'east': bounds.right,
-            'north': bounds.top
-        },
-        'crs': crs_info,
-        'transform': {
-            'a': transform.a,
-            'b': transform.b,
-            'c': transform.c,
-            'd': transform.d,
-            'e': transform.e,
-            'f': transform.f
-        },
-        'shape': {
-            'rows': int(dem.shape[0]),
-            'cols': int(dem.shape[1])
-        },
-        'elevation': {
-            'min': float(np.nanmin(dem)),
-            'max': float(np.nanmax(dem))
-        },
-        'flow_lines': flow_lines[:5000],  # Limit for file size
-        'start_points': start_points[:1000]  # Limit for performance
-    }
-    
-    output_path = Path("media/flow_data.json")
-    with open(output_path, 'w') as f:
-        json.dump(flow_data, f, indent=2)
-    
-    print(f"\n✓ Flow data saved to {output_path}")
-    print("\nSummary:")
-    print(f"  - Flow direction raster: media/flow_direction.tif")
-    print(f"  - Flow accumulation raster: media/flow_accumulation.tif")
-    print(f"  - Flow visualization data: media/flow_data.json")
-    print(f"  - Total flow lines: {len(flow_lines)}")
-    print(f"  - Total start points: {len(start_points)}")
+    root = Path(__file__).resolve().parents[1]
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument('--dem', type=Path, default=root / 'media/clipped_dem.geotiff.tif')
+    parser.add_argument('--buildings', type=Path, default=root / 'media/building-footprints.geojson')
+    parser.add_argument('--output', type=Path, default=root / 'media')
+    parser.add_argument('--browser-only', action='store_true', help='Only write the browser GeoTIFF')
+    args = parser.parse_args()
 
-if __name__ == "__main__":
+    with rasterio.open(args.dem) as src:
+        dem = src.read(1, masked=True).astype(np.float32).filled(np.nan)
+        transform, bounds, profile = src.transform, src.bounds, src.profile
+        crs = resolve_dem_crs(src.crs)
+    if not np.isfinite(dem).any():
+        raise ValueError('DEM contains no valid elevations')
+    with args.buildings.open() as handle:
+        footprints = json.load(handle)
+    buildings = rasterize_buildings(footprints, dem.shape, transform, crs) & np.isfinite(dem)
+    water = np.isfinite(dem) & (dem <= 0) & ~buildings
+    # Adapted from lindholmen's generate_assets.py. Keep the source terrain intact
+    # for other layers and store an explicit mask rather than guessing from height.
+    processed_dem = dem.copy()
+    processed_dem[buildings] = float(np.nanmax(dem)) + 10.0
+    args.output.mkdir(parents=True, exist_ok=True)
+    profile.update(crs=crs, dtype='float32', count=2, nodata=np.nan, compress='deflate')
+    browser_path = args.output / 'stormwater_dem.tif'
+    with rasterio.open(browser_path, 'w', **profile) as dst:
+        dst.write(processed_dem, 1)
+        dst.write(buildings.astype(np.float32), 2)
+        dst.set_band_description(1, 'Terrain with building barriers')
+        dst.set_band_description(2, 'Building mask (1 = building, 0 = terrain)')
+    print(f'Saved {browser_path}: {np.count_nonzero(buildings)} building cells')
+    if args.browser_only:
+        return
+
+    flow_dir = calculate_flow_direction_d8(processed_dem, buildings, water,
+                                           (abs(transform.a), abs(transform.e)))
+    valid = np.isfinite(dem) & ~buildings
+    flow_acc = calculate_flow_accumulation(flow_dir, valid)
+    profile.update(count=1, dtype='uint8', nodata=None)
+    with rasterio.open(args.output / 'flow_direction.tif', 'w', **profile) as dst:
+        dst.write(flow_dir, 1)
+    profile.update(dtype='float32', nodata=np.nan)
+    with rasterio.open(args.output / 'flow_accumulation.tif', 'w', **profile) as dst:
+        dst.write(np.where(valid, flow_acc, np.nan), 1)
+    flow_lines = extract_flow_vectors(flow_dir, flow_acc, transform, dem.shape, threshold=10)
+    start_points = create_flow_start_points(np.where(water, 0, flow_acc), transform, spacing=5)
+    # Sample over the entire extent instead of truncating the north of the map.
+    def sample(items, limit):
+        return items if len(items) <= limit else [items[int(i * len(items) / limit)] for i in range(limit)]
+    flow_data = {
+        'bounds': dict(west=bounds.left, south=bounds.bottom, east=bounds.right, north=bounds.top),
+        'crs': {'epsg': crs.to_epsg(), 'wkt': crs.to_wkt()},
+        'transform': {key: getattr(transform, key) for key in 'abcdef'},
+        'shape': {'rows': dem.shape[0], 'cols': dem.shape[1]},
+        'elevation': {'min': float(np.nanmin(dem)), 'max': float(np.nanmax(dem))},
+        'building_cells': int(np.count_nonzero(buildings)),
+        'flow_lines': sample(flow_lines, 50000),
+        'start_points': sample(start_points, 5000),
+    }
+    with (args.output / 'flow_data.json').open('w') as handle:
+        json.dump(flow_data, handle, allow_nan=False)
+    print(f'Max accumulation: {np.max(flow_acc):.0f}; {len(flow_lines)} flow lines; {len(start_points)} start points')
+
+
+if __name__ == '__main__':
     main()

@@ -47,6 +47,31 @@ Real-time Lattice Boltzmann computational fluid dynamics simulation showing wind
 
 Particle-based visualisation of stormwater drainage using the D8 flow direction algorithm. Flow direction and accumulation are computed dynamically from a Digital Elevation Model (DEM) GeoTIFF, showing how water would flow across the terrain. Glowing particles trace water paths, with pooling areas highlighted where water accumulates.
 
+The runoff layer uses `media/stormwater_dem.tif`, generated from the terrain and
+building footprints. Buildings act as barriers and particles are excluded from
+their footprints. The two-band file contains terrain with raised building cells
+and an explicit building mask; the original terrain file is preserved. This ports
+the building-barrier approach from `lindholmen` (`cf61923`, `7ab73a3`) to the current
+campus data. Cells at or below 0 m are treated as water outlets, following that
+branch's elevation fallback; this is a visualization, without roof drainage or a
+sewer-network model.
+
+After changing the terrain or footprints, regenerate the browser asset:
+
+```sh
+# Requires numpy and rasterio (or use the existing .venv/bin/python).
+python scripts/process_dem_flow.py --browser-only
+```
+
+Omit `--browser-only` to also export `flow_direction.tif`, `flow_accumulation.tif`,
+and `flow_data.json`. Defaults resolve relative to the repository, so the script
+also works from another directory. Use `--dem`, `--buildings`, and `--output` to
+process another dataset. Polygon and MultiPolygon footprints are reprojected to
+the DEM grid, with courtyards preserved. Both Python and browser calculations use
+strictly downhill D8 flow and count each upstream cell once. Rain particles spawn
+uniformly across all valid ground cells, including narrow passages; accumulation
+affects their downstream movement rather than biasing where rainfall starts.
+
 ![Stormwater Flow](./media/screenshots/stormwater.png)
 
 ### ☀️ Sun Study

@@ -3,7 +3,7 @@
  * 
  * Visualizes stormwater drainage using particle-based flow animation.
  * Dynamically computes flow direction and accumulation from DEM GeoTIFF
- * using the D8 algorithm - no Python preprocessing required!
+ * using the D8 algorithm and building barriers prepared by scripts/process_dem_flow.py.
  */
 
 class StormwaterFlowAnimation {
@@ -31,11 +31,10 @@ class StormwaterFlowAnimation {
     this.flowDir = null;
     this.flowAcc = null;
     this.flowData = null;
-    this.buildingFootprints = null;
-    
-    // Spatial index for faster flow lookups
-    this.flowGrid = null;
-    this.flowGridCellSize = 20; // pixels per grid cell
+    this.spawnCells = []; // All valid ground cells receive equal rainfall
+    this.buildingMask = null;
+    this.waterMask = null;
+    this.cellSize = [1, 1];
     
     // Animation parameters
     this.particleSpeed = 1.5;
@@ -89,9 +88,9 @@ class StormwaterFlowAnimation {
       }
       
       // Load the DEM GeoTIFF file
-      const response = await fetch('media/clipped_dem.geotiff.tif');
+      const response = await fetch('media/stormwater_dem.tif', { cache: 'no-cache' });
       if (!response.ok) {
-        throw new Error('DEM file not found at media/clipped_dem.geotiff.tif');
+        throw new Error('Building-aware DEM missing. Run python scripts/process_dem_flow.py --browser-only');
       }
       
       const arrayBuffer = await response.arrayBuffer();
@@ -100,18 +99,32 @@ class StormwaterFlowAnimation {
       
       // Get raster data
       const rasters = await image.readRasters();
-      const elevationData = rasters[0]; // First band = elevation
+      const elevationData = rasters[0]; // First band = terrain with barriers
+      const buildingData = rasters[1]; // Explicit mask; high terrain is not a building
+      if (!buildingData) throw new Error('Regenerate stormwater_dem.tif with the current processing script');
+      const nodata = image.getGDALNoData();
+      const resolution = image.getResolution();
+      this.cellSize = [Math.abs(resolution[0]), Math.abs(resolution[1])];
       
       this.demWidth = image.getWidth();
       this.demHeight = image.getHeight();
       
       // Convert typed array to 2D array for easier processing
       this.dem = [];
+      this.buildingMask = [];
+      this.waterMask = [];
       for (let row = 0; row < this.demHeight; row++) {
         this.dem[row] = [];
+        this.buildingMask[row] = new Uint8Array(this.demWidth);
+        this.waterMask[row] = new Uint8Array(this.demWidth);
         for (let col = 0; col < this.demWidth; col++) {
           const idx = row * this.demWidth + col;
-          this.dem[row][col] = elevationData[idx];
+          const elevation = elevationData[idx];
+          this.dem[row][col] = Number.isFinite(elevation) && elevation !== nodata ? elevation : NaN;
+          this.buildingMask[row][col] = buildingData[idx] > 0 ? 1 : 0;
+          // Same sea-level fallback as lindholmen; buildings are never water.
+          this.waterMask[row][col] = Number.isFinite(this.dem[row][col]) &&
+            elevation <= 0 && !this.buildingMask[row][col] ? 1 : 0;
         }
       }
       
@@ -136,16 +149,6 @@ class StormwaterFlowAnimation {
       // Generate flow lines and start points for particle animation
       console.log('Generating flow data for animation...');
       this.flowData = this.generateFlowData();
-      
-      // Load building footprints (optional)
-      try {
-        const buildingsResponse = await fetch('media/building-footprints.geojson');
-        if (buildingsResponse.ok) {
-          this.buildingFootprints = await buildingsResponse.json();
-        }
-      } catch (e) {
-        console.log('Building footprints not loaded (optional)');
-      }
       
       console.log('Stormwater flow data computed:', {
         flowLines: this.flowData.flow_lines.length,
@@ -303,12 +306,12 @@ class StormwaterFlowAnimation {
         const centerElev = this.dem[i][j];
         
         // Skip nodata/NaN values
-        if (isNaN(centerElev)) {
+        if (!Number.isFinite(centerElev) || this.buildingMask?.[i][j] || this.waterMask?.[i][j]) {
           flowDir[i][j] = 0;
           continue;
         }
         
-        let maxSlope = -Infinity;
+        let maxSlope = 0;
         let direction = 0;
         
         for (const [dr, dc, dirCode] of neighbors) {
@@ -319,9 +322,11 @@ class StormwaterFlowAnimation {
           if (ni >= 0 && ni < rows && nj >= 0 && nj < cols) {
             const neighborElev = this.dem[ni][nj];
             
-            if (!isNaN(neighborElev)) {
+            if (this.buildingMask?.[ni][nj]) continue;
+            if (dr && dc && (this.buildingMask?.[i][nj] || this.buildingMask?.[ni][j])) continue;
+            if (Number.isFinite(neighborElev)) {
               // Calculate slope (elevation difference / distance)
-              const distance = Math.sqrt(dr * dr + dc * dc);
+              const distance = Math.hypot(dr * this.cellSize[1], dc * this.cellSize[0]);
               const slope = (centerElev - neighborElev) / distance;
               
               if (slope > maxSlope) {
@@ -348,67 +353,40 @@ class StormwaterFlowAnimation {
     const rows = this.demHeight;
     const cols = this.demWidth;
     
-    // Initialize accumulation to 1 (each cell contributes itself)
-    const flowAcc = [];
-    for (let i = 0; i < rows; i++) {
-      flowAcc[i] = new Float32Array(cols).fill(1);
-    }
-    
-    // Direction code to offset mapping
-    const dirToOffset = {
-      128: [-1,  1], // NE
-        1: [ 0,  1], // E
-        2: [ 1,  1], // SE
-        4: [ 1,  0], // S
-        8: [ 1, -1], // SW
-       16: [ 0, -1], // W
-       32: [-1, -1], // NW
-       64: [-1,  0]  // N
-    };
-    
-    // Iteratively propagate flow downstream
-    const maxIterations = 30;
-    for (let iter = 0; iter < maxIterations; iter++) {
-      let changed = false;
-      
-      for (let i = 0; i < rows; i++) {
-        for (let j = 0; j < cols; j++) {
-          const dir = this.flowDir[i][j];
-          if (dir === 0) continue;
-          
-          const offset = dirToOffset[dir];
-          if (!offset) continue;
-          
-          const ni = i + offset[0];
-          const nj = j + offset[1];
-          
-          if (ni >= 0 && ni < rows && nj >= 0 && nj < cols) {
-            // Avoid runaway accumulation
-            if (flowAcc[ni][nj] > 1e6) continue;
-            
-            const oldAcc = flowAcc[ni][nj];
-            flowAcc[ni][nj] += flowAcc[i][j];
-            
-            if (Math.abs(flowAcc[ni][nj] - oldAcc) > 0.1) {
-              changed = true;
-            }
-          }
+    // Process each upstream cell once (topological order), including true sinks.
+    const flowAcc = Array.from({ length: rows }, () => new Float32Array(cols));
+    const incoming = new Uint8Array(rows * cols);
+    const downstream = new Int32Array(rows * cols).fill(-1);
+    const offsets = {128: [-1, 1], 1: [0, 1], 2: [1, 1], 4: [1, 0],
+      8: [1, -1], 16: [0, -1], 32: [-1, -1], 64: [-1, 0]};
+    const valid = (r, c) => Number.isFinite(this.dem[r][c]) && !this.buildingMask?.[r][c];
+    for (let r = 0; r < rows; r++) {
+      for (let c = 0; c < cols; c++) {
+        if (!valid(r, c)) continue;
+        flowAcc[r][c] = 1;
+        const offset = offsets[this.flowDir[r][c]];
+        if (!offset) continue;
+        const nr = r + offset[0], nc = c + offset[1];
+        if (nr >= 0 && nr < rows && nc >= 0 && nc < cols && valid(nr, nc)) {
+          const target = nr * cols + nc;
+          downstream[r * cols + c] = target;
+          incoming[target]++;
         }
       }
-      
-      if (!changed) {
-        console.log(`  Flow accumulation converged after ${iter + 1} iterations`);
-        break;
+    }
+    const queue = [];
+    for (let r = 0; r < rows; r++) {
+      for (let c = 0; c < cols; c++) {
+        if (valid(r, c) && incoming[r * cols + c] === 0) queue.push(r * cols + c);
       }
     }
-    
-    // Cap extreme values
-    for (let i = 0; i < rows; i++) {
-      for (let j = 0; j < cols; j++) {
-        flowAcc[i][j] = Math.min(flowAcc[i][j], 1e6);
-      }
+    for (let head = 0; head < queue.length; head++) {
+      const cell = queue[head], target = downstream[cell];
+      if (target < 0) continue;
+      flowAcc[Math.floor(target / cols)][target % cols] += flowAcc[Math.floor(cell / cols)][cell % cols];
+      if (--incoming[target] === 0) queue.push(target);
     }
-    
+
     return flowAcc;
   }
   
@@ -436,20 +414,24 @@ class StormwaterFlowAnimation {
     
     const flowLines = [];
     const startPoints = [];
+    this.spawnCells = [];
     
     // Helper function to apply 90° counter-clockwise rotation
     // Original DEM: dem[row][col] where row is Y (0=north), col is X (0=west)
     // After 90° CCW rotation: new_x = 1 - row/rows, new_y = col/cols
     const rotatePoint = (row, col) => {
       return {
-        x: 1 - (row / rows),     // row becomes X (flipped: row=0 -> right)
-        y: col / cols            // col becomes Y (col=0 -> top)
+        x: 1 - ((row + 0.5) / rows),     // row becomes X (flipped: row=0 -> right)
+        y: (col + 0.5) / cols            // col becomes Y (col=0 -> top)
       };
     };
     
-    // Extract flow lines
+    // Retain every ground cell for uniform rainfall, including narrow passages.
+    // The sampled start points below are only a compact export/debug view.
     for (let i = 0; i < rows; i++) {
       for (let j = 0; j < cols; j++) {
+        if (!Number.isFinite(this.dem[i][j]) || this.buildingMask?.[i][j] || this.waterMask?.[i][j]) continue;
+        this.spawnCells.push(i * cols + j);
         const dir = this.flowDir[i][j];
         const acc = this.flowAcc[i][j];
         
@@ -484,6 +466,7 @@ class StormwaterFlowAnimation {
     
     for (let i = 0; i < rows; i++) {
       for (let j = 0; j < cols; j++) {
+        if (this.buildingMask?.[i][j] || this.waterMask?.[i][j]) continue;
         const dir = this.flowDir[i][j];
         const acc = this.flowAcc[i][j];
         
@@ -503,6 +486,7 @@ class StormwaterFlowAnimation {
     // Create start points on a grid (with same rotation)
     for (let i = 0; i < rows; i += startPointSpacing) {
       for (let j = 0; j < cols; j += startPointSpacing) {
+        if (this.buildingMask?.[i][j] || this.waterMask?.[i][j]) continue;
         const acc = this.flowAcc[i][j];
         if (acc >= 1.0 && !isNaN(acc)) {
           const pt = rotatePoint(i, j);
@@ -527,38 +511,6 @@ class StormwaterFlowAnimation {
     };
   }
   
-  /**
-   * Build spatial index for fast flow direction lookups
-   */
-  buildFlowGrid() {
-    if (!this.flowData?.flow_lines_screen) return;
-    
-    const cellSize = this.flowGridCellSize;
-    const cols = Math.ceil(this.canvas.width / cellSize);
-    const rows = Math.ceil(this.canvas.height / cellSize);
-    
-    // Initialize grid
-    this.flowGrid = [];
-    for (let r = 0; r < rows; r++) {
-      this.flowGrid[r] = [];
-      for (let c = 0; c < cols; c++) {
-        this.flowGrid[r][c] = [];
-      }
-    }
-    
-    // Populate grid with flow lines
-    for (const line of this.flowData.flow_lines_screen) {
-      const c = Math.floor(line.from_x / cellSize);
-      const r = Math.floor(line.from_y / cellSize);
-      if (r >= 0 && r < rows && c >= 0 && c < cols) {
-        this.flowGrid[r][c].push(line);
-      }
-    }
-    
-    console.log(`Built flow grid: ${cols}x${rows} cells`);
-  }
-  
-  /**
   /**
    * Sample items evenly from array
    */
@@ -597,17 +549,11 @@ class StormwaterFlowAnimation {
     // Play rain sound
     this.rainAudio.play().catch(e => console.warn("Audio play failed:", e));
     
-    // Scale normalized flow data to current canvas size
-    this.scaleFlowToScreen();
-    
     // Initialize particles
     this.particles = [];
     
     // Add resize listener
-    window.addEventListener('resize', () => {
-      this.handleResize();
-      this.scaleFlowToScreen();
-    });
+    window.addEventListener('resize', this.handleResize);
     
     // Start animation loop
     this.animate();
@@ -626,7 +572,7 @@ class StormwaterFlowAnimation {
     
     // Calculate max accumulation for color scaling
     const accValues = this.flowData.flow_lines.map(line => line.accumulation);
-    this.maxAccumulation = Math.max(...accValues);
+    this.maxAccumulation = Math.max(1, ...accValues);
     this.logMaxAcc = Math.log10(this.maxAccumulation + 1);
     
     // Scale flow lines from normalized (0-1) to pixel coordinates
@@ -645,9 +591,6 @@ class StormwaterFlowAnimation {
       y: point.position_norm[1] * height,
       weight: point.weight
     }));
-    
-    // Build spatial index for fast lookups
-    this.buildFlowGrid();
     
     console.log(`Scaled ${this.flowData.flow_lines_screen.length} flow lines to ${width}x${height}px`);
   }
@@ -765,112 +708,109 @@ class StormwaterFlowAnimation {
     this.canvas.height = s.h;
     this.canvas.style.width = s.w + 'px';
     this.canvas.style.height = s.h + 'px';
+    this.scaleFlowToScreen();
+    this.particles = [];
   }
   
   /**
-   * Create a new particle at a spawn point
+   * Create rainfall uniformly over all valid ground cells
    */
   createParticle() {
-    const startPointsScreen = this.flowData?.start_points_screen;
-    if (!startPointsScreen || startPointsScreen.length === 0) {
-      return null;
-    }
-    
-    // Select a random start point, weighted by flow accumulation
-    const totalWeight = startPointsScreen.reduce((sum, p) => sum + p.weight, 0);
-    let random = Math.random() * totalWeight;
-    
-    let selectedPoint = startPointsScreen[0];
-    for (const point of startPointsScreen) {
-      random -= point.weight;
-      if (random <= 0) {
-        selectedPoint = point;
-        break;
-      }
-    }
-    
-    // Add small random offset for variety
-    const offsetX = (Math.random() - 0.5) * 10;
-    const offsetY = (Math.random() - 0.5) * 10;
-    
+    if (!this.spawnCells.length) return null;
+
+    // Rainfall is uniform over ground area. Accumulation controls downstream
+    // motion/appearance, not where rain falls (which counted catchments twice).
+    const index = this.spawnCells[Math.floor(Math.random() * this.spawnCells.length)];
+    const row = Math.floor(index / this.demWidth);
+    const col = index % this.demWidth;
+    // Jitter stays inside the selected cell; a fixed pixel offset could land
+    // inside a building and discard rainfall near walls or in narrow passages.
+    const rowPosition = row + 0.5 + (Math.random() - 0.5) * 0.9;
+    const colPosition = col + 0.5 + (Math.random() - 0.5) * 0.9;
+    const x = (1 - rowPosition / this.demHeight) * this.canvas.width;
+    const y = colPosition / this.demWidth * this.canvas.height;
+    const accumulation = this.flowAcc[row][col];
+
     return {
-      x: selectedPoint.x + offsetX,
-      y: selectedPoint.y + offsetY,
+      x: x,
+      y: y,
       age: 0,
       trail: [],
       velocity: { x: 0, y: 0 },
       prevVelocity: { x: 0, y: 0 },  // For smoothing
-      accumulation: selectedPoint.weight,
+      accumulation,
       stationaryTime: 0,
       size: this.particleSize + Math.random() * 1,  // Slight size variation
       // Pooling detection
-      startX: selectedPoint.x + offsetX,
-      startY: selectedPoint.y + offsetY,
-      checkpointX: selectedPoint.x + offsetX,
-      checkpointY: selectedPoint.y + offsetY,
+      startX: x,
+      startY: y,
+      checkpointX: x,
+      checkpointY: y,
       checkpointAge: 0,
       isPooling: false,
       poolingIntensity: 0  // 0-1 for color blending
     };
   }
   
+  // Inverse of generateFlowData's existing rotated campus layout.
+  screenToCell(x, y) {
+    return { row: Math.floor((1 - x / this.canvas.width) * this.demHeight),
+      col: Math.floor(y / this.canvas.height * this.demWidth) };
+  }
+
+  isBlockedCell({ row, col }) {
+    return row < 0 || row >= this.demHeight || col < 0 || col >= this.demWidth ||
+      !Number.isFinite(this.dem[row][col]) ||
+      !!this.buildingMask?.[row][col] || !!this.waterMask?.[row][col];
+  }
+
+  // Check the whole movement, including noise, so particles cannot jump a narrow wall.
+  crossesBarrier(x, y, nextX, nextY) {
+    const from = this.screenToCell(x, y);
+    const steps = Math.max(1, Math.ceil(Math.max(
+      Math.abs(nextX - x) * this.demHeight / this.canvas.width,
+      Math.abs(nextY - y) * this.demWidth / this.canvas.height) * 2));
+    let previous = from;
+    for (let step = 0; step <= steps; step++) {
+      const t = step / steps;
+      const cell = this.screenToCell(x + (nextX - x) * t, y + (nextY - y) * t);
+      if (this.isBlockedCell(cell)) return true;
+      if (cell.row !== previous.row && cell.col !== previous.col &&
+          (this.isBlockedCell({ row: previous.row, col: cell.col }) ||
+           this.isBlockedCell({ row: cell.row, col: previous.col }))) return true;
+      previous = cell;
+    }
+    return false;
+  }
+
   /**
-   * Find flow direction at a given screen position using spatial grid
+   * Look up the local DEM cell; nearby flow lines may be across a building.
    */
   getFlowDirection(screenX, screenY) {
-    if (!this.flowGrid) return { x: 0, y: 0 };
-    
-    const cellSize = this.flowGridCellSize;
-    const col = Math.floor(screenX / cellSize);
-    const row = Math.floor(screenY / cellSize);
-    
-    // Search current cell and neighbors
-    let nearestLine = null;
-    let minDist = Infinity;
-    
-    for (let dr = -1; dr <= 1; dr++) {
-      for (let dc = -1; dc <= 1; dc++) {
-        const r = row + dr;
-        const c = col + dc;
-        
-        if (r >= 0 && r < this.flowGrid.length && 
-            c >= 0 && c < this.flowGrid[0].length) {
-          for (const line of this.flowGrid[r][c]) {
-            const dx = line.from_x - screenX;
-            const dy = line.from_y - screenY;
-            const dist = dx * dx + dy * dy;  // Skip sqrt for speed
-            
-            if (dist < minDist) {
-              minDist = dist;
-              nearestLine = line;
-            }
-          }
-        }
-      }
+    if (!this.flowDir) return { x: 0, y: 0 };
+    const cell = this.screenToCell(screenX, screenY);
+    if (this.isBlockedCell(cell) || this.flowDir[cell.row][cell.col] === 0) {
+      return { x: 0, y: 0 };
     }
     
-    // Use 40 pixel search radius (squared)
-    if (!nearestLine || minDist > 1600) {
-      return { x: 0, y: 0, isPool: false };
-    }
-    
-    // Calculate direction vector in screen space
-    const dx = nearestLine.to_x - nearestLine.from_x;
-    const dy = nearestLine.to_y - nearestLine.from_y;
-    const mag = Math.sqrt(dx * dx + dy * dy);
-    
-    if (mag === 0) return { x: 0, y: 0 };
-    
+    const offsets = {128: [-1, 1], 1: [0, 1], 2: [1, 1], 4: [1, 0],
+      8: [1, -1], 16: [0, -1], 32: [-1, -1], 64: [-1, 0]};
+    const [dr, dc] = offsets[this.flowDir[cell.row][cell.col]];
+    const dx = -dr * this.canvas.width / this.demHeight;
+    const dy = dc * this.canvas.height / this.demWidth;
+    const mag = Math.hypot(dx, dy);
+    const accumulation = this.flowAcc[cell.row][cell.col];
+
     // Normalize and scale by accumulation
     // Slower in high accumulation areas (pooling)
-    const accFactor = Math.min(nearestLine.accumulation / 100, 3);
+    const accFactor = Math.min(accumulation / 100, 3);
     const speed = (0.5 + accFactor * 0.5) * this.particleSpeed;
     
     return {
       x: (dx / mag) * speed,
       y: (dy / mag) * speed,
-      accumulation: nearestLine.accumulation,
-      isPool: nearestLine.accumulation > 50
+      accumulation,
+      isPool: accumulation > 50
     };
   }
   
@@ -928,16 +868,17 @@ class StormwaterFlowAnimation {
         }
       }
       
-      // Update position with smoothed velocity
-      p.x += p.velocity.x;
-      p.y += p.velocity.y;
-      
-      // Add subtle Perlin-like noise for natural flow (use sin waves for cheap noise)
-      const noiseX = Math.sin(p.age * 0.1 + p.x * 0.01) * this.noiseScale;
-      const noiseY = Math.cos(p.age * 0.1 + p.y * 0.01) * this.noiseScale;
-      p.x += noiseX;
-      p.y += noiseY;
-      
+      // Include the visual noise in the collision test, as on lindholmen.
+      const nextX = p.x + p.velocity.x + Math.sin(p.age * 0.1 + p.x * 0.01) * this.noiseScale;
+      const nextY = p.y + p.velocity.y + Math.cos(p.age * 0.1 + p.y * 0.01) * this.noiseScale;
+      if (this.crossesBarrier(p.x, p.y, nextX, nextY)) {
+        this.particles[i] = this.particles[this.particles.length - 1];
+        this.particles.pop();
+        continue;
+      }
+      p.x = nextX;
+      p.y = nextY;
+
       // Track stationary time for particle growth (pooling effect)
       const speed = Math.sqrt(p.velocity.x * p.velocity.x + p.velocity.y * p.velocity.y);
       if (speed < 0.3) {
