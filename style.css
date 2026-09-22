@@ -549,3 +549,80 @@ html, body {
   background: #005a9e;
   color: white;
 }
+
+#thermal-comfort-hud {
+  position: fixed;
+  top: 18px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 1100;
+  min-width: 190px;
+  padding: 10px 14px 11px;
+  color: #ecfeff;
+  background: rgba(8, 15, 27, 0.9);
+  border: 1px solid rgba(103, 232, 249, 0.7);
+  border-radius: 9px;
+  box-shadow: 0 0 24px rgba(34, 211, 238, 0.2);
+  text-align: center;
+  pointer-events: none;
+  backdrop-filter: blur(8px);
+}
+
+#thermal-comfort-hud[hidden] { display: none; }
+.thermal-hud-kicker { color: #67e8f9; font-size: 0.63rem; letter-spacing: 0.12em; font-weight: 700; }
+.thermal-hud-main { display: flex; align-items: baseline; justify-content: center; gap: 5px; margin-top: 2px; font-weight: 700; }
+.thermal-hud-main span:first-child { font-size: 1.55rem; }
+.thermal-hud-main span:last-child { color: #cbd5e1; font-size: 0.75rem; }
+.thermal-hud-air { color: #a5f3fc; font-size: 0.7rem; margin: 2px 0; }
+#thermal-hud-caption { color: #a5f3fc; font-size: 0.7rem; margin-top: 1px; }
+
+.thermal-note { margin-top: 0.75rem; color: #94a3b8; font-size: 0.78rem; line-height: 1.4; }
+.thermal-legend-gradient { height: 12px; border-radius: 999px; background: linear-gradient(90deg, #22d3ee 0%, #10b981 22%, #facc15 50%, #fb923c 73%, #ef4444 100%); }
+.thermal-legend-labels { display: flex; justify-content: space-between; gap: 0.4rem; margin-top: 0.35rem; color: #cbd5e1; font-size: 0.72rem; }
+.thermal-route-legend { display: flex; align-items: center; gap: 0.45rem; margin-top: 0.85rem; color: #dbeafe; font-size: 0.8rem; }
+.thermal-route-swatch { width: 22px; height: 4px; border-radius: 999px; display: inline-block; }
+.thermal-route-swatch-cool { background: #67e8f9; box-shadow: 0 0 7px #22d3ee; }
+.thermal-route-swatch-short { margin-left: 0.65rem; background: #e5e7eb; background-image: linear-gradient(90deg, #1f2937 50%, transparent 50%); background-size: 6px 100%; }
+
+#main-panel.thermal-mode {
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) !important;
+  grid-template-rows: minmax(0, 1fr) 145px !important;
+}
+#main-panel.thermal-mode #dashboard-section { grid-column: 1 / -1 !important; grid-row: 1 !important; }
+#main-panel.thermal-mode #legend-section { grid-column: 1 !important; grid-row: 2 !important; }
+#main-panel.thermal-mode #metadata-section { grid-column: 2 !important; grid-row: 2 !important; }
+.coolpaths-dashboard { display: grid; grid-template-columns: minmax(210px, .8fr) minmax(0, 1.5fr); gap: .9rem; color: #e2e8f0; }
+.coolpaths-heading { grid-column: 1 / -1; display: flex; justify-content: space-between; align-items: center; gap: 1rem; padding: .2rem .2rem .6rem; border-bottom: 1px solid #475569; }
+.coolpaths-heading > div { display: flex; flex-direction: column; gap: .1rem; }
+.coolpaths-eyebrow { color: #67e8f9; font-size: .65rem; letter-spacing: .12em; font-weight: 700; }
+.coolpaths-heading strong { font-size: 1.05rem; }
+.coolpaths-state { color: #fbbf24; font-size: .8rem; }
+.coolpaths-state[data-ready="true"] { color: #5eead4; }
+.coolpaths-controls { background: #202d3b; border: 1px solid #3d586c; border-radius: 9px; padding: .9rem; }
+.coolpaths-controls > label { display: flex; justify-content: space-between; gap: 1rem; font-size: .82rem; }
+.coolpaths-controls input[type="range"] { display: block; width: 100%; margin: .8rem 0 .2rem; }
+.coolpaths-hour-ends { display: flex; justify-content: space-between; color: #94a3b8; font-size: .7rem; }
+.coolpaths-options { display: flex; flex-wrap: wrap; gap: .7rem 1.1rem; align-items: center; margin-top: 1rem; font-size: .8rem; }
+.coolpaths-options label { display: flex; align-items: center; gap: .3rem; }
+.coolpaths-options button { padding: .4rem .7rem; font-size: .75rem; }
+.coolpaths-instruction { grid-column: 2; grid-row: 2; border-left: 3px solid #22d3ee; background: #193042; padding: .8rem; font-size: .84rem; line-height: 1.35; }
+.coolpaths-metrics { grid-column: 1 / -1; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: .65rem; }
+.coolpaths-metric { display: flex; flex-direction: column; gap: .22rem; padding: .8rem; border-radius: 8px; background: #1e293b; border: 1px solid #334155; }
+.coolpaths-metric > span { text-transform: uppercase; letter-spacing: .08em; font-size: .68rem; color: #94a3b8; }
+.coolpaths-metric strong { font-size: 1.15rem; color: #f8fafc; }
+.coolpaths-metric small { color: #cbd5e1; font-size: .75rem; }
+.coolpaths-cool { border-color: #0e7490; }
+.coolpaths-benefit { border-color: #15803d; }
+.coolpaths-profile { grid-column: 1 / -1; padding: .8rem; border: 1px solid #334155; border-radius: 8px; background: #171f2b; }
+.coolpaths-profile > div:first-child { display: flex; justify-content: space-between; gap: 1rem; font-size: .8rem; }
+.coolpaths-profile span, .thermal-empty-profile { color: #94a3b8; }
+.coolpaths-profile svg { display: block; width: 100%; height: min(140px, 17vh); margin-top: .25rem; }
+.thermal-empty-profile { margin: .8rem 0 .2rem; font-size: .78rem; }
+@media (max-width: 850px) {
+  .coolpaths-dashboard { grid-template-columns: 1fr; }
+  .coolpaths-instruction { grid-column: 1; grid-row: auto; }
+  .coolpaths-metrics { grid-template-columns: 1fr; }
+  #main-panel.thermal-mode { grid-template-columns: 1fr !important; grid-template-rows: auto auto auto !important; }
+  #main-panel.thermal-mode #legend-section { grid-column: 1 !important; grid-row: 2 !important; }
+  #main-panel.thermal-mode #metadata-section { grid-column: 1 !important; grid-row: 3 !important; }
+}

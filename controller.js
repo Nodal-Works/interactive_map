@@ -46,6 +46,8 @@ const welcomeScreen = document.getElementById('welcome-screen');
 // - fccDemoState from controller/fcc-demo-dashboard.js
 // - sunStudyState from controller/sun-study-ui.js
 
+let thermalComfortState = { hour: 14, meanPet: null, active: false, ready: false, showRaster: true, showStreets: true, route: null };
+
 
 
 // Sun Study UI loaded from controller/sun-study-ui.js
@@ -57,6 +59,7 @@ const welcomeScreen = document.getElementById('welcome-screen');
 const ANIMATION_BUTTONS = [
     'cfd-simulation-btn',
     'stormwater-btn', 
+    'thermal-comfort-btn',
     'sun-study-btn',
     'slideshow-btn',
     'grid-animation-btn',
@@ -201,13 +204,117 @@ document.querySelectorAll('.control-btn[data-target]').forEach(btn => {
     });
 });
 
+function thermalNumber(value, digits = 1) {
+    return Number.isFinite(Number(value)) ? Number(value).toFixed(digits) : '--';
+}
+
+function thermalProfileSvg(route) {
+    if (!route) return '<p class="thermal-empty-profile">Select an origin and destination to compare exposure along both paths.</p>';
+    const paths = [route.shortest, route.coolest];
+    const samples = paths.flatMap(item => item.properties.profile || []);
+    if (!samples.length) return '';
+    const maxDistance = Math.max(...samples.map(item => Number(item.distance_m)), 1);
+    const minPet = Math.floor(Math.min(...samples.map(item => Number(item.pet_c))) - 2);
+    const maxPet = Math.ceil(Math.max(...samples.map(item => Number(item.pet_c))) + 2);
+    const x = item => 35 + Number(item.distance_m) / maxDistance * 525;
+    const y = item => 112 - (Number(item.pet_c) - minPet) / Math.max(maxPet - minPet, 1) * 90;
+    const line = item => (item.properties.profile || []).map((sample, index) =>
+        `${index ? 'L' : 'M'}${x(sample).toFixed(1)},${y(sample).toFixed(1)}`).join(' ');
+    return `<svg viewBox="0 0 580 140" role="img" aria-label="PET along shortest and coolest routes">
+        <line x1="35" y1="112" x2="560" y2="112" stroke="#64748b" />
+        <line x1="35" y1="20" x2="35" y2="112" stroke="#64748b" />
+        <text x="3" y="27" fill="#94a3b8" font-size="12">${maxPet}°</text>
+        <text x="3" y="112" fill="#94a3b8" font-size="12">${minPet}°</text>
+        <text x="485" y="134" fill="#94a3b8" font-size="12">${Math.round(maxDistance)} m</text>
+        <path d="${line(route.shortest)}" fill="none" stroke="#f8fafc" stroke-width="2.5" stroke-dasharray="5 4" />
+        <path d="${line(route.coolest)}" fill="none" stroke="#48e7ff" stroke-width="3" />
+    </svg>`;
+}
+
+function updateThermalDashboard() {
+    const dashboardContent = document.getElementById('dashboard-content');
+    const dashboardTitle = document.getElementById('dashboard-title');
+    const legendTitle = document.getElementById('legend-title');
+    const legendContent = document.getElementById('legend-content');
+    if (!dashboardContent || !legendContent) return;
+    if (dashboardTitle) dashboardTitle.textContent = 'CoolPaths routing';
+    if (legendTitle) legendTitle.textContent = 'PET and routes';
+    if (!document.getElementById('coolpaths-dashboard')) {
+        dashboardContent.innerHTML = `
+            <div id="coolpaths-dashboard" class="coolpaths-dashboard">
+                <div class="coolpaths-heading">
+                    <div><span class="coolpaths-eyebrow">GOTHENBURG STUDY</span>
+                        <strong id="coolpaths-date">15 July 2026</strong></div>
+                    <span id="coolpaths-state" class="coolpaths-state">Waiting for map</span>
+                </div>
+                <div class="coolpaths-controls">
+                    <label for="thermal-hour">Study hour <strong id="thermal-hour-display">14:00</strong></label>
+                    <input type="range" id="thermal-hour" class="modern-range" min="8" max="20" step="1" value="14">
+                    <div class="coolpaths-hour-ends"><span>08:00</span><span>20:00</span></div>
+                    <div class="coolpaths-options">
+                        <label><input type="checkbox" id="thermal-raster" checked> PET surface</label>
+                        <label><input type="checkbox" id="thermal-streets" checked> Walking streets</label>
+                        <button type="button" id="thermal-clear" class="modern-btn">Clear route</button>
+                    </div>
+                </div>
+                <div id="coolpaths-instruction" class="coolpaths-instruction" role="status">Activate the layer on the map.</div>
+                <div class="coolpaths-metrics">
+                    <div class="coolpaths-metric coolpaths-short"><span>Shortest</span><strong id="thermal-short-distance">--</strong><small id="thermal-short-pet">-- PET</small><small id="thermal-short-heat">-- exposure</small></div>
+                    <div class="coolpaths-metric coolpaths-cool"><span>Coolest</span><strong id="thermal-cool-distance">--</strong><small id="thermal-cool-pet">-- PET</small><small id="thermal-cool-heat">-- exposure</small></div>
+                    <div class="coolpaths-metric coolpaths-benefit"><span>Difference</span><strong id="thermal-reduction">--</strong><small id="thermal-detour">-- distance</small><small>50% detour limit</small></div>
+                </div>
+                <div class="coolpaths-profile"><div><strong>PET along route</strong><span>°C by walking distance</span></div><div id="thermal-profile"></div></div>
+            </div>`;
+        document.getElementById('thermal-hour')?.addEventListener('input', event => {
+            document.getElementById('thermal-hour-display').textContent = `${String(event.target.value).padStart(2, '0')}:00`;
+            channel.postMessage({ type: 'thermal_control', action: 'set_hour', value: Number(event.target.value) });
+        });
+        document.getElementById('thermal-raster')?.addEventListener('change', event =>
+            channel.postMessage({ type: 'thermal_control', action: 'show_raster', value: event.target.checked }));
+        document.getElementById('thermal-streets')?.addEventListener('change', event =>
+            channel.postMessage({ type: 'thermal_control', action: 'show_streets', value: event.target.checked }));
+        document.getElementById('thermal-clear')?.addEventListener('click', () =>
+            channel.postMessage({ type: 'thermal_control', action: 'clear_route' }));
+    }
+    const state = thermalComfortState;
+    const route = state.route;
+    const short = route?.shortest?.properties;
+    const cool = route?.coolest?.properties;
+    document.getElementById('coolpaths-date').textContent = state.studyDate || '15 July 2026';
+    document.getElementById('coolpaths-state').textContent = state.ready ? 'PET data ready' :
+        (state.phase === 'connecting' ? 'Connecting…' : state.active ? 'Data unavailable' : 'Layer off');
+    document.getElementById('coolpaths-state').dataset.ready = String(!!state.ready);
+    document.getElementById('thermal-hour').value = String(state.hour ?? 14);
+    document.getElementById('thermal-hour-display').textContent = `${String(state.hour ?? 14).padStart(2, '0')}:00`;
+    document.getElementById('thermal-raster').checked = state.showRaster !== false;
+    document.getElementById('thermal-streets').checked = state.showStreets !== false;
+    document.getElementById('coolpaths-instruction').textContent = state.message || (state.active ? 'Click once for origin, twice for destination; the third click starts a new route.' : 'Activate the layer on the map.');
+    document.getElementById('thermal-short-distance').textContent = short ? `${thermalNumber(short.distance_m, 0)} m` : '--';
+    document.getElementById('thermal-cool-distance').textContent = cool ? `${thermalNumber(cool.distance_m, 0)} m` : '--';
+    document.getElementById('thermal-short-pet').textContent = short ? `${thermalNumber(short.mean_pet_c)}°C mean PET` : '-- mean PET';
+    document.getElementById('thermal-cool-pet').textContent = cool ? `${thermalNumber(cool.mean_pet_c)}°C mean PET` : '-- mean PET';
+    document.getElementById('thermal-short-heat').textContent = short ? `${thermalNumber(short.heat_exposure_c_m, 0)} °C·m exposure` : '-- exposure';
+    document.getElementById('thermal-cool-heat').textContent = cool ? `${thermalNumber(cool.heat_exposure_c_m, 0)} °C·m exposure` : '-- exposure';
+    document.getElementById('thermal-reduction').textContent = route ? `${thermalNumber(route.comparison.heat_reduction_pct)}% less heat` : '--';
+    document.getElementById('thermal-detour').textContent = route ? `+${thermalNumber(route.comparison.extra_distance_m, 0)} m (${thermalNumber(route.comparison.extra_distance_pct)}%)` : '-- distance';
+    document.getElementById('thermal-profile').innerHTML = thermalProfileSvg(route);
+    legendContent.innerHTML = `
+        <div class="thermal-legend-gradient"></div>
+        <div class="thermal-legend-labels"><span>≤20°C</span><span>24°C</span><span>30°C</span><span>36°C</span><span>≥44°C</span></div>
+        <div class="thermal-route-legend"><span class="thermal-route-swatch thermal-route-swatch-cool"></span> Coolest <span class="thermal-route-swatch thermal-route-swatch-short"></span> Shortest</div>
+        <p class="thermal-note">${state.airTemp == null ? '' : `Air temperature: ${thermalNumber(state.airTemp)}°C. `}PET is modeled outdoor comfort under clear-sky irradiance; it is not air temperature. Street colors and route exposure use the selected hour.</p>`;
+}
+
 function updateDashboard(targetId) {
     const dashboardContent = document.getElementById('dashboard-content');
     const legendContent = document.getElementById('legend-content');
     const dashboardTitle = document.getElementById('dashboard-title');
     const legendTitle = document.getElementById('legend-title');
     const mainPanel = document.getElementById('main-panel');
-    if (mainPanel) mainPanel.classList.toggle('epc-mode', targetId === 'epc-btn');
+    if (mainPanel) {
+        mainPanel.classList.toggle('epc-mode', targetId === 'epc-btn');
+        mainPanel.classList.toggle('thermal-mode', targetId === 'thermal-comfort-btn');
+    }
 
     // Check if already in sun study mode to avoid duplicate setup
     if (targetId === 'sun-study-btn' && mainPanel && mainPanel.classList.contains('sun-study-mode')) {
@@ -237,6 +344,12 @@ function updateDashboard(targetId) {
 
     if (targetId === 'epc-btn') {
         showEpcDashboard(dashboardTitle, legendTitle, legendContent);
+        return;
+    }
+
+    if (targetId === 'thermal-comfort-btn') {
+        updateThermalDashboard();
+        channel.postMessage({ type: 'thermal_control', action: 'request_state' });
         return;
     }
 
@@ -1346,6 +1459,9 @@ channel.onmessage = (event) => {
     if (data.type === MSG_TYPES.ANIMATION_STATE) {
         // Received actual animation state from main window - update our tracking
         setAnimationState(data.animationId, data.isActive);
+    } else if (data.type === 'thermal_state') {
+        thermalComfortState = { ...thermalComfortState, ...data };
+        if (document.getElementById('main-panel')?.classList.contains('thermal-mode')) updateThermalDashboard();
     } else if (data.type === MSG_TYPES.STATE_UPDATE) {
         // Legacy state update - ignore for animation buttons now
         // We use ANIMATION_STATE for that instead
@@ -1578,6 +1694,11 @@ function updateMetadata(layerId) {
                     <span style="width: 15px; height: 15px; background: #0000ff; display: inline-block;"></span> Water Accumulation
                 </div>
             `;
+            break;
+        case 'thermal-comfort-btn':
+            name = 'Outdoor Thermal Comfort';
+            desc = 'Processed PET surface and live comparison of shortest and coolest walking routes.';
+            legend = '<p>Choose the study hour, then click the map to set a walking origin and destination.</p>';
             break;
         case 'sun-study-btn':
             name = 'Sun Study';

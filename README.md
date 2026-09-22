@@ -74,6 +74,29 @@ affects their downstream movement rather than biasing where rainfall starts.
 
 ![Stormwater Flow](./media/screenshots/stormwater.png)
 
+### 🌡️ Outdoor Thermal Comfort
+
+The CoolPaths layer serves processed PET rasters and street values for **15 July
+2026**, 08:00–20:00 Stockholm time. Click once on the map for an origin, twice
+for a destination, and a third time to start a new origin. The map shows both
+shortest and coolest walking routes. The controller compares distance, mean
+PET, cumulative heat exposure, and PET along each path. The cooler route can
+be up to 50% longer than the shortest.
+
+The local [`coolpaths/`](coolpaths/) pipeline follows the stages in
+[CoolPaths](https://github.com/deepankverma/coolpaths): OpenStreetMap walking
+paths and buildings, inferred building heights, Earth Engine canopy/NDVI/water/
+terrain, shadows and sky view factor, NASA POWER weather, irradiance, MRT,
+PET, and length-bounded routing. It uses a 2 m study grid and local
+raster shadows instead of the notebook's Colab/Drive exports and pybdshadow
+vectors. The map uses the published MEMI steady-state PET model and accounts
+for a standing person's projected solar exposure when computing MRT. The
+notebook's equal-PMV proxy remains available for comparison; it overstated
+ordinary summer conditions in our cross-check. Source and method metadata
+are included in the generated manifest.
+The PET GeoTIFFs and PNGs carry product/source tags, while each hourly street
+value file includes its date, hour, units, and sampling source.
+
 ### ☀️ Sun Study
 
 3D shadow analysis using Three.js. Loads STL models of buildings and computes solar shadow positions based on date, time, and location (Gothenburg, Sweden). Supports time-lapse animation through the day and includes SSAO post-processing for realistic ambient occlusion.
@@ -186,6 +209,43 @@ The controller can run from Live Server on port 5500–5599 or the static server
 on port 8090. Every ECOM connection follows `media/street-network.geojson`;
 the API reports an error if it cannot find a street route.
 
+### CoolPaths processing and live server
+
+The Earth Engine Cloud project is `mlrenovation-479515` (MLRenovation). Grant
+the service account `roles/serviceusage.serviceUsageConsumer` and
+`roles/earthengine.viewer` on that project, save its JSON
+key **outside this repository**, and set its absolute path locally. The public
+NASA POWER and OSM requests do not need API keys. The generated study files
+stay under ignored `coolpaths/data/`.
+
+```bash
+python3 -m venv coolpaths/.venv
+coolpaths/.venv/bin/python -m pip install -r coolpaths/requirements.txt
+export COOLPATHS_EE_KEY_FILE=/absolute/path/to/service-account.json
+coolpaths/.venv/bin/python -m coolpaths.prepare
+./launch_coolpaths_server.sh
+```
+
+Open the map through the launcher or a local static server. The CoolPaths API
+runs at `http://127.0.0.1:8001`; its `/api/coolpaths/status` endpoint reports
+whether the study is ready. Preparation downloads source data once and writes
+all 13 hourly PET products before making the manifest available. Re-run with
+`--force` after source changes. If the service account has not been configured
+or preparation fails, the map reports that data is unavailable; it does not
+display the old illustrative values.
+
+The irradiance stage follows the CoolPaths notebook's pvlib Ineichen clear-sky
+calculation. NASA POWER supplies daily aerosol, water vapor and ozone inputs,
+plus hourly air temperature, humidity and wind. If a daily atmospheric value
+is missing, preparation uses NASA POWER's July climatology for that field and
+records the substitution in `manifest.json`. The current prepared study uses
+July climatology for aerosol optical depth because POWER returned a missing
+daily value for 15 July 2026. The 2 m shadow and sky-view calculations are
+local raster adaptations of the notebook's geometry stages; building heights
+outside the local footprint area may be inferred from OSM levels or a 6 m
+default. PET is a modeled thermal comfort index, not the measured air
+temperature. Clear-sky irradiance may overstate exposure during cloudy hours.
+
 ### EPC mode
 
 The controller's EPC button colors the map's buildings by energy class and
@@ -276,4 +336,3 @@ database and any credentials must remain in the EPC Browser environment.
 ## Licence
 
 This project is part of the ACE MR Studio research initiative at Chalmers University of Technology.
-

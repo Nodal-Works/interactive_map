@@ -6,7 +6,7 @@
     <title>Interactive Map — dtcc-table</title>
     <!-- Load Leaflet CSS from CDN (no SRI attribute to avoid integrity mismatch blocks) -->
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
-    <link rel="stylesheet" href="style.css" />
+    <link rel="stylesheet" href="style.css?v=20260922-pet-correction" />
     <!-- Import map for Three.js ES modules -->
     <script type="importmap">
     {
@@ -52,6 +52,14 @@
             <circle cx="12" cy="16" r="1" fill="currentColor"/>
             <circle cx="9" cy="19" r="1" fill="currentColor"/>
             <circle cx="15" cy="19" r="1" fill="currentColor"/>
+          </svg>
+        </button>
+
+        <button id="thermal-comfort-btn" class="icon-btn" title="Outdoor Thermal Comfort">
+          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M14 14.76V5a2 2 0 0 0-4 0v9.76a4 4 0 1 0 4 0Z"/>
+            <path d="M12 12V6"/>
+            <path d="M19 8h2M19 12h2M19 16h2"/>
           </svg>
         </button>
         
@@ -185,6 +193,13 @@
 
     <div id="map"></div>
 
+    <div id="thermal-comfort-hud" aria-live="polite" hidden>
+      <div class="thermal-hud-kicker">COOLPATHS · 15 JUL 2026</div>
+      <div class="thermal-hud-main"><span id="thermal-hud-pet">--</span><span>°C PET</span></div>
+      <div id="thermal-hud-air" class="thermal-hud-air">Modeled clear-sky comfort, not air temperature</div>
+      <div id="thermal-hud-caption">Connecting to PET data…</div>
+    </div>
+
     <!-- Laser pointer cursor -->
     <div id="laser-pointer"></div>
 
@@ -237,6 +252,7 @@
     <script src="animations/ecom-kpi-bars.js"></script>
     <script src="animations/ecom-sound.js"></script>
     <script src="animations/ecom-vehicles.js"></script>
+    <script src="animations/thermal-comfort.js?v=20260922-pet-correction"></script>
     <script type="module" src="animations/sun-study.js"></script>
     
     <!-- Auto-fullscreen when launched from launcher -->

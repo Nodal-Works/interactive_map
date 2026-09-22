@@ -7,5 +7,10 @@
   "bbox": [11.936224, 57.677523, 12.018278, 57.699659],
   "streetViewApiKey": "YOUR_STREET_VIEW_APIKEY",
   "mapboxtoken": "YOUR_MAPBOX_PUBLIC_TOKEN",
+  "coolpathsEarthEngineProject": {
+    "name": "MLRenovation",
+    "id": "mlrenovation-479515",
+    "number": "561430876972"
+  },
   "_comment": "bbox format: [minLng, minLat, maxLng, maxLat]. Copy this file to trafik-config.json and fill in your Västtrafik API credentials. Get them from https://developer.vasttrafik.se/"
 }

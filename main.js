@@ -43,6 +43,7 @@ function showToast(msg, timeout = 3000) {
   toastContainer.appendChild(t);
   setTimeout(() => { t.classList.add('hide'); setTimeout(() => t.remove(), 300); }, timeout);
 }
+window.showToast = showToast;
 
 // Default fallback values (used if calibration file fails to load)
 let tableCenter = [11.97776390135823, 57.6883812195459]; // [lon, lat]
@@ -736,7 +737,7 @@ function broadcastState(activeLayerId) {
 }
 
 // Hook into existing buttons to broadcast state
-['cfd-simulation-btn', 'stormwater-btn', 'sun-study-btn', 'slideshow-btn', 'grid-animation-btn', 'isovist-btn', 'bird-sounds-btn'].forEach(id => {
+['cfd-simulation-btn', 'stormwater-btn', 'thermal-comfort-btn', 'sun-study-btn', 'slideshow-btn', 'grid-animation-btn', 'isovist-btn', 'bird-sounds-btn'].forEach(id => {
     const btn = document.getElementById(id);
     if (btn) {
         btn.addEventListener('click', () => {
