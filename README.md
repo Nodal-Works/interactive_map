@@ -35,13 +35,78 @@ Real-time public transport overlay using the Västtrafik API. Displays live posi
 
 ### 🌬️ CFD Wind Simulation
 
-Real-time Lattice Boltzmann computational fluid dynamics simulation showing wind flow patterns around buildings. The simulation computes fluid dynamics on the fly and visualises velocity fields with colour-coded flow lines. Wind audio plays whilst the simulation is active.
+A qualitative **2D D2Q9/TRT** wind model around building footprints. Bright
+ribbons or lightweight particles show motion over a faint speed heatmap. The controller’s **Wind appearance**
+group provides shared palettes
+(**Classic**, **Ocean**, **Ember**, **Monochrome**) that color both the marks and heatmap
+in actual m/s, with selectable **0–5+, 0–10+, 0–20+, or 0–40+ m/s** legends. Wind audio plays while active.
 
 ![CFD Wind Simulation](./media/screenshots/cfd-simulation.png)
 
-**Additional capabilities:**
+- Defaults: Ribbons, Classic, 0–20+ m/s, 5 m/s wind, Medium visual density,
+  150 cells on the longer visible axis, and trees on.
+  Flow direction is clockwise on the display: 0° right, 90° down.
+- **Tracer playback** changes visualization speed only. Steady wind can settle
+  to a steady color field; white highlights continue revealing its motion.
+- **Ribbons** traces thin streamlines from stable seeds, refreshing paths at most
+  five times per second while smoothly interpolating their displayed shape on
+  every frame. Broad traveling highlights fade along continuous strokes.
+- **Particles** uses fine, short fading tails and small white tips. Particles
+  follow the computed field, including genuine reverse flow, and recycle at
+  obstacles without connecting old and new trails. Stable brightness variation
+  and a quieter heatmap keep the view light; no artificial gusts are added.
+- **Wind-impact glow** lights the original building edges in both styles,
+  including courtyard edges. Stronger approaching wind makes exposed faces
+  brighter; sheltered and parallel faces stay dim. The indicator samples the
+  incoming normal velocity just outside each edge and uses its square, with a
+  fixed visual exposure and smooth transitions. It is a qualitative impact
+  proxy, not surface pressure or [pressure coefficient Cp](https://www.grc.nasa.gov/www/winddocs/towne/plotc/plotc_p3d.html).
+  Probes stop at intervening buildings. Warm halos turn neutral in Monochrome.
+  Toggle it in Wind appearance; playback and the speed color range do not alter
+  its strength. Geometry changes rebuild the edges and probe locations.
+- **Visual density** adjusts ribbon seeds or the particle count. Color and density changes preserve
+  the worker, solver progress, and physical settings. Color ranges change colors
+  only. Selections survive stop/start in the page session.
+- `cfd_control` supports `set_visual_style` (`ribbons`, `particles`),
+  `set_color_palette` (`classic`, `ocean`, `ember`, `monochrome`),
+  `set_color_range` (5, 10, 20, 40), and `set_facade_glow` (boolean). `cfd_state` returns `visualStyle`, `palette`,
+  `colorMaxMps`, and `facadeGlow`. Existing density/playback messages remain compatible.
+- Buildings use halfway bounce-back; all visible MultiPolygon parts and courtyards
+  are preserved. The model includes complete footprints and canopies intersecting
+  the table; off-table city blocks are excluded from the far-field buffers.
+  Trees use approximate, resolution-scaled porous drag.
+- The solver uses constant lattice viscosity (default 0.03, range 0.02–0.15),
+  with a lattice inlet cap of 0.05 (0.025 for building masks, leaving headroom
+  for corner acceleration). Displayed m/s are calibrated
+  to the requested inlet speed, not to a validated atmospheric model.
+- Velocity inlets and pressure outlets use
+  [non-equilibrium extrapolation](https://doi.org/10.1088/1009-1963/11/4/310).
+  Parallel far-field sides are open. An absorbing layer in the invisible padding
+  suppresses reflected pressure waves; it never forces the visible flow. Invalid populations or excessive
+  density/speed stop the calculation visibly; numerical values are not clipped.
+- Obstacle cases start from rest with a smooth inlet ramp. Velocity snapshots are
+  interpolated over 0.25 seconds for smooth tracer motion, preserving real reverse flow.
+- A worker develops the flow independently of rendering. “Developing flow”
+  remains until at least one visible-domain flow-through and five stable field
+  comparisons; an unsteady solution may continue developing. Compatibility mode
+  uses short main-thread batches at 100-cell resolution if workers cannot load.
+- Geometry loads before simulation. Resize, calibration, and uploaded geometry
+  rebuild the field. Controller panels request authoritative settings on opening.
 
-- Trees can be loaded as porous obstacles to simulate wind attenuation by vegetation.
+This model illustrates wind **around footprints**, not over roofs. It does not
+provide validated wind-comfort, pedestrian-safety, or engineering predictions.
+
+Run the numerical, geometry, tracer, lifecycle, and supported-resolution checks:
+
+```bash
+node scripts/test_cfd_simulation.cjs
+node scripts/test_cfd_visuals.cjs
+# Extended campus stability and direction-reversal regression (8,000 steps per case):
+node scripts/test_cfd_simulation.cjs --campus-long
+```
+
+The tests include analytical channel flow, mass conservation, rotated obstacle
+wakes, wall exclusion, 30/60/120 FPS tracer parity, and stale asynchronous loads.
 
 ### 💧 Stormwater Flow
 
@@ -302,7 +367,10 @@ database and any credentials must remain in the EPC Browser environment.
 ├── animations/            # Feature modules
 │   ├── bird-sounds.js     # Bird sound sensor visualisation
 │   ├── campus-demo.js     # Campus masterplan SVG slideshow
-│   ├── cfd-simulation.js  # Lattice Boltzmann wind simulation
+│   ├── cfd-core.js        # Testable Lattice Boltzmann solver and shared palettes
+│   ├── cfd-worker.js      # Solver scheduling and field snapshots
+│   ├── cfd-simulation.js  # Wind lifecycle, geometry, heatmap and controls
+│   ├── cfd-visuals.js     # Ribbons and lightweight particles
 │   ├── fcc-demo.js        # VR flythrough with isovist sync
 │   ├── grid-animation.js  # Holographic calibration grid
 │   ├── isovist.js         # Viewshed and visibility analysis

@@ -664,3 +664,13 @@ html, body {
   #main-panel.thermal-mode #legend-section { grid-column: 1 !important; grid-row: 2 !important; }
   #main-panel.thermal-mode #metadata-section { grid-column: 1 !important; grid-row: 3 !important; }
 }
+
+/* Wind status stays legible without covering the model. */
+#cfd-status { position: absolute; bottom: 18px; left: 50%; transform: translateX(-50%); z-index: 901; padding: 6px 12px; border-radius: 14px; color: #e2e8f0; background: rgba(15,23,42,.85); font: 12px system-ui, sans-serif; pointer-events: none; }
+#cfd-status[hidden] { display: none; }
+#cfd-simulation-btn.toggled-on { background: #0078d4; color: #fff; }
+
+.cfd-appearance .modern-date { max-width: 62%; min-width: 0; }
+.cfd-appearance-note { color: #9ca3af; font-size: .78rem; line-height: 1.5; margin: .25rem 0 1rem; }
+.cfd-color-bar { height: 10px; border-radius: 5px; margin-top: .5rem; }
+.cfd-color-labels { display: flex; justify-content: space-between; color: #9ca3af; font-size: .75rem; margin: .35rem 0 .5rem; }

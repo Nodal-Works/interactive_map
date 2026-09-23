@@ -1,3 +1,50 @@
+// CFD controls reflect the display's authoritative state whenever this panel opens.
+let cfdState = { ...CFD.DEFAULTS };
+function renderCfdState() {
+    const ids = { 'wind-visual-style': cfdState.visualStyle, 'wind-palette': cfdState.palette,
+        'wind-color-range': cfdState.colorMaxMps, 'wind-speed': cfdState.windSpeed, 'wind-direction': cfdState.angle,
+        'particle-count': cfdState.particles, 'particle-speed': cfdState.playback,
+        'viscosity': (cfdState.viscosity - .02) / .13, 'grid-resolution': cfdState.resolution };
+    for (const [id, value] of Object.entries(ids)) {
+        const input = document.getElementById(id);
+        if (input) input.value = value;
+    }
+    const labels = { 'wind-speed-display': `${cfdState.windSpeed.toFixed(1)} m/s`,
+        'wind-dir-display': `${cfdState.angle}° ${['→','↘','↓','↙','←','↖','↑','↗'][Math.round(cfdState.angle / 45) % 8]}`,
+        'particle-speed-display': `${cfdState.playback}x`, 'trees-status': cfdState.trees ? 'On' : 'Off' };
+    for (const [id, value] of Object.entries(labels)) {
+        const label = document.getElementById(id);
+        if (label) label.textContent = value;
+    }
+    const facadeToggle = document.getElementById('wind-facade-glow');
+    if (facadeToggle) facadeToggle.checked = cfdState.facadeGlow;
+    const facadeLegend = document.getElementById('wind-impact-swatch');
+    if (facadeLegend) {
+        const color = cfdState.palette === 'monochrome' ? '#f5f5f5' : '#ffd58c';
+        facadeLegend.style.background = color;
+        facadeLegend.style.boxShadow = `0 0 8px ${color}`;
+    }
+    const description = document.getElementById('wind-style-description');
+    if (description) description.textContent = CFDVisuals.STYLES[cfdState.visualStyle] || CFDVisuals.STYLES.ribbons;
+    const legend = CFD.colorLegend(cfdState.palette, cfdState.colorMaxMps);
+    for (const id of ['wind-color-preview', 'wind-color-legend']) {
+        const element = document.getElementById(id);
+        if (element) element.style.background = legend.gradient;
+    }
+    legend.labels.forEach((text, i) => {
+        for (const prefix of ['wind-range-label-', 'wind-preview-label-']) {
+            const element = document.getElementById(prefix + i);
+            if (element) element.textContent = text;
+        }
+    });
+    const trees = document.getElementById('toggle-trees-btn');
+    if (trees) {
+        trees.dataset.enabled = String(cfdState.trees);
+        trees.style.background = cfdState.trees ? '#2D5A27' : '#333';
+        trees.style.borderColor = cfdState.trees ? '#4a9441' : '#555';
+    }
+}
+
 // Controller logic for the secondary screen
 // ============================================
 
@@ -973,12 +1020,67 @@ function updateDashboard(targetId) {
     } else if (targetId === 'cfd-simulation-btn') {
         dashboardContent.innerHTML = `
             <div class="dashboard-container">
+                <div class="dashboard-card cfd-appearance">
+                    <div class="dashboard-section-title">
+                        <span class="material-icons" style="font-size: 18px;">air</span>
+                        Wind appearance
+                    </div>
+                    <div class="control-row">
+                        <label class="control-label" for="wind-visual-style">Style</label>
+                        <select id="wind-visual-style" class="modern-date" aria-describedby="wind-style-description">
+                            <option value="ribbons">Ribbons</option>
+                            <option value="particles">Particles</option>
+                        </select>
+                    </div>
+                    <p id="wind-style-description" class="cfd-appearance-note" aria-live="polite"></p>
+                    <div class="control-row">
+                        <label class="control-label" for="wind-palette">Palette</label>
+                        <select id="wind-palette" class="modern-date">
+                            <option value="classic">Classic · blue to red</option>
+                            <option value="ocean">Ocean · blue to white</option>
+                            <option value="ember">Ember · purple to yellow</option>
+                            <option value="monochrome">Monochrome · gray to white</option>
+                        </select>
+                    </div>
+                    <div class="control-row">
+                        <label class="control-label" for="wind-color-range">Speed range</label>
+                        <select id="wind-color-range" class="modern-date" aria-describedby="wind-range-note">
+                            <option value="5">0–5+ m/s</option>
+                            <option value="10">0–10+ m/s</option>
+                            <option value="20" selected>0–20+ m/s</option>
+                            <option value="40">0–40+ m/s</option>
+                        </select>
+                    </div>
+                    <div id="wind-color-preview" class="cfd-color-bar"></div>
+                    <div class="cfd-color-labels"><span id="wind-preview-label-0"></span><span id="wind-preview-label-1"></span><span id="wind-preview-label-2"></span></div>
+                    <p id="wind-range-note" class="cfd-appearance-note">Color shows speed in m/s. White moving highlights show direction. “+” means the color has reached the top of the scale.</p>
+                    <div class="control-row">
+                        <label class="control-label" for="wind-facade-glow">Wind-impact glow</label>
+                        <input type="checkbox" id="wind-facade-glow" checked aria-describedby="wind-impact-note" style="width: 20px; height: 20px; accent-color: #ffd58c;">
+                    </div>
+                    <p id="wind-impact-note" class="cfd-appearance-note">Building edges glow brighter where stronger wind approaches the façade. Qualitative impact, not a measured pressure coefficient.</p>
+                    <div class="control-row">
+                        <label class="control-label" for="particle-count">Visual density</label>
+                        <select id="particle-count" class="modern-date" style="width: 100px;">
+                            <option value="200">Low</option>
+                            <option value="500" selected>Medium</option>
+                            <option value="1000">High</option>
+                        </select>
+                    </div>
+
+                    <div class="control-row">
+                        <label class="control-label" for="particle-speed" title="Visualization speed; independent of wind speed">Tracer playback</label>
+                        <input type="range" id="particle-speed" class="modern-range" min="2" max="40" step="2" value="20">
+                        <span id="particle-speed-display" class="control-value">20x</span>
+                    </div>
+
+                </div>
                 <div class="dashboard-card">
                     <div class="dashboard-section-title">
                         <span class="material-icons" style="font-size: 18px;">tune</span>
-                        Wind Controls
+                        Wind physics
                     </div>
-                    
+
                     <div class="control-row">
                         <label class="control-label">Wind Speed</label>
                         <input type="range" id="wind-speed" class="modern-range" min="1" max="20" step="0.5" value="5">
@@ -986,36 +1088,21 @@ function updateDashboard(targetId) {
                     </div>
 
                     <div class="control-row">
-                        <label class="control-label">Direction</label>
+                        <label class="control-label" title="Clockwise in screen space: 0° points right, 90° points down">Flow Direction</label>
                         <input type="range" id="wind-direction" class="modern-range" min="0" max="360" step="15" value="0">
-                        <span id="wind-dir-display" class="control-value">0°</span>
-                    </div>
-
-                    <div class="control-row">
-                        <label class="control-label">Particles</label>
-                        <select id="particle-count" class="modern-date" style="width: 100px;">
-                            <option value="200" selected>Low</option>
-                            <option value="500">Medium</option>
-                            <option value="1000">High</option>
-                        </select>
-                    </div>
-
-                    <div class="control-row">
-                        <label class="control-label">Particle Speed</label>
-                        <input type="range" id="particle-speed" class="modern-range" min="2" max="40" step="2" value="20">
-                        <span id="particle-speed-display" class="control-value">20x</span>
+                        <span id="wind-dir-display" class="control-value">0° →</span>
                     </div>
 
                     <div class="control-row">
                         <label class="control-label">Viscosity</label>
-                        <input type="range" id="viscosity" class="modern-range" min="0" max="1" step="0.1" value="0">
+                        <input type="range" id="viscosity" class="modern-range" min="0" max="1" step="0.001" value="0.077">
                     </div>
 
                     <div class="control-row">
                         <label class="control-label">Grid Resolution</label>
                         <select id="grid-resolution" class="modern-date" style="width: 100px;">
-                            <option value="100" selected>100 (Fast)</option>
-                            <option value="150">150</option>
+                            <option value="100">100 (Fast)</option>
+                            <option value="150" selected>150</option>
                             <option value="200">200 (Normal)</option>
                             <option value="250">250</option>
                             <option value="300">300 (High)</option>
@@ -1044,13 +1131,13 @@ function updateDashboard(targetId) {
                     <div class="info-box" style="margin-bottom: 1rem; border-left-color: #10b981;">
                         <div class="info-title">Methodology</div>
                         <p class="info-text">
-                            Uses the <strong>Lattice Boltzmann Method (LBM)</strong>, a powerful CFD technique that simulates fluid dynamics by tracking particle distributions on a grid (D2Q9 lattice). It solves the Navier-Stokes equations in real-time.
+                            Uses a <strong>2D Lattice Boltzmann model</strong> to illustrate flow around building footprints. Ribbons and particles sample the computed velocity field; tracer playback changes presentation speed only. Changing the color range changes colors, not the flow or its motion.
                         </p>
                     </div>
                     <div class="info-box" style="border-left-color: #10b981;">
                         <div class="info-title">Application</div>
                         <p class="info-text">
-                            Essential for <strong>wind comfort analysis</strong> in urban design. Helps architects ensure pedestrian safety, plan natural ventilation corridors, and mitigate dangerous wind tunnel effects around tall buildings.
+                            Explore sheltered areas and accelerated flow between buildings. This qualitative model does not simulate wind over roofs or provide validated wind-comfort or safety predictions.
                         </p>
                     </div>
                 </div>
@@ -1064,11 +1151,11 @@ function updateDashboard(targetId) {
                     
                     <div>
                         <div class="legend-label" style="margin-bottom: 0.5rem;">Wind Velocity Scale</div>
-                        <div style="height: 12px; background: linear-gradient(to right, #3b82f6, #10b981, #ef4444); border-radius: 6px; margin-bottom: 0.25rem;"></div>
+                        <div id="wind-color-legend" style="height: 12px; background: ${CFD.colorGradient(cfdState.palette, cfdState.colorMaxMps)}; border-radius: 6px; margin-bottom: 0.25rem;"></div>
                         <div style="display: flex; justify-content: space-between; font-size: 0.75rem; color: #6b7280;">
-                            <span>0 m/s</span>
-                            <span>Moderate</span>
-                            <span>High</span>
+                            <span id="wind-range-label-0">0 m/s</span>
+                            <span id="wind-range-label-1">10 m/s</span>
+                            <span id="wind-range-label-2">20+ m/s</span>
                         </div>
                     </div>
 
@@ -1081,29 +1168,37 @@ function updateDashboard(targetId) {
                     </div>
 
                     <div class="legend-item">
+                        <div id="wind-impact-swatch" class="legend-color" style="background: #ffd58c; box-shadow: 0 0 8px #ffd58c;"></div>
+                        <div>
+                            <span class="legend-label">Wind impact on façades</span>
+                            <div style="font-size: 0.75rem; color: #6b7280;">Dim → bright: less → more incoming wind. Independent of the speed color scale.</div>
+                        </div>
+                    </div>
+
+                    <div class="legend-item">
                         <div class="legend-color" style="background: #2D5A27; border: 1px dashed #4a9441;"></div>
                         <div>
                             <span class="legend-label">Tree Canopies</span>
-                            <div style="font-size: 0.75rem; color: #6b7280;">Permeable obstacles (~60% flow)</div>
+                            <div style="font-size: 0.75rem; color: #6b7280;">Approximate porous drag</div>
                         </div>
                     </div>
 
                     <div class="legend-item">
                         <div class="legend-color" style="background: rgba(255,255,255,0.5); border: 1px dashed #9ca3af;"></div>
                         <div>
-                            <span class="legend-label">Airflow Particles</span>
-                            <div style="font-size: 0.75rem; color: #6b7280;">Tracers visualizing flow path</div>
+                            <span class="legend-label">Computed airflow</span>
+                            <div style="font-size: 0.75rem; color: #6b7280;">Colored marks show speed; white highlights move downstream</div>
                         </div>
                     </div>
 
                     <div style="border-top: 1px solid #e5e7eb; padding-top: 0.5rem; margin-top: 0.5rem;">
                         <div style="font-size: 0.8rem; color: #6b7280; display: flex; justify-content: space-between;">
-                            <span>Domain Width:</span>
-                            <span style="font-family: monospace;">~500m</span>
+                            <span>Speed Reference:</span>
+                            <span style="font-family: monospace;">Inlet calibrated</span>
                         </div>
                         <div style="font-size: 0.8rem; color: #6b7280; display: flex; justify-content: space-between;">
-                            <span>Simulation Method:</span>
-                            <span style="font-family: monospace;">LBM D2Q9</span>
+                            <span>Model Fidelity:</span>
+                            <span style="font-family: monospace;">Qualitative 2D LBM</span>
                         </div>
                     </div>
                 </div>
@@ -1129,13 +1224,35 @@ function updateDashboard(targetId) {
             });
         };
 
+        for (const [id, action, property] of [
+            ['wind-visual-style', 'set_visual_style', 'visualStyle'],
+            ['wind-palette', 'set_color_palette', 'palette'],
+            ['wind-color-range', 'set_color_range', 'colorMaxMps']
+        ]) {
+            document.getElementById(id).addEventListener('change', event => {
+                const value = property === 'colorMaxMps' ? Number(event.target.value) : event.target.value;
+                cfdState[property] = value;
+                renderCfdState();
+                sendCfdControl(action, value);
+            });
+        }
+
+        document.getElementById('wind-facade-glow').addEventListener('change', event => {
+            cfdState.facadeGlow = event.target.checked;
+            sendCfdControl('set_facade_glow', event.target.checked);
+        });
+
         windSpeed.addEventListener('input', (e) => {
-            windSpeedDisplay.textContent = parseFloat(e.target.value).toFixed(1) + ' m/s';
+            const speed = parseFloat(e.target.value);
+            windSpeedDisplay.textContent = speed.toFixed(1) + ' m/s';
             sendCfdControl('set_wind_speed', e.target.value);
         });
 
         windDir.addEventListener('input', (e) => {
-            windDirDisplay.textContent = e.target.value + '°';
+            const angle = parseFloat(e.target.value);
+            const arrows = ['→', '↘', '↓', '↙', '←', '↖', '↑', '↗'];
+            const arrow = arrows[Math.round(angle / 45) % arrows.length];
+            windDirDisplay.textContent = `${e.target.value}° ${arrow}`;
             sendCfdControl('set_wind_direction', e.target.value);
         });
 
@@ -1159,15 +1276,18 @@ function updateDashboard(targetId) {
         // Tree toggle button
         const toggleTreesBtn = document.getElementById('toggle-trees-btn');
         const treesStatus = document.getElementById('trees-status');
-        let treesEnabled = true;
         
         toggleTreesBtn.addEventListener('click', () => {
-            treesEnabled = !treesEnabled;
+            const treesEnabled = toggleTreesBtn.dataset.enabled !== 'true';
+            toggleTreesBtn.dataset.enabled = String(treesEnabled);
             treesStatus.textContent = treesEnabled ? 'On' : 'Off';
             toggleTreesBtn.style.background = treesEnabled ? '#2D5A27' : '#333';
             toggleTreesBtn.style.borderColor = treesEnabled ? '#4a9441' : '#555';
             sendCfdControl('toggle_trees', treesEnabled);
         });
+
+        renderCfdState();
+        sendCfdControl('get_state');
 
     } else if (targetId === 'isovist-btn') {
         dashboardContent.innerHTML = `
@@ -1602,6 +1722,9 @@ channel.onmessage = (event) => {
     if (data.type === MSG_TYPES.ANIMATION_STATE) {
         // Received actual animation state from main window - update our tracking
         setAnimationState(data.animationId, data.isActive);
+    } else if (data.type === 'cfd_state') {
+        cfdState = { ...cfdState, ...data };
+        renderCfdState();
     } else if (data.type === 'thermal_state') {
         thermalComfortState = { ...thermalComfortState, ...data };
         if (document.getElementById('main-panel')?.classList.contains('thermal-mode')) updateThermalDashboard();

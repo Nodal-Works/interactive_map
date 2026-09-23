@@ -431,6 +431,7 @@ function addUserGeo(geojson) {
   map.addSource('usergeo', { type: 'geojson', data: geojson });
   // add simple styling - only fill for polygons, no stroke or points
   map.addLayer({ id: 'user-fill', type: 'fill', source: 'usergeo', paint: { 'fill-color':'#3388ff','fill-opacity':0.2 } }, Object.keys(map.getStyle().layers).slice(-1)[0]);
+  window.dispatchEvent(new Event('cfd-geometry-changed'));
   // No line or point layers for cleaner building visualization
 }
 
