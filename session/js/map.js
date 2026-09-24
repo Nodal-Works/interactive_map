@@ -12,7 +12,7 @@
     constructor({element,map,send,identity,desktop=false}) {
       this.element=element;this.send=send;this.identity=identity;this.desktop=desktop;
       this.objects=[];this.drafts=[];this.tool='navigate';this.color='#38bdf8';this.width=3;this.pointers=new Set();this.selected=null;
-      this.map=map || new maplibregl.Map({container:element,style:{version:8,sources:{base:{type:'raster',tiles:['https://a.basemaps.cartocdn.com/light_all/{z}/{x}/{y}@2x.png'],tileSize:256,attribution:'© OpenStreetMap contributors © CARTO'}},layers:[{id:'base',type:'raster',source:'base'}]},center:[11.9777,57.6884],zoom:16,attributionControl:true});
+      this.map=map || new maplibregl.Map({container:element,style:{version:8,sources:{base:{type:'raster',tiles:['https://tile.openstreetmap.org/{z}/{x}/{y}.png'],tileSize:256,attribution:'© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap contributors</a>'}},layers:[{id:'base',type:'raster',source:'base',paint:{'raster-saturation':-1,'raster-contrast':-.2,'raster-brightness-min':.25}}]},center:[11.9777,57.6884],zoom:16,attributionControl:true});
       this.svg=node('svg',{'class':'mr-map-overlay','aria-hidden':'true'});
       (desktop?document.body:element).append(this.svg);
       if(desktop)this.svg.classList.add('desktop');

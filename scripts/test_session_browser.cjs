@@ -165,7 +165,7 @@ const base=process.env.MR_TEST_URL || 'http://127.0.0.1:8091';
     await send(phone,{type:'layer',layer:id,enabled:true});
     await page.waitForFunction(id=>MR_ADAPTER.active[id],id);await page.waitForTimeout(300);
     assert.equal(await page.evaluate(()=>streetLifeAnimation.isActive()),false,id+' suppresses Street Life');
-    if(id==='canvas-btn')assert.equal(await page.evaluate(()=>getBasemap()),'cartoPositron');
+    if(id==='canvas-btn')assert.equal(await page.evaluate(()=>getBasemap()),'osmLight');
     await send(phone,{type:'layer',layer:id,enabled:false});await page.waitForFunction(id=>!MR_ADAPTER.active[id],id);
   }
   console.log('PASS: polygon previews, touch scrolling/zoom, EPC location, light Canvas and Street Life');

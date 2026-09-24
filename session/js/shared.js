@@ -1,6 +1,6 @@
 (function(root) {
   'use strict';
-  const RELEASE = '20260924-session-2';
+  const RELEASE = '20260924-session-3';
   const LAYERS = [
     ['cfd-simulation-btn', 'Wind · CFD', 'Environment', '🌬', 'obstacle'],
     ['stormwater-btn', 'Stormwater', 'Environment', '💧'],

@@ -41,8 +41,8 @@
   function setLayer(layer, enabled) {
     if (!(layer in active) || typeof enabled !== 'boolean') throw Error('Unknown layer');
     if (layer === 'canvas-btn') {
-      if(enabled && !active[layer]) { canvasBasemap=window.getBasemap();window.setBasemap('cartoPositron'); }
-      if(!enabled && active[layer] && window.getBasemap()==='cartoPositron' && canvasBasemap)window.setBasemap(canvasBasemap);
+      if(enabled && !active[layer]) { canvasBasemap=window.getBasemap();window.setBasemap('osmLight'); }
+      if(!enabled && active[layer] && window.getBasemap()==='osmLight' && canvasBasemap)window.setBasemap(canvasBasemap);
       active[layer] = enabled;document.getElementById(layer)?.classList.toggle('active',enabled);
       window.dispatchEvent(new CustomEvent('mr-canvas-visibility', {detail: enabled})); return;
     }

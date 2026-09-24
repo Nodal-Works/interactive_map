@@ -56,7 +56,7 @@ commands. Slot releases and pause/end controls are available only through local 
 
 The Controls tab adapts the existing desktop dashboard, including ECOM and SAM,
 using the host for its local API requests. The Map tab is a companion map with
-a light CARTO/OpenStreetMap basemap and host-produced analysis results. It does not run a second
+a light-styled OpenStreetMap basemap (no API key) and host-produced analysis results. It does not run a second
 simulation or reproduce every presentation animation. One finger uses the current
 tool; two fingers navigate only the phone map. **Fit table** restores its extent.
 

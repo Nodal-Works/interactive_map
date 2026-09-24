@@ -208,6 +208,13 @@ const basemaps = {
     tileSize: 256,
     attribution: '&copy; OpenStreetMap contributors'
   },
+  osmLight: {
+    id: 'osm-light-source',
+    tiles: ['https://tile.openstreetmap.org/{z}/{x}/{y}.png'],
+    tileSize: 256,
+    attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap contributors</a>',
+    paint: { 'raster-saturation': -1, 'raster-contrast': -0.2, 'raster-brightness-min': 0.25 }
+  },
   cartoPositron: {
     id: 'carto-pos-source',
     tiles: [
@@ -309,11 +316,12 @@ map.on('load', () => {
         paint: { 'background-color': bm.color }
       });
     } else {
-      map.addSource(bm.id, { type: 'raster', tiles: bm.tiles, tileSize: bm.tileSize });
+      map.addSource(bm.id, { type: 'raster', tiles: bm.tiles, tileSize: bm.tileSize, attribution: bm.attribution });
       map.addLayer({
         id: bm.id + '-layer',
         type: 'raster',
         source: bm.id,
+        paint: bm.paint || {},
         layout: { visibility: key === defaultBasemap ? 'visible' : 'none' }
       });
     }
