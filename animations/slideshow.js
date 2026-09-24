@@ -20,6 +20,10 @@ let currentMediaFitMode = 'contain'; // Track fitMode of current media
 let transitionProgress = 0;
 let transitionAnimationFrame = null;
 
+let slideStatus = 'idle', slideError = null;
+let slideJob = null, startRevision = 0;
+const rasterSlides = new window.MR_RASTER_SLIDES.RasterSlides(map);
+
 // Media cache
 const mediaCache = new Map();
 
@@ -36,6 +40,8 @@ async function loadSlideshowConfig() {
       return { slides: [], settings: { loop: true, autoAdvance: true, showMetadata: true, metadataPosition: 'bottom-right', fitMode: 'contain' } };
     }
     const config = await response.json();
+    config.slides = (config.slides || []).filter(slide => slide.enabled !== false);
+    config.settings ||= {};
     return config;
   } catch (error) {
     console.error('Error loading slideshow config:', error);
@@ -55,7 +61,7 @@ function resizeSlideshowCanvas() {
 
 // Preload media
 async function preloadMedia(slide) {
-  const mediaPath = SLIDESHOW_MEDIA_PATH + slide.media;
+  const mediaPath = window.mrAsset(slide.media.includes('/') ? slide.media : SLIDESHOW_MEDIA_PATH + slide.media);
   
   if (mediaCache.has(mediaPath)) {
     return mediaCache.get(mediaPath);
@@ -259,8 +265,9 @@ function applyTransition(oldMedia, newMedia, progress, transitionType, oldRotati
 function animateTransition(oldMedia, newMedia, transitionType, duration = 500, oldRotation = 0, newRotation = 0, oldFitMode = 'contain', newFitMode = 'contain') {
   return new Promise((resolve) => {
     const startTime = performance.now();
-    
+    const signal = slideJob?.signal;
     function animate(currentTime) {
+      if (signal?.aborted) {resolve(); return;}
       const elapsed = currentTime - startTime;
       transitionProgress = Math.min(elapsed / duration, 1);
       
@@ -299,7 +306,8 @@ function broadcastSlideshowState(slide) {
     currentIndex: currentSlideIndex,
     totalSlides: total,
     metadata: slide?.metadata || null,
-    slideType: slide?.type || null
+    slideType: slide?.type || null,
+    status: slideStatus, error: slideError
   });
 }
 
@@ -654,341 +662,117 @@ async function displayGeoJSON(geojson, slide) {
   return animationCompleted;
 }
 
-// Display a slide
-async function displaySlide(index) {
-  if (!slideshowConfig || !slideshowConfig.slides || index >= slideshowConfig.slides.length) {
-    return;
-  }
-  
-  const slide = slideshowConfig.slides[index];
-  const oldMedia = currentMediaElement;
-  const oldRotation = currentMediaRotation;
-  const oldFitMode = currentMediaFitMode;
-  const newRotation = slide.rotation || 0; // Get rotation from slide config
-  const newFitMode = slide.fitMode || slideshowConfig.settings.fitMode || 'contain'; // Get fitMode from slide or global config
-  
-  try {
-    // Preload media
-    const media = await preloadMedia(slide);
-    
-    // Handle different media types
-    if (slide.type === 'geojson') {
-      // For GeoJSON, hide canvas and display on map with animation
-      if (slideshowCanvas) {
-        slideshowCanvas.classList.remove('active');
-      }
-      if (slideshowCtx) {
-        slideshowCtx.clearRect(0, 0, slideshowCanvas.width, slideshowCanvas.height);
-      }
-      // Display metadata first so it's visible during animation
-      displayMetadata(slide);
-      const animationCompleted = await displayGeoJSON(media, slide);
-      currentMediaElement = null;
-      currentMediaRotation = 0; // GeoJSON doesn't use rotation
-      currentMediaFitMode = 'contain'; // Reset fitMode
-      
-      // Auto-advance after GeoJSON animation completes
-      if (animationCompleted && isSlideShowActive) {
-        // Small pause before advancing to next slide
-        await new Promise(resolve => setTimeout(resolve, 1000));
-        if (isSlideShowActive) {
-          advanceSlide();
-          return; // Exit early, don't schedule another timer
-        }
-      }
-    } else if (slide.type === 'video') {
-      // Remove any GeoJSON layers from previous slide
-      removeGeoJSONLayers();
-      
-      // For video, show canvas and play it
-      if (slideshowCanvas) {
-        slideshowCanvas.classList.add('active');
-      }
-      media.currentTime = 0;
-      await media.play();
-      currentMediaElement = media;
-      currentMediaRotation = newRotation;
-      currentMediaFitMode = newFitMode;
-      
-      // Animate transition
-      await animateTransition(oldMedia, media, slide.transition || 'fade', 500, oldRotation, newRotation, oldFitMode, newFitMode);
-      
-      // Draw video frames continuously
-      function drawVideoFrame() {
-        if (isSlideShowActive && currentSlideIndex === index && !media.paused && !media.ended) {
-          drawMediaOnCanvas(media, newFitMode, newRotation);
-          requestAnimationFrame(drawVideoFrame);
-        }
-      }
-      drawVideoFrame();
-      // Display metadata for video
-      displayMetadata(slide);
-    } else {
-      // Remove any GeoJSON layers from previous slide
-      removeGeoJSONLayers();
-      
-      // For images/gifs, show canvas
-      if (slideshowCanvas) {
-        slideshowCanvas.classList.add('active');
-      }
-      currentMediaElement = media;
-      currentMediaRotation = newRotation;
-      currentMediaFitMode = newFitMode;
-      await animateTransition(oldMedia, media, slide.transition || 'fade', 500, oldRotation, newRotation, oldFitMode, newFitMode);
-      // Display metadata for image/gif types
-      displayMetadata(slide);
-    }
-    
-    // Schedule next slide
-    if (slideshowConfig.settings.autoAdvance) {
-      const duration = slide.duration || 5000;
-      slideshowTimer = setTimeout(() => {
-        advanceSlide();
-      }, duration);
-    }
-    
-  } catch (error) {
-    console.error('Error displaying slide:', error);
-    // Try next slide on error
-    advanceSlide();
-  }
-}
-
-// Advance to next slide
-function advanceSlide() {
-  if (!isSlideShowActive || !slideshowConfig) return;
-  
-  // Stop any ongoing GeoJSON animation
-  stopGeoJSONAnimation();
-  
-  // Stop current video if playing
-  if (currentMediaElement instanceof HTMLVideoElement) {
-    currentMediaElement.pause();
-  }
-  
-  // Clear timer
-  if (slideshowTimer) {
-    clearTimeout(slideshowTimer);
-    slideshowTimer = null;
-  }
-  
-  currentSlideIndex++;
-  
-  // Loop or stop
-  if (currentSlideIndex >= slideshowConfig.slides.length) {
-    if (slideshowConfig.settings.loop) {
-      currentSlideIndex = 0;
-    } else {
-      stopSlideshow();
-      return;
-    }
-  }
-  
-  displaySlide(currentSlideIndex);
-}
-
-// Start slideshow
-async function startSlideshow() {
-  if (isSlideShowActive) {
-    stopSlideshow();
-    return;
-  }
-  
-  // Load config
-  slideshowConfig = await loadSlideshowConfig();
-  
-  if (!slideshowConfig.slides || slideshowConfig.slides.length === 0) {
-    showToast('No slides found in slideshow configuration');
-    broadcastSlideshowState(null);
-    return;
-  }
-  
-  isSlideShowActive = true;
-  currentSlideIndex = 0;
-  
-  // Broadcast animation state to controller
-  slideshowChannel.postMessage({ type: 'animation_state', animationId: 'slideshow-btn', isActive: true });
-  
-  // Broadcast initial state immediately
-  if (slideshowConfig && slideshowConfig.slides && slideshowConfig.slides.length > 0) {
-    broadcastSlideshowState(slideshowConfig.slides[0]);
-  } else {
-    // Broadcast empty/loading state if config failed or empty
-    slideshowChannel.postMessage({
-      type: 'slideshow_update',
-      isActive: true, // Still active, just empty
-      currentIndex: 0,
-      totalSlides: 0,
-      metadata: { title: "No Slides Found", description: "Check configuration." },
-      slideType: null
-    });
-  }
-  
-  // Prepare canvas (but don't show it yet - displaySlide will decide)
-  if (slideshowCanvas) {
-    resizeSlideshowCanvas();
-  }
-  
-  if (slideshowMetadata) {
-    slideshowMetadata.style.display = 'block';
-  }
-  
-  // Update button state
-  if (slideshowBtn) {
-    slideshowBtn.classList.add('active');
-  }
-  
-  // Start first slide
-  displaySlide(currentSlideIndex);
-  
-  showToast('Slideshow started • Use ← → to navigate • ESC to exit');
-}
-
-// Stop slideshow
-function stopSlideshow() {
-  isSlideShowActive = false;
-  
-  // Broadcast animation state to controller
-  slideshowChannel.postMessage({ type: 'animation_state', animationId: 'slideshow-btn', isActive: false });
-  
-  // Clear timer
-  if (slideshowTimer) {
-    clearTimeout(slideshowTimer);
-    slideshowTimer = null;
-  }
-  
-  // Stop video if playing
-  if (currentMediaElement instanceof HTMLVideoElement) {
-    currentMediaElement.pause();
-  }
-  
-  // Cancel transition animation
-  if (transitionAnimationFrame) {
-    cancelAnimationFrame(transitionAnimationFrame);
-    transitionAnimationFrame = null;
-  }
-  
-  // Stop GeoJSON animation
-  stopGeoJSONAnimation();
-  
-  // Clear canvas
-  if (slideshowCtx) {
-    slideshowCtx.clearRect(0, 0, slideshowCanvas.width, slideshowCanvas.height);
-  }
-  
-  // Hide canvas and metadata
-  if (slideshowCanvas) {
-    slideshowCanvas.classList.remove('active');
-  }
-  
-  if (slideshowMetadata) {
-    slideshowMetadata.style.display = 'none';
-  }
-  
-  // Remove GeoJSON layers
-  if (map.getSource('slideshow-geojson')) {
-    ['slideshow-fill', 'slideshow-line', 'slideshow-polygon-outline', 'slideshow-point', 'slideshow-glow'].forEach(id => {
-      if (map.getLayer(id)) map.removeLayer(id);
-    });
-    map.removeSource('slideshow-geojson');
-  }
-  
-  // Update button state
-  if (slideshowBtn) {
-    slideshowBtn.classList.remove('active');
-  }
-  
-  currentMediaElement = null;
-  currentSlideIndex = 0;
-  
-  // Broadcast stop state to controller
-  slideshowChannel.postMessage({
-    type: 'slideshow_update',
-    isActive: false,
-    currentIndex: 0,
-    totalSlides: 0,
-    metadata: null,
-    slideType: null
+// Bound asynchronous work to the current slide, including legacy media loads.
+function awaitSlide(promise, signal, timeout = 15000) {
+  return new Promise((resolve,reject) => {
+    const finish=(error,value)=>{clearTimeout(timer);signal.removeEventListener('abort',cancel);error?reject(error):resolve(value);};
+    const cancel=()=>finish(new DOMException('Slide changed','AbortError'));
+    const timer=setTimeout(()=>finish(Error('Slide timed out. Retry or choose Next.')),timeout);
+    signal.addEventListener('abort',cancel,{once:true});
+    if(signal.aborted) cancel();
+    Promise.resolve(promise).then(value=>finish(null,value),finish);
   });
-  
-  showToast('Slideshow stopped');
 }
-
-// Wire up slideshow button
-if (slideshowBtn) {
-  slideshowBtn.addEventListener('click', startSlideshow);
+function cancelSlide() {
+  slideJob?.abort();
+  clearTimeout(slideshowTimer);slideshowTimer=null;
+  if (currentMediaElement instanceof HTMLVideoElement) currentMediaElement.pause();
+  stopGeoJSONAnimation();
 }
-
-// Resize canvas on window resize
-window.addEventListener('resize', () => {
-  if (isSlideShowActive && slideshowCanvas) {
-    resizeSlideshowCanvas();
-    if (currentMediaElement && !(currentMediaElement instanceof HTMLVideoElement)) {
-      drawMediaOnCanvas(currentMediaElement, slideshowConfig.settings.fitMode);
+async function displaySlide(index) {
+  if(!isSlideShowActive || !slideshowConfig?.slides[index]) return;
+  cancelSlide();
+  const job=new AbortController();slideJob=job;
+  const slide=slideshowConfig.slides[index];
+  slideStatus='loading';slideError=null;displayMetadata(slide);
+  const oldMedia=currentMediaElement,oldRotation=currentMediaRotation,oldFit=currentMediaFitMode;
+  try {
+    if(['wms','arcgis'].includes(slide.type)) {
+      removeGeoJSONLayers();
+      slideshowCanvas?.classList.remove('active');
+      currentMediaElement=null;
+      await rasterSlides.show(slide,job.signal,slideshowConfig.settings.wmsTransitionDuration ?? 700);
+    } else {
+      rasterSlides.clear();
+      const media=await awaitSlide(preloadMedia(slide),job.signal);
+      if(job.signal.aborted) return;
+      if(slide.type==='geojson') {
+        slideshowCanvas?.classList.remove('active');
+        currentMediaElement=null;
+        await awaitSlide(displayGeoJSON(media,slide),job.signal,60000);
+      } else {
+        removeGeoJSONLayers();
+        slideshowCanvas?.classList.add('active');
+        currentMediaElement=media;
+        currentMediaRotation=slide.rotation || 0;
+        currentMediaFitMode=slide.fitMode || slideshowConfig.settings.fitMode || 'contain';
+        if(slide.type==='video') {media.currentTime=0;await awaitSlide(media.play(),job.signal);}
+        await awaitSlide(animateTransition(oldMedia,media,slide.transition || 'fade',500,oldRotation,currentMediaRotation,oldFit,currentMediaFitMode),job.signal);
+        if(slide.type==='video') {
+          const draw=()=>{if(job.signal.aborted || media.paused || media.ended)return;drawMediaOnCanvas(media,currentMediaFitMode,currentMediaRotation);requestAnimationFrame(draw);};draw();
+        }
+      }
     }
+    if(job.signal.aborted) return;
+    slideStatus='ready';displayMetadata(slide);
+    if(slideshowConfig.settings.autoAdvance) slideshowTimer=setTimeout(advanceSlide,slide.duration || 5000);
+  } catch(error) {
+    if(job.signal.aborted) return;
+    slideStatus='error';slideError=error.message;
+    rasterSlides.clear();removeGeoJSONLayers();slideshowCanvas?.classList.remove('active');
+    displayMetadata(slide);
   }
+}
+function navigateSlide(direction) {
+  if(!isSlideShowActive || !slideshowConfig?.slides.length)return;
+  let index=currentSlideIndex+direction;
+  if(index>=slideshowConfig.slides.length && !slideshowConfig.settings.loop){stopSlideshow();return;}
+  currentSlideIndex=(index+slideshowConfig.slides.length)%slideshowConfig.slides.length;
+  displaySlide(currentSlideIndex);
+}
+function advanceSlide() {navigateSlide(1);}
+async function startSlideshow() {
+  if(isSlideShowActive){stopSlideshow();return;}
+  const revision=++startRevision;
+  isSlideShowActive=true;slideshowBtn?.classList.add('active');
+  slideshowChannel.postMessage({type:'animation_state',animationId:'slideshow-btn',isActive:true});
+  slideStatus='loading';slideError=null;broadcastSlideshowState(null);
+  slideshowConfig=await loadSlideshowConfig();
+  if(revision!==startRevision || !isSlideShowActive)return;
+  if(!slideshowConfig.slides.length){stopSlideshow();showToast('No enabled slides found');return;}
+  currentSlideIndex=0;resizeSlideshowCanvas();displaySlide(0);
+}
+function stopSlideshow() {
+  startRevision++;isSlideShowActive=false;cancelSlide();rasterSlides.clear();removeGeoJSONLayers();
+  slideshowCanvas?.classList.remove('active');
+  if(slideshowMetadata)slideshowMetadata.style.display='none';
+  slideshowCtx?.clearRect(0,0,slideshowCanvas.width,slideshowCanvas.height);
+  slideshowBtn?.classList.remove('active');currentMediaElement=null;currentSlideIndex=0;
+  slideStatus='idle';slideError=null;
+  slideshowChannel.postMessage({type:'animation_state',animationId:'slideshow-btn',isActive:false});
+  broadcastSlideshowState(null);
+}
+slideshowBtn?.addEventListener('click',startSlideshow);
+window.addEventListener('resize',()=>{
+  if(!isSlideShowActive)return;
+  resizeSlideshowCanvas();
+  if(currentMediaElement)drawMediaOnCanvas(currentMediaElement,currentMediaFitMode,currentMediaRotation);
 });
-
-// Keyboard controls for manual navigation
-document.addEventListener('keydown', (e) => {
-  if (!isSlideShowActive) return;
-  
-  if (e.key === 'ArrowRight' || e.key === ' ') {
-    e.preventDefault();
-    // Stop any ongoing GeoJSON animation
-    stopGeoJSONAnimation();
-    advanceSlide();
-  } else if (e.key === 'ArrowLeft') {
-    e.preventDefault();
-    // Stop any ongoing GeoJSON animation
-    stopGeoJSONAnimation();
-    // Go to previous slide
-    if (slideshowTimer) {
-      clearTimeout(slideshowTimer);
-      slideshowTimer = null;
-    }
-    if (currentMediaElement instanceof HTMLVideoElement) {
-      currentMediaElement.pause();
-    }
-    currentSlideIndex = currentSlideIndex - 1;
-    if (currentSlideIndex < 0) {
-      currentSlideIndex = slideshowConfig.slides.length - 1;
-    }
-    displaySlide(currentSlideIndex);
-  } else if (e.key === 'Escape') {
-    e.preventDefault();
-    stopSlideshow();
-  }
+map.on('style.load',()=>{
+  const slide=slideshowConfig?.slides[currentSlideIndex];
+  if(isSlideShowActive && ['wms','arcgis'].includes(slide?.type) && !map.getSource(rasterSlides.active))displaySlide(currentSlideIndex);
 });
-
-// Listen for slideshow control messages from controller
-slideshowChannel.addEventListener('message', (event) => {
-  const data = event.data;
-  if (data.type !== 'slideshow_control') return;
-  
-  if (data.action === 'next') {
-    if (!isSlideShowActive) return;
-    stopGeoJSONAnimation();
-    advanceSlide();
-  } else if (data.action === 'previous') {
-    if (!isSlideShowActive) return;
-    stopGeoJSONAnimation();
-    if (slideshowTimer) {
-      clearTimeout(slideshowTimer);
-      slideshowTimer = null;
-    }
-    if (currentMediaElement instanceof HTMLVideoElement) {
-      currentMediaElement.pause();
-    }
-    currentSlideIndex = currentSlideIndex - 1;
-    if (currentSlideIndex < 0) {
-      currentSlideIndex = slideshowConfig.slides.length - 1;
-    }
-    displaySlide(currentSlideIndex);
-  } else if (data.action === 'stop') {
-    stopSlideshow();
-  } else if (data.action === 'request_status') {
-    const slide = slideshowConfig?.slides?.[currentSlideIndex];
-    broadcastSlideshowState(slide);
-  }
+document.addEventListener('keydown',event=>{
+  if(!isSlideShowActive || event.repeat || event.target?.closest?.('input,textarea,select,[contenteditable="true"]'))return;
+  if(event.key==='ArrowRight'){event.preventDefault();navigateSlide(1);}
+  if(event.key==='ArrowLeft'){event.preventDefault();navigateSlide(-1);}
+  if(event.key==='Escape'){event.preventDefault();stopSlideshow();}
+});
+slideshowChannel.addEventListener('message',({data})=>{
+  if(data.type!=='slideshow_control')return;
+  if(data.action==='next')navigateSlide(1);
+  if(data.action==='previous')navigateSlide(-1);
+  if(data.action==='stop')stopSlideshow();
+  if(data.action==='retry' && isSlideShowActive)displaySlide(currentSlideIndex);
+  if(data.action==='request_status')broadcastSlideshowState(isSlideShowActive?slideshowConfig?.slides[currentSlideIndex]:null);
 });

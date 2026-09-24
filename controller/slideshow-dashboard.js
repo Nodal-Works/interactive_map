@@ -65,6 +65,7 @@ function updateSlideshowDashboard() {
     }
     
     const meta = slideshowState.metadata || {};
+    const safe = value => String(value || '').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
     const slideNum = slideshowState.currentIndex + 1;
     const totalSlides = slideshowState.totalSlides;
     
@@ -88,6 +89,8 @@ function updateSlideshowDashboard() {
                         Next <span class="material-icons">chevron_right</span>
                     </button>
                 </div>
+                <p role="status" aria-live="polite">${slideshowState.status === 'loading' ? 'Loading slide…' : slideshowState.status === 'error' ? safe(slideshowState.error) : ''}</p>
+                ${slideshowState.status === 'error' ? '<button id="slideshow-retry-btn" class="modern-btn">Retry</button>' : ''}
                 <div style="text-align: center;">
                     <button id="slideshow-stop-btn" class="modern-btn" style="background: #fef2f2; border-color: #fecaca; color: #dc2626;">
                         <span class="material-icons">stop</span> Stop Slideshow
@@ -112,6 +115,7 @@ function updateSlideshowDashboard() {
         </div>
     `;
     
+    document.getElementById('slideshow-retry-btn')?.addEventListener('click', () => channel.postMessage({type:MSG_TYPES.SLIDESHOW_CONTROL,action:'retry'}));
     // Build legend from slide metadata
     if (meta.legend && meta.legend.items && meta.legend.items.length > 0) {
         // Build reverse color map (color -> property value) for highlighting

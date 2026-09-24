@@ -1782,6 +1782,7 @@ channel.onmessage = (event) => {
             currentIndex: data.currentIndex,
             totalSlides: data.totalSlides,
             metadata: data.metadata,
+            status: data.status, error: data.error,
             slideType: data.slideType
         };
         // Update dashboard if slideshow is the active layer
