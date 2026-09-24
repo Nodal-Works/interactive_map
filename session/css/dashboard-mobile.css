@@ -21,3 +21,29 @@ body[data-layer="sun-study-btn"] #dashboard-section{order:1;padding:12px!importa
 /* The reused Energy Community panel supplies inputs, not mirrored results. */
 body[data-layer="ecom-energy-btn"] #dashboard-section,#ecom-kpis,.ecom-sky-card,.ecom-story{display:none!important}
 body[data-layer="ecom-energy-btn"] #legend-section{order:0}body[data-layer="ecom-energy-btn"] #metadata-section{order:1}
+
+/* Light phone editor, including the shared ECOM controls. */
+:root{color-scheme:light;--ecom-line:#cbd5e1;--ecom-ink:#172b3a;--ecom-action:#dcefe9}
+body{background:#f5f7fa!important;color:#172b3a!important}
+#main-panel,.panel-section,.dashboard-card,#legend-content,#metadata-content{background:#fff!important;color:#172b3a!important;border-color:#cbd5e1!important}
+#main-panel h1,#main-panel h2,#main-panel h3,#main-panel h4,#main-panel label,#main-panel summary{color:#172b3a!important}
+#main-panel input,#main-panel select,#main-panel button,#main-panel textarea{color:#172b3a!important;background:#f1f5f9!important;border-color:#b6c5d3!important}
+#main-panel button:hover{background:#dcefe9!important}
+.ecom-ctl{--ecom-ink:#172b3a;--ecom-line:#cbd5e1;color:#172b3a}
+.ecom-ctl p,.ecom-ctl small{color:#526575!important}
+
+.ecom-ctl-status,.ecom-ctl-group,.ecom-ctl-section,.ecom-ctl-result>div,.ecom-ctl-offline code,.ecom-ctl-story,.ecom-ctl-link{background:#f1f5f9!important;color:#344c60!important;border-color:#cbd5e1!important}
+.ecom-ctl [class*="ecom-ctl-"]{border-color:#cbd5e1}
+.ecom-ctl-head,.ecom-ctl-field,.ecom-ctl-member,.ecom-ctl-param,.ecom-ctl-check,.ecom-ctl-title{color:#172b3a!important}
+.ecom-ctl-status--error,.ecom-ctl-error,.ecom-ctl-offline b{color:#a12e18!important}
+.ecom-ctl-status--ok{color:#086b57!important}.ecom-ctl-status--busy{color:#125b9c!important}
+.ecom-ctl-chip.is-on{background:#dcefe9!important;color:#075b49!important;border-color:#086b57!important}
+
+#main-panel p,#main-panel .ecom-ctl-hint,#main-panel .ecom-ctl-offline{color:#526575!important}
+.ecom-cp,.ecom-busy{background:#edf3f7!important;border-color:#cbd5e1!important;color:#172b3a!important}
+.ecom-cp-name,.ecom-roof.is-on,.ecom-ctl-sub,.ecom-pick,.ecom-ctl-head-icon{color:#172b3a!important}
+.ecom-ctl-group .ecom-ctl-head-icon{color:#086b57!important}
+.ecom-roof,.ecom-roof-area,.ecom-roof-kw,.ecom-when-legend,.ecom-legend-note,.ecom-ctl-param em,.ecom-ctl-member-owner,.ecom-ctl-empty{color:#526575!important}
+.ecom-roof.is-on .ecom-roof-kw,.ecom-roof-tag{color:#665500!important}.ecom-cp-kw{color:#086b57!important}
+.ecom-roofs,.ecom-roof,.ecom-ctl-members,.ecom-ctl-member{border-color:#cbd5e1!important}
+.ecom-roof input[type=range]{accent-color:#857000}

@@ -1449,6 +1449,7 @@ function startStreetLifeAnimation() {
     }
     
     isStreetLifeAnimating = true;
+    window.dispatchEvent(new Event('mr-street-life'));
     streetLifeCanvas.style.display = 'block';
     resizeStreetLifeCanvas();
     
@@ -1488,6 +1489,7 @@ function startStreetLifeAnimation() {
 // Stop animation
 function stopStreetLifeAnimation() {
   isStreetLifeAnimating = false;
+  window.dispatchEvent(new Event('mr-street-life'));
   streetLifeCanvas.style.display = 'none';
   stopSpawning();
   

@@ -10,6 +10,9 @@
   try {identity=JSON.parse(localStorage.getItem(identityKey));}catch{}
   if(!identity?.id||!identity?.resumeKey){identity={id:MR.id(),resumeKey:MR.id()};try{localStorage.setItem(identityKey,JSON.stringify(identity));}catch{}}
   let state=null, connection, layer=MR.LAYERS[0], tab='controls', mapView, frameReady=false, ended=false, sessionReady=false, styleOpen=false;
+  let joining = false, pendingSlot = null, expandedMap = false;
+  let spectatorChosen = false;
+  try{spectatorChosen=sessionStorage.getItem(identityKey+'-spectator')==='yes';}catch{}
   const requests=new Map();
   const controls=new MR_CONTROLS($('phone-controls'),send);
   function notice(text){$('notice').textContent=text;$('notice').hidden=!text;}
@@ -22,26 +25,42 @@
     return connection.send(message);
   }
   function focus(){send({type:'focus',layer:layer.id,tab});}
-  function frame(message){if(frameReady)$('dashboard').contentWindow.postMessage(message,location.origin);}
+  function frame(message){
+    // RPC can start before DOMContentLoaded/dashboard-ready; its caller already exists.
+    if(frameReady||message.type==='rpc-result')$('dashboard').contentWindow?.postMessage(message,location.origin);
+  }
+  function unloadDashboard(){
+    frameReady=false;
+    for(const request of requests.values())clearTimeout(request.timer);
+    requests.clear();$('dashboard').removeAttribute('src');
+  }
   function syncFrame(){
     if(!state)return;
     frame({type:'session-state',state,canEdit:canEdit()});
   }
   function showLayer(next){
+    exitExpandedMap();
     layer=next;$('drawer').hidden=true;$('workspace').hidden=false;
     $('layer-title').textContent=layer.name;$('layer-icon').textContent=layer.icon;
     $('layer-enabled').checked=!!state?.layers[layer.id];$('layer-enabled').disabled=!canEdit();
     $('canvas-controls').hidden=layer.id!=='canvas-btn';
     controls.open(layer);controls.update(state,canEdit());
+    $('map-tab').disabled=!layer.tool;
+    $('map-tab').textContent=layer.tool?'Map':'Map · no inputs';
+    $('map-tab').title=layer.tool?'':'This layer has no map inputs';
+    $('map-tab').setAttribute('aria-label',layer.tool?'Map':'Map — this layer has no map inputs');
     selectTab(layer.id==='canvas-btn'?'map':'controls');
+    window.scrollTo(0,0);
   }
   function selectTab(next){
+    if(next==='map'&&!layer.tool)next='controls';
+    if(next!=='map')exitExpandedMap();
     tab=next;document.body.classList.toggle('map-open',tab==='map');$('controls-tab').setAttribute('aria-selected',String(tab==='controls'));$('map-tab').setAttribute('aria-selected',String(tab==='map'));
     $('controls-view').hidden=tab!=='controls';$('map-view').hidden=tab!=='map';
     const ecom=layer.id==='ecom-energy-btn'&&tab==='controls';
     $('dashboard').hidden=!ecom;$('phone-controls').hidden=ecom||layer.id==='canvas-btn';
     if(ecom&&!$('dashboard').getAttribute('src'))$('dashboard').src=dashboardUrl.href;
-    else if(!ecom&&$('dashboard').getAttribute('src')){frameReady=false;$('dashboard').removeAttribute('src');}
+    else if(!ecom&&$('dashboard').getAttribute('src')){unloadDashboard();}
     if(tab==='map'){
       if(!mapView){
         mapView=new MR_MAP.CompanionMap({element:$('phone-map'),send,identity:()=>({id:identity.id,canEdit:canEdit()&&!!state?.layers[layer.id]})});
@@ -94,8 +113,12 @@
     $('slots').replaceChildren(...state.slots.map((id,index)=>{
       const p=state.participants.find(p=>p.id===id),row=document.createElement('div');row.className='slot';
       const label=document.createElement('span');label.textContent=`${index+1} · ${p?p.avatar+' '+p.name+(!p.online?' · reserved':''):'Available'}`;
-      const button=document.createElement('button');button.textContent=id===identity.id?'Yours':'Join';button.disabled=!!id||!!me?.slot||!connection?.open;button.onclick=()=>send({type:'claim-slot',slot:index+1});row.append(label,button);return row;
+      const button=document.createElement('button');button.textContent=id===identity.id?'Yours':id?'Occupied':'Join';button.disabled=!!id||!!me?.slot||!connection?.open;button.onclick=()=>{pendingSlot=index+1;$('slot-status').textContent='Joining controller '+pendingSlot+'…';saveIdentity();send({type:'claim-slot',slot:pendingSlot});};row.append(label,button);return row;
     }));
+    if(me?.slot && pendingSlot){pendingSlot=null;joining=false;$('profile').close();$('slot-status').textContent='';}
+    if(!me?.slot && !spectatorChosen && !joining){joining=true;profile();}
+    $('spectate').hidden=!!me?.slot;
+    $('release-slot').hidden=!me?.slot;
     $('release-slot').disabled=!me?.slot;syncFrame();controls.update(state,canEdit());if(mapView)mapView.setState(state);updateHint();
     if(state.paused)notice('The host has paused remote editing. You can still explore.');
     else if($('notice').textContent==='The host has paused remote editing. You can still explore.')notice('');
@@ -109,23 +132,43 @@
     }
     $('layer-list').append(title,grid);
   }
-  $('apps').onclick=()=>{frameReady=false;$('dashboard').removeAttribute('src');document.body.classList.remove('map-open');$('workspace').hidden=true;$('drawer').hidden=false;if(mapView)mapView.cancel();send({type:'focus',layer:layer.id,tab:'controls'});};
+  $('apps').onclick=()=>{exitExpandedMap();unloadDashboard();document.body.classList.remove('map-open');$('workspace').hidden=true;$('drawer').hidden=false;if(mapView)mapView.cancel();send({type:'focus',layer:layer.id,tab:'controls'});};
   $('controls-tab').onclick=()=>selectTab('controls');$('map-tab').onclick=()=>selectTab('map');$('start-drawing').onclick=()=>selectTab('map');
   $('layer-enabled').onchange=e=>send({type:'layer',layer:layer.id,enabled:e.target.checked});
   $('tool').onchange=e=>mapView?.setTool(e.target.value);$('color').oninput=e=>{if(mapView)mapView.color=e.target.value;};$('width').onchange=e=>{if(mapView)mapView.width=Number(e.target.value);};
+  function exitExpandedMap(){
+    expandedMap=false;document.body.classList.remove('map-expanded');
+    $('expand-map').textContent='Expand map';$('expand-map').setAttribute('aria-pressed','false');
+    if(document.fullscreenElement===$('map-view'))document.exitFullscreen?.().catch(()=>{});
+    requestAnimationFrame(()=>mapView?.map.resize());
+  }
+  $('expand-map').onclick=async()=>{
+    if(expandedMap){exitExpandedMap();return;}
+    expandedMap=true;document.body.classList.add('map-expanded');
+    $('expand-map').textContent='Exit fullscreen';$('expand-map').setAttribute('aria-pressed','true');
+    try{await $('map-view').requestFullscreen?.();}catch{/* Viewport mode remains available. */}
+    mapView?.map.resize();
+  };
+  document.addEventListener('fullscreenchange',()=>{if(!document.fullscreenElement&&expandedMap)exitExpandedMap();else mapView?.map.resize();});
+  document.addEventListener('keydown',e=>{if(e.key==='Escape'&&expandedMap)exitExpandedMap();});
   $('fit').onclick=()=>mapView?.fit();$('finish').onclick=()=>mapView?.finish();$('cancel').onclick=()=>mapView?.cancel();$('delete').onclick=()=>mapView?.remove();
   $('edit-text').onclick=()=>mapView?.editText();
   $('undo').onclick=()=>send({type:'canvas',operation:'undo'});$('redo').onclick=()=>send({type:'canvas',operation:'redo'});
   $('avatar').replaceChildren(...MR.AVATARS.map(a=>new Option(a,a)));
   function profile(){const me=person();$('name').value=me?.name||'';$('avatar').value=me?.avatar||MR.AVATARS[0];$('profile').showModal();}
   $('profile-button').onclick=profile;$('choose-slot').onclick=profile;
-  $('save-profile').onclick=()=>{send({type:'profile',name:$('name').value.trim(),avatar:$('avatar').value});$('profile').close();};
+  function saveIdentity(){const name=$('name').value.trim();if(name)send({type:'profile',name,avatar:$('avatar').value});}
+  $('save-profile').onclick=()=>{saveIdentity();if(!joining)$('profile').close();else $('slot-status').textContent='Now choose a slot, or continue as a spectator.';};
+  function spectate(){spectatorChosen=true;joining=false;pendingSlot=null;try{sessionStorage.setItem(identityKey+'-spectator','yes');}catch{}$('profile').close();}
+  $('spectate').onclick=()=>{saveIdentity();spectate();};
+  $('profile').addEventListener('cancel',()=>{if(joining)spectate();});
+  $('profile').addEventListener('close',()=>{if(joining)spectate();});
   $('release-slot').onclick=()=>send({type:'release-slot'});
   $('drawing-options').onclick=()=>{styleOpen=!styleOpen;$('drawing-options').setAttribute('aria-expanded',String(styleOpen));updateTools();};
   window.addEventListener('message',({source,origin,data})=>{
     if(source!==$('dashboard').contentWindow||origin!==location.origin)return;
     if(data?.type==='dashboard-ready'){frameReady=true;frame({type:'open-layer',layer:layer.id});syncFrame();}
-    if(data?.type==='dashboard-control')send({type:'control',message:data.message});
+    if(data?.type==='dashboard-control'){if(data.message?.type==='ecom_activate')send({type:'layer',layer:'ecom-energy-btn',enabled:true});else send({type:'control',message:data.message});}
     if(data?.type==='dashboard-rpc'){
       const requestId=MR.id();requests.set(requestId,{frameId:data.requestId,timer:setTimeout(()=>{frame({type:'rpc-result',requestId:data.requestId,error:'Host request timed out'});requests.delete(requestId);},185000)});
       if(!send({...data,type:'rpc',requestId})){const req=requests.get(requestId);clearTimeout(req.timer);requests.delete(requestId);frame({type:'rpc-result',requestId:data.requestId,error:'Host disconnected'});}
@@ -138,7 +181,7 @@
     if(message.type==='identity'){identity.id=message.personId;render();}
     if(message.type==='objects'&&state){state.objects=message.objects;if(mapView)mapView.setState(state);}
     if(message.type==='rejected'||message.type==='ended'){ended=true;notice(message.text);$('connection').textContent='Session unavailable';connection?.stop();}
-    if(message.type==='error'){render();notice(message.text);}
+    if(message.type==='error'){if(pendingSlot){pendingSlot=null;$('slot-status').textContent=message.text;}render();notice(message.text);}
     if(message.type==='rpc-result'||message.type==='error'&&message.requestId){
       const req=requests.get(message.requestId);if(req){clearTimeout(req.timer);requests.delete(message.requestId);frame({...message,type:'rpc-result',requestId:req.frameId,error:message.type==='error'?message.text:undefined});}
     }

@@ -2493,6 +2493,10 @@
             // answering at all, versus a backend that answers but predates the
             // endpoint. Saying "no backend" for the second sends someone off to
             // start a server that is already running.
+            if (window.MR_REMOTE_FETCH) {
+                host.innerHTML='<div class="ecom-ctl-offline"><b>Energy controls are unavailable.</b><p>Ask the host to check the energy service, then try again.</p><button type="button" class="ecom-ctl-btn" data-action="retry">Try again</button></div>';
+                return;
+            }
             host.innerHTML = state.stale
                 ? '<div class="ecom-ctl-offline">' +
                       '<b>The backend is out of date.</b>' +

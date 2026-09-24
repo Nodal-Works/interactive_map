@@ -157,13 +157,21 @@
     let batteryHosts = {};
     let isLoaded = false;
     let isActive = false;
+    let desiredActive = false, activationRevision = 0, activationPromise = null;
     let previousBasemap = null;
     let currentHour = 0;
 
     // ---------------------------------------------------------------- data
 
-    async function loadData() {
-        if (isLoaded) return true;
+    let dataPromise = null, dataRevision = 0;
+    function loadData() {
+        if (isLoaded) return Promise.resolve(true);
+        if (!dataPromise) dataPromise = loadExport().finally(() => { dataPromise = null; });
+        return dataPromise;
+    }
+
+    async function loadExport() {
+        const revision = dataRevision;
 
         try {
             // no-store, because these three are regenerated whenever the
@@ -185,6 +193,7 @@
                 }
             });
             const parsed = await Promise.all(responses.map(function (r) { return r.json(); }));
+            if (revision !== dataRevision) return isLoaded;
             layerData = parsed[0];
             nodeData = parsed[1];
             flowData = parsed[2];
@@ -2973,6 +2982,7 @@
 
     function applyLayer(layer) {
         if (!layer || !layer.buildings || !layer.nodes || !layer.flows) return;
+        dataRevision++;
         layerKpis = layer.kpis || null;
         layerHours = (layer.meta && layer.meta.hours) || null;
 
@@ -3186,9 +3196,10 @@
         }
     }
 
-    async function activate() {
+    async function activate(revision) {
         const ok = await loadData();
-        if (!ok) return;
+        if (revision !== activationRevision || !desiredActive) return;
+        if (!ok) throw new Error("ECOM data could not load. Please try again.");
 
         try {
             addLayers();
@@ -3265,13 +3276,30 @@
         });
     }
 
-    async function toggle() {
-        if (isActive) {
-            deactivate();
-        } else {
-            await activate();
+    function setEnabled(enabled) {
+        if (typeof enabled !== 'boolean') return Promise.reject(new Error('Invalid ECOM state'));
+        if (desiredActive === enabled && (activationPromise || isActive === enabled)) {
+            return activationPromise || Promise.resolve();
         }
+        desiredActive = enabled;
+        const revision = ++activationRevision;
+        if (!enabled) {
+            activationPromise = null;
+            deactivate();
+            return Promise.resolve();
+        }
+        activationPromise = activate(revision).catch(error => {
+            if (revision !== activationRevision) return;
+            desiredActive = false;
+            deactivate();
+            throw error;
+        }).finally(() => {
+            if (revision === activationRevision) activationPromise = null;
+        });
+        return activationPromise;
     }
+
+    function toggle() { return setEnabled(!desiredActive); }
 
     function buildSummary() {
         if (!layerData) return null;
@@ -3399,7 +3427,7 @@
         // front of them had no way to do it, and the first step captioned a
         // table that was still showing bare streets.
         if (data.type === 'ecom_activate') {
-            if (!isActive) activate().catch(function (error) {
+            setEnabled(true).catch(function (error) {
                 console.error('ECOM: activation failed', error);
                 if (typeof showToast === 'function') showToast('ECOM layer failed - see console');
                 syncButton();
@@ -3463,8 +3491,9 @@
     });
 
     window.ecomEnergyLayer = {
-        activate: activate,
-        deactivate: deactivate,
+        setEnabled: setEnabled,
+        activate: () => setEnabled(true),
+        deactivate: () => setEnabled(false),
         toggle: toggle,
         setHour: setHour,
         applyLayer: applyLayer,

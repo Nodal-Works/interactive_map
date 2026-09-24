@@ -171,12 +171,12 @@
       if (typeof message.actionId !== 'string' || message.actionId.length > 80) throw Error('Missing action ID');
       const key=person.id+':'+message.actionId;
       if (seen.has(key)) {person.send({type:'ack',actionId:message.actionId});return;}
-      if (message.type === 'layer') {resultActors.set(message.layer,person);adapter.setLayer(message.layer,message.enabled);}
+      if (message.type === 'layer') {resultActors.set(message.layer,person);await adapter.setLayer(message.layer,message.enabled);}
       else if (message.type === 'control') {
         resultActors.set(message.message?.type?.split('_')[0],person);
         if(message.message?.type==='ecom_ui_state')modelRevision++;
         if(message.message?.type==='ecom_layer'&&message.message.layer?._mrModelRevision!==modelRevision)throw Error('A newer community edit replaced this result');
-        adapter.control(message.message);
+        await adapter.control(message.message);
       }
       else if (message.type === 'gesture') {
         resultActors.set(message.layer==='thermal-comfort-btn'?'thermal':message.layer==='epc-btn'?'epc':message.layer==='ecom-energy-btn'?'ecom':'isovist',person);
@@ -231,7 +231,7 @@
     for(const p of people.values()) {p.send({type:'ended',text:'The host ended this session.'});setTimeout(()=>p.connection?.close(),150);}
     peer?.destroy(); invite='';publish();
   }
-  admin.onmessage=({data})=>{
+  admin.onmessage=async ({data})=>{
     if(data?.type==='admin-request'){admin.postMessage(summary());return;}
     if(data?.type!=='admin-command')return;
     if(data.action==='release')release(data.personId);
@@ -239,7 +239,7 @@
     if(data.action==='end')end();
     if(data.action==='start' && endedAt)location.reload();
     if(data.action==='canvas')try{canvas(hostActor,data.command);}catch(e){admin.postMessage({type:'notice',text:e.message});}
-    if(data.action==='layer')adapter.setLayer(data.layer,!!data.enabled);
+    if(data.action==='layer')try {await adapter.setLayer(data.layer,!!data.enabled);publish();} catch(error) {admin.postMessage({type:'notice',text:error.message});}
     if(data.action==='canvas-tool')window.dispatchEvent(new CustomEvent('mr-canvas-tool',{detail:{tool:data.tool,color:data.color,width:data.width}}));
   };
   window.MR_SESSION={canvas:command=>canvas(hostActor,command),getObjects:()=>objects,getState:snapshot,publish,hostActor};

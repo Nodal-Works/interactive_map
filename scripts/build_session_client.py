@@ -32,8 +32,9 @@ def build():
                      'media/ecom/ecom-buildings.geojson'):
         copy(relative)
     controller = (ROOT / 'controller.html').read_text()
-    controller = re.sub(r'\s*<script src="(?:controller/manual-calibration|session/js/desktop|session/runtime)\.js"></script>', '', controller)
+    controller = re.sub(r'\s*<script src="(?:controller/manual-calibration|session/js/desktop|session/runtime)\.js(?:\?[^"]*)?"></script>', '', controller)
     controller = re.sub(r'<button[^>]*data-target="calibrate-btn".*?</button>', '', controller, flags=re.S)
+    assert not re.search(r'<script[^>]+(?:session/js/desktop|session/runtime|controller/manual-calibration)\.js', controller), 'Host-only script leaked into phone HTML'
     (OUT / 'controller.html').write_text(version_assets(controller))
     client = (ROOT / 'session/client.html').read_text().replace('href="css/', 'href="session/css/').replace('src="js/', 'src="session/js/')
     (OUT / 'client.html').write_text(version_assets(client))

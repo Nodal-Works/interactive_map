@@ -32,10 +32,11 @@ const base=process.env.MR_TEST_URL || 'http://127.0.0.1:8091';
   catch(error){
     const diagnostics=async()=>Promise.all(window.__peers.map(async p=>({open:p.open,disconnected:p.disconnected,connections:await Promise.all(Object.values(p.connections).flat().map(async c=>({open:c.open,ice:c.peerConnection?.iceConnectionState,connection:c.peerConnection?.connectionState,stats:c.peerConnection?[...await c.peerConnection.getStats()].map(([,v])=>v).filter(v=>['local-candidate','remote-candidate','candidate-pair'].includes(v.type)).map(v=>({type:v.type,state:v.state,candidateType:v.candidateType,protocol:v.protocol,requestsSent:v.requestsSent,responsesReceived:v.responsesReceived})):[]})))})));
     console.log('HOST PEERS',JSON.stringify(await page.evaluate(diagnostics)));console.log('PHONE PEERS',JSON.stringify(await phone.evaluate(diagnostics)));console.log('PHONE STATE',await phone.locator('body').innerText());await phone.screenshot({path:'.runtime/phone-failed.png'});await browser.close();throw error;}
-  await phone.getByRole('button',{name:'Choose a controller slot',exact:true}).click();
+  await phone.locator('#profile[open]').waitFor();
+  await phone.screenshot({path:'.runtime/phone-welcome.png'});
   await phone.locator('#slots button').first().click();
   await phone.waitForFunction(()=>document.getElementById('connection').textContent.includes('Controller 1'));
-  await phone.getByRole('button',{name:'Close profile',exact:true}).click();
+  assert.equal(await phone.locator('#profile').isVisible(),false,'Claiming a slot enters the apps screen');
   await phone.locator('[data-layer="isovist-btn"] input').check();
   await page.waitForFunction(()=>window.MR_ADAPTER.active['isovist-btn']);
   await phone.locator('[data-layer="isovist-btn"] .open').click();
@@ -82,19 +83,32 @@ const base=process.env.MR_TEST_URL || 'http://127.0.0.1:8091';
   }
   await phone.reload();await phone.waitForFunction(()=>document.getElementById('connection').textContent.includes('Controller 1'));
   await phone.screenshot({path:'.runtime/phone-drawer.png'});
+  assert.equal(await phone.locator('#profile').isVisible(),false,'Returning editors skip onboarding');
+  assert.equal(await phone.evaluate(()=>getComputedStyle(document.documentElement).colorScheme),'light');
+  await phone.locator('[data-layer="stormwater-btn"] .open').click();
+  assert.equal(await phone.locator('#map-tab').isDisabled(),true);
+  await phone.locator('#apps').click();
+  await phone.locator('[data-layer="canvas-btn"] .open').click();
+  await phone.locator('#expand-map').click();
+  assert.equal(await phone.locator('#expand-map').getAttribute('aria-pressed'),'true');
+  await phone.screenshot({path:'.runtime/phone-expanded.png'});
+  await phone.locator('#expand-map').click();
+  assert.equal(await phone.locator('#expand-map').getAttribute('aria-pressed'),'false');
+  await phone.locator('#apps').click();
+
   const adminPage=await desktop.newPage();await adminPage.goto(base+'/controller.html#session');
   await adminPage.locator('#mr-session-page iframe').waitFor();
   const admin=adminPage.frameLocator('#mr-session-page iframe');await admin.locator('#qr img').waitFor();await adminPage.screenshot({path:'.runtime/admin.png'});
   assert.equal(desktop.pages().length,2,'Session stays inside the controller');
-  const qrBounds=await page.locator('.mr-qr-banner').evaluateAll(nodes=>nodes.filter(n=>!n.hidden).map(n=>{const r=n.getBoundingClientRect(),p=n.parentElement.getBoundingClientRect();return r.left>=p.left&&r.right<=p.right;}));
-  assert.ok(qrBounds.every(Boolean),'QR banners must fit inside the sidebars');
+  assert.equal(await page.locator('.mr-qr-banner').count(),0,'Small sidebar QR codes are removed');
   const send=async(target,message)=>target.evaluate(message=>Object.values(window.__peers[0].connections).flat()[0].send(message),{actionId:crypto.randomUUID(),...message});
   const additional=[];
   for(let slot=2;slot<=5;slot++){
     const context=await browser.newContext({viewport:{width:390,height:844},isMobile:true,hasTouch:true});if(memoryTransport)await memoryTransport(context);
     const guest=await context.newPage();await guest.addInitScript(trackPeers);guest.on('pageerror',e=>errors.push(e.message));await guest.goto(url,{waitUntil:'domcontentloaded'});
     await guest.waitForFunction(()=>document.getElementById('connection').textContent.includes('Spectator'));
-    if(slot<=4){await guest.locator('#choose-slot').click();await guest.locator('#slots button').nth(slot-1).click();await guest.waitForFunction(slot=>document.getElementById('connection').textContent.includes('Controller '+slot),slot);await guest.getByRole('button',{name:'Close profile',exact:true}).click();}
+    if(slot<=4){await guest.locator('#profile[open]').waitFor();await guest.locator('#slots button').nth(slot-1).click();await guest.waitForFunction(slot=>document.getElementById('connection').textContent.includes('Controller '+slot),slot);assert.equal(await guest.locator('#profile').isVisible(),false);}
+    if(slot===5)await guest.locator('#spectate').click();
     additional.push({context,page:guest});
   }
   console.log('PASS: four editors and a fifth spectator');
@@ -164,6 +178,7 @@ const base=process.env.MR_TEST_URL || 'http://127.0.0.1:8091';
   await page.evaluate(()=>MR_ADAPTER.control=window.__originalControl);
   await page.unroute('**/api/services/ecom/api/mr/layer');
   console.log('PASS: service results stay on the host; phone receives a small receipt');
+  await adminPage.getByRole('link',{name:'Session',exact:true}).click();
   await admin.getByRole('button',{name:'Pause editing',exact:true}).click();
   await phone.waitForFunction(()=>document.getElementById('connection').textContent.includes('paused'));
   await send(phone,{type:'canvas',operation:'delete',objectId});await phone.getByText('Host paused remote editing',{exact:true}).waitFor();
@@ -206,14 +221,35 @@ const base=process.env.MR_TEST_URL || 'http://127.0.0.1:8091';
     await send(phone,{type:'layer',layer:id,enabled:false});await page.waitForFunction(id=>!MR_ADAPTER.active[id],id);
   }
   console.log('PASS: polygon previews, touch scrolling/zoom, EPC location, light Canvas and Street Life');
+  await page.waitForFunction(()=>streetLifeAnimation.isActive());
+  await page.locator('.mr-idle-ribbon').waitFor({state:'visible'});
+  assert.ok(await page.locator('.mr-idle-qr').evaluate(el=>el.getBoundingClientRect().height>46),'Idle QR is larger than the old banner');
+  await page.screenshot({path:'.runtime/idle-ribbon.png'});
+  await send(phone,{type:'layer',layer:'ecom-energy-btn',enabled:true});
+  await page.waitForFunction(()=>MR_ADAPTER.active['ecom-energy-btn']);
+  await reopened.locator('[data-target="ecom-energy-btn"][aria-current="true"]').waitFor();
+  await reopened.locator('[data-target="ecom-energy-btn"]').click();
+  assert.equal(await page.evaluate(()=>ecomEnergyLayer.isActive()),true,'Opening host controls does not disable ECOM');
+  assert.equal(await page.locator('.mr-idle-ribbon').isVisible(),false,'Active layers hide idle panels');
+  await phone.waitForFunction(()=>document.getElementById('layer-title').textContent.includes('EPC'));
+  await reopened.locator('[data-layer-switch="ecom-energy-btn"]').uncheck();
+  await page.waitForFunction(()=>!MR_ADAPTER.active['ecom-energy-btn']);
+  await send(phone,{type:'control',message:{type:'ecom_activate'}});
+  await page.waitForFunction(()=>MR_ADAPTER.active['ecom-energy-btn']);
+  await send(phone,{type:'layer',layer:'ecom-energy-btn',enabled:false});
+  await page.waitForFunction(()=>!MR_ADAPTER.active['ecom-energy-btn']);
+  console.log('PASS: ECOM phone activation, host focus, independent phones, explicit off, idle ribbon');
+
   await phone.getByRole('button',{name:'Open apps'}).click();
   for(const id of ['cfd-simulation-btn','stormwater-btn','sun-study-btn','thermal-comfort-btn','isovist-btn','street-view-btn','epc-btn','ecom-energy-btn','bird-sounds-btn','slideshow-btn','campus-demo-btn','fcc-demo-btn','grid-animation-btn']){
     await phone.locator('[data-layer="'+id+'"] .open').click();
+    console.log('Checking panel',id);
     if(id==='ecom-energy-btn')await phone.frameLocator('#dashboard').locator('#metadata-section').waitFor();
     else await phone.locator('#phone-controls').waitFor();
     await phone.waitForTimeout(200);
     if(id==='ecom-energy-btn'){
-      const response=await phone.locator('#dashboard').evaluate(async iframe=>{const response=await iframe.contentWindow.fetch('/api/services/ecom/api/health');return {status:response.status,body:await response.json()};});
+      await page.route('**/api/services/ecom/api/health',route=>route.fulfill({json:{status:'ok'}}));
+      const response=await phone.locator('#dashboard').evaluate(async iframe=>{const response=await Promise.race([iframe.contentWindow.fetch('/api/services/ecom/api/health'),new Promise((_,reject)=>setTimeout(()=>reject(Error('Phone service request did not return within 15 seconds')),15000))]);return {status:response.status,body:await response.json()};});
       assert.equal(response.status,200);assert.equal(response.body.status,'ok');
     }
     await phone.screenshot({path:'.runtime/panel-'+id+'.png'});

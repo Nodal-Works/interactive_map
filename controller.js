@@ -135,7 +135,8 @@ function isAnimationButton(targetId) {
 }
 
 // Called when we receive actual state from the main window
-function setAnimationState(targetId, isActive) {
+function setAnimationState(targetId, isActive, follow = true) {
+    const newlyActive = isActive && !activeAnimations.includes(targetId);
     if (isActive) {
         if (!activeAnimations.includes(targetId)) {
             activeAnimations.push(targetId);
@@ -157,6 +158,9 @@ function setAnimationState(targetId, isActive) {
         }
     }
     syncAnimationButtonStates();
+    const toggle = document.querySelector(`[data-layer-switch="${targetId}"]`);
+    if (toggle) toggle.checked = isActive;
+    if (follow && newlyActive && !new URLSearchParams(location.search).has('sessionController')) openHostLayer(targetId);
 }
 
 function syncAnimationButtonStates() {
@@ -198,8 +202,7 @@ statusText.textContent = 'Connected';
 // Function to show welcome screen
 function showWelcome() {
     welcomeScreen.classList.remove('hidden');
-    // Clear all animation tracking and sync button states
-    activeAnimations = [];
+    // Home changes navigation only; retain authoritative layer state.
     syncAnimationButtonStates();
     // Also clear function button selections
     document.querySelectorAll('.control-btn.function-btn').forEach(b => b.classList.remove('selected'));
@@ -216,13 +219,35 @@ headerTitle.addEventListener('click', showWelcome);
 // Home button
 document.getElementById('home-btn').addEventListener('click', showWelcome);
 
+function openHostLayer(targetId) {
+    document.querySelectorAll('.control-btn[data-target]').forEach(button=>button.setAttribute('aria-current',String(button.dataset.target===targetId)));
+    if (location.hash === '#session') { history.replaceState(null, '', location.pathname + location.search); window.dispatchEvent(new Event('hashchange')); }
+    stopTour();
+    updateMetadata(targetId);
+    updateDashboard(targetId);
+}
+
 // Handle button clicks
 document.querySelectorAll('.control-btn[data-target]').forEach(btn => {
+    if (isAnimationButton(btn.dataset.target) && !new URLSearchParams(location.search).has('sessionController')) {
+        const row = document.createElement('div'); row.className = 'host-layer-row';
+        btn.before(row); row.append(btn);
+        const toggle = document.createElement('input'); toggle.type = 'checkbox';
+        toggle.dataset.layerSwitch = btn.dataset.target;
+        toggle.setAttribute('aria-label', 'Enable ' + (btn.title || btn.textContent.trim()));
+        toggle.onchange = () => {
+            const admin = new BroadcastChannel('mr_session_admin');
+            admin.postMessage({type:'admin-command',action:'layer',layer:btn.dataset.target,enabled:toggle.checked});admin.close();
+        };
+        row.append(toggle);
+    }
     btn.addEventListener('click', () => {
         stopTour();
         const targetId = btn.dataset.target;
         const action = btn.dataset.action;
         
+        if (isAnimationButton(targetId)) { openHostLayer(targetId); return; }
+
         // Send message to main window - the main window will respond with actual state
         channel.postMessage({
             type: MSG_TYPES.CONTROL_ACTION,

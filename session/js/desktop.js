@@ -7,10 +7,20 @@
   const close=document.createElement('button');close.className='close';close.textContent='Close';close.onclick=()=>dialog.close();
   const title=document.createElement('h2');title.textContent='Apps';const grid=document.createElement('div');grid.className='mr-app-grid';
   dialog.append(close,title,grid);document.body.append(dialog);
-  for(const layer of MR.LAYERS){const button=document.createElement('button');button.textContent=layer.icon+' '+layer.name;button.dataset.layer=layer.id;
-    button.onclick=()=>{const enabled=!state?.layers[layer.id];if(main){MR_ADAPTER.setLayer(layer.id,enabled);MR_SESSION.publish();if(layer.id==='canvas-btn'&&enabled)showDrawing();}
-      else {command('layer',{layer:layer.id,enabled});if(layer.id==='canvas-btn')command('canvas-tool',{tool:enabled?'pen':'off'});else {updateMetadata(layer.id);updateDashboard(layer.id);}}
-    };grid.append(button);}
+  for(const layer of MR.LAYERS){
+    const row=document.createElement('div');row.className='mr-app-row';row.dataset.layer=layer.id;
+    const button=document.createElement('button');button.textContent=layer.icon+' '+layer.name;
+    button.onclick=()=>{if(main){window.open('controller.html#layer='+encodeURIComponent(layer.id),'ACE_Controller');command('open-layer',{layer:layer.id});}else if(layer.id==='canvas-btn')showCanvasDashboard();else openHostLayer(layer.id);dialog.close();};
+    const toggle=document.createElement('input');toggle.type='checkbox';toggle.setAttribute('aria-label','Enable '+layer.name);
+    toggle.onchange=async()=>{try{if(main){await MR_ADAPTER.setLayer(layer.id,toggle.checked);MR_SESSION.publish();if(layer.id==='canvas-btn'&&toggle.checked)showDrawing();}else command('layer',{layer:layer.id,enabled:toggle.checked});}catch(error){toggle.checked=!!state?.layers[layer.id];alert(error.message);}};
+    row.append(button,toggle);grid.append(row);
+  }
+  channel.addEventListener('message',({data})=>{
+    if(!main&&data?.type==='admin-command'&&data.action==='open-layer'){
+      if(data.layer==='canvas-btn')showCanvasDashboard();else if(MR.LAYERS.some(l=>l.id===data.layer))openHostLayer(data.layer);
+    }
+    if(!main&&data?.type==='notice')alert(data.text);
+  });
   const apps=document.createElement('button');apps.textContent='▦ Apps';apps.title='Open app drawer';apps.onclick=()=>dialog.showModal();
   const canvas=document.createElement('button');canvas.textContent='✎ Canvas';canvas.id=main?'canvas-btn':'canvas-dashboard-btn';canvas.title='Draw on the map';canvas.onclick=()=>{
     if(main){MR_ADAPTER.setLayer('canvas-btn',true);MR_SESSION.publish();showDrawing();}
@@ -31,13 +41,23 @@
     document.querySelectorAll('.control-btn').forEach(button=>button.addEventListener('click',leaveSession,true));
     apps.addEventListener('click',leaveSession);canvas.addEventListener('click',leaveSession);
     admin.addEventListener('click',()=>{if(location.hash==='#session')showSession();});
-    window.addEventListener('hashchange',showSession);showSession();
+    const showLinkedLayer=()=>{
+      if(!location.hash.startsWith('#layer='))return;
+      const id=decodeURIComponent(location.hash.slice(7));
+      if(!MR.LAYERS.some(layer=>layer.id===id))return;
+      if(id==='canvas-btn')showCanvasDashboard();else openHostLayer(id);
+    };
+    window.addEventListener('hashchange',()=>{showSession();showLinkedLayer();});showSession();showLinkedLayer();
   }
   const strip=document.createElement('div');strip.className='mr-session-strip';const bubbles=document.createElement('div');strip.append(bubbles,apps,canvas,admin);
   if(main){strip.style.cssText='position:fixed;bottom:10px;left:70px;z-index:1001';document.body.append(strip);}
   else document.querySelector('header')?.append(strip);
-  function update(next){state=next;bubbles.replaceChildren();for(const p of next.participants.slice(0,8)){const b=document.createElement('span');b.className='bubble'+(p.online?'':' offline');b.style.setProperty('--color',p.color);b.textContent=p.avatar;b.title=p.name+(p.slot?' · Controller '+p.slot:' · Spectator');bubbles.append(b);}if(next.participants.length>8)bubbles.append('+'+(next.participants.length-8));
-    for(const b of grid.children)b.classList.toggle('active',!!state.layers[b.dataset.layer]);
+  function update(next){const previous=state;const canvasActivated=!!state&&next.layers['canvas-btn']&&!state.layers['canvas-btn'];state=next;if(!main&&canvasActivated)showCanvasDashboard();bubbles.replaceChildren();for(const p of next.participants.slice(0,8)){const b=document.createElement('span');b.className='bubble'+(p.online?'':' offline');b.style.setProperty('--color',p.color);b.textContent=p.avatar;b.title=p.name+(p.slot?' · Controller '+p.slot:' · Spectator');bubbles.append(b);}if(next.participants.length>8)bubbles.append('+'+(next.participants.length-8));
+    for(const b of grid.children){b.classList.toggle('active',!!state.layers[b.dataset.layer]);b.querySelector('input').checked=!!state.layers[b.dataset.layer];}
+    if(!main)for(const layer of MR.LAYERS){
+      if(layer.id==='canvas-btn')continue;
+      if(previous?previous.layers[layer.id]!==next.layers[layer.id]:next.layers[layer.id])setAnimationState(layer.id,!!next.layers[layer.id],!!previous);
+    }
     renderCanvasObjects();
   }
   function renderCanvasObjects(){
@@ -46,6 +66,7 @@
   }
   function showCanvasDashboard(){
     if(main)return;
+    if(location.hash==='#session'){history.replaceState(null,'',location.pathname+location.search);window.dispatchEvent(new Event('hashchange'));}
     setSunStudyLayout(false);document.getElementById('welcome-screen').classList.add('hidden');
     document.getElementById('dashboard-title').textContent='Canvas';document.getElementById('legend-title').textContent='Shared annotations';
     document.getElementById('legend-content').innerHTML='<p>Draw on the main map with the mouse. Canvas stays above every active layer.</p><div id="mr-canvas-objects"></div>';
@@ -75,18 +96,29 @@
   const pointers=new Map();window.addEventListener('mr-pointer',({detail:p})=>{
     let marker=pointers.get(p.id);if(!marker){marker=document.createElement('div');marker.className='mr-pointer';document.body.append(marker);pointers.set(p.id,marker);}marker.style.setProperty('--pointer-color',p.color);marker.textContent=p.name;const c=view.project(p.coordinate);marker.style.left=c.x+'px';marker.style.top=c.y+'px';marker.hidden=false;clearTimeout(marker.timer);marker.timer=setTimeout(()=>marker.hidden=true,2500);
   });
+  let inviteUrl='', ribbonCm=5;
+  try{ribbonCm=Math.min(10,Math.max(5,Number(localStorage.getItem('mr-ribbon-cm'))||5));}catch{}
+  const ribbon=document.createElement('div');ribbon.className='mr-idle-ribbon';ribbon.hidden=true;
+  const label=document.createElement('div');label.className='mr-idle-label';label.textContent='Street Life';
+  const join=document.createElement('div');join.className='mr-idle-join';
+  const caption=document.createElement('span');caption.textContent='Scan to join';
+  const qr=document.createElement('div');qr.className='mr-idle-qr';join.append(caption,qr);ribbon.append(label,join);document.body.append(ribbon);
+  const setting=document.createElement('label');setting.className='mr-ribbon-setting';setting.textContent='Bottom ribbon height (cm) ';
+  const height=document.createElement('input');height.type='number';height.min='5';height.max='10';height.step='0.5';height.value=ribbonCm;
+  setting.append(height);dialog.append(setting);
+  height.onchange=()=>{ribbonCm=Math.min(10,Math.max(5,Number(height.value)||5));height.value=ribbonCm;try{localStorage.setItem('mr-ribbon-cm',ribbonCm);}catch{}placeRibbon();};
+  function placeRibbon(){
+    const session=window.MR_SESSION?.getState();
+    ribbon.hidden=!inviteUrl||!!session?.endedAt||!window.streetLifeAnimation?.isActive()||Object.values(session?.layers||{}).some(Boolean);
+    if(ribbon.hidden)return;
+    const t=MR_ADAPTER.table(),rect=map.getContainer().getBoundingClientRect(),h=t.height*ribbonCm/t.heightCm;
+    ribbon.style.cssText=`left:${t.left+rect.left}px;top:${t.top+rect.top+t.height-h}px;width:${t.width}px;height:${h}px;--ribbon-size:${h}px`;
+  }
   window.addEventListener('mr-invite',({detail:url})=>{
-    if(typeof QRCode==='undefined')return;
-    for(const id of ['left-sidebar','right-sidebar']){
-      const sidebar=document.getElementById(id),banner=document.createElement('div');banner.className='mr-qr-banner';banner.title='Join session — click for a larger QR';banner.role='button';banner.tabIndex=0;
-      banner.onclick=()=>window.open('controller.html#session','ACE_Controller');banner.onkeydown=e=>{if(e.key==='Enter')banner.click();};sidebar?.append(banner);new QRCode(banner,{text:url,width:180,height:180,correctLevel:QRCode.CorrectLevel.L,colorDark:'#151515',colorLight:'#909090'});
-      const place=()=>{
-        const occupied=[...sidebar.querySelectorAll('.icon-btn,.sidebar-logo')].map(el=>el.getBoundingClientRect()).filter(r=>r.height>0).map(r=>[r.top-5,r.bottom+5]);
-        const title=sidebar.querySelector('.sidebar-title');if(title){const range=document.createRange();range.selectNodeContents(title);const r=range.getBoundingClientRect();occupied.push([r.top-8,r.bottom+8]);}
-        occupied.push([innerHeight,innerHeight]);occupied.sort((a,b)=>a[0]-b[0]);let end=8,best=null;
-        for(const[start,stop]of occupied){if(start-end>=58&&(!best||start-end>best[1]-best[0]))best=[end,start];end=Math.max(end,stop);}
-        banner.hidden=!best;if(best){banner.style.bottom='auto';banner.style.top=((best[0]+best[1])/2-26)+'px';}
-      };place();window.addEventListener('resize',place);
-    }
+    inviteUrl=url;qr.replaceChildren();
+    if(url&&typeof QRCode!=='undefined')new QRCode(qr,{text:url,width:512,height:512,correctLevel:QRCode.CorrectLevel.L,colorDark:'#000000',colorLight:'#ffffff'});
+    placeRibbon();
   });
+  for(const event of ['mr-session-state','mr-transform','mr-street-life','resize'])window.addEventListener(event,placeRibbon);
+  map.on('move',placeRibbon);
 })();

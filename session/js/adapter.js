@@ -33,6 +33,7 @@
     return map.unproject([t.left + message.x * t.width, t.top + message.y * t.height]).toArray();
   }
   function control(message) {
+    if (message?.type === 'ecom_activate') return setLayer('ecom-energy-btn', true);
     if (!MR.validControl(message)) throw Error('Control is not available remotely');
     channel.postMessage({...message, sessionAction: true});
     // BroadcastChannel deliberately does not deliver to its sending object.
@@ -40,6 +41,10 @@
   }
   function setLayer(layer, enabled) {
     if (!(layer in active) || typeof enabled !== 'boolean') throw Error('Unknown layer');
+    if (layer === 'ecom-energy-btn') {
+      if (!window.ecomEnergyLayer) throw Error('ECOM is still starting. Please try again.');
+      return window.ecomEnergyLayer.setEnabled(enabled);
+    }
     if (layer === 'canvas-btn') {
       if(enabled && !active[layer]) { canvasBasemap=window.getBasemap();window.setBasemap('osmLight'); }
       if(!enabled && active[layer] && window.getBasemap()==='osmLight' && canvasBasemap)window.setBasemap(canvasBasemap);

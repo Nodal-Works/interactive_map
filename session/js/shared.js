@@ -1,6 +1,6 @@
 (function(root) {
   'use strict';
-  const RELEASE = '20260924-session-4';
+  const RELEASE = '20260924-session-5';
   const LAYERS = [
     ['cfd-simulation-btn', 'Wind · CFD', 'Environment', '🌬', 'obstacle'],
     ['stormwater-btn', 'Stormwater', 'Environment', '💧'],
@@ -27,7 +27,7 @@
     campus_demo_control: 'autoplay next previous stop',
     fcc_demo_control: 'play pause seek set_speed set_video_duration toggle'
   };
-  const ECOM = new Set('ecom_ui_state ecom_ping ecom_request_summary ecom_hour ecom_release ecom_layer ecom_filters ecom_caption ecom_uniform ecom_flows ecom_sound ecom_sound_request ecom_change ecom_change_result ecom_audio_request ecom_vehicles_request'.split(' '));
+  const ECOM = new Set('ecom_activate ecom_ui_state ecom_ping ecom_request_summary ecom_hour ecom_release ecom_layer ecom_filters ecom_caption ecom_uniform ecom_flows ecom_sound ecom_sound_request ecom_change ecom_change_result ecom_audio_request ecom_vehicles_request'.split(' '));
   const AVATARS = ['🦊','🐙','🦉','🐸','🐢','🐧','🦋','🦄'];
   const COLORS = ['#38bdf8','#fb923c','#c084fc','#4ade80','#fb7185','#facc15'];
   function id() { return crypto.randomUUID().replaceAll('-', ''); }

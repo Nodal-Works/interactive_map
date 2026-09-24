@@ -43,22 +43,30 @@ The public phone interface is:
 
 https://nodal-works.github.io/interactive_map/client.html
 
-Scan the host panel's QR to include the current invitation. The small banner
-QR shortcuts appear where there is enough unused space and open the larger host
-QR when clicked. GitHub Pages hosts the interface; computations, API credentials,
+Scan the host panel's QR to include the current invitation. During idle Street Life,
+a larger QR appears at the bottom right of the calibrated table, with the Street Life
+label at bottom left. Apps on the main display includes a local bottom-ribbon height
+setting (5–10 cm; default 5 cm). The ribbon hides while layers are active or the
+session has ended. Confirm scan reliability on the physical projected table. GitHub Pages hosts the interface; computations, API credentials,
 and session logs stay on the host computer.
 
-Choose one of four controller slots. Extra participants are spectators. Each
+The welcome dialog presents four controller slots and an explicit spectator option.
+Choose an available slot; the Apps screen opens once the host confirms your claim.
+Returning editors retain their slot and skip the welcome dialog. Extra participants are spectators. Each
 phone's Apps selection, Controls/Map tab, zoom, and pan are personal; enabled
 layers and settings are shared. Opening an app does not toggle it. An explicit
 switch changes the table. There are no remote calibration or administration
 commands. Slot releases and pause/end controls are available only through local UI.
 
+The phone UI and embedded ECOM editor use a light theme.
 The Controls tab uses compact phone controls, with secondary settings under
 **More settings**. Sliders update their labels immediately and commit when released.
 ECOM loads its shared scenario editor only while its Controls tab is open;
 service computations and their result geometry stay on the host.
 
+Map is disabled for apps without map input tools. **Expand map** fills the viewport,
+using native fullscreen where supported, and **Exit fullscreen** restores the layout
+without discarding drawings or changing the map position.
 The Map tab shows a light-styled OpenStreetMap basemap (no API key), the table
 boundary and drawing inputs. Phones receive no CFD images, analysis results,
 building-footprint background, video or charts. Settings are projected through an
@@ -84,6 +92,13 @@ near a vertex or its marker. Ordinary Canvas polygons never become wind barriers
 The mouse tools are available from Canvas on the main display and dashboard.
 Canvas switches the table to a light basemap while keeping analysis layers above it.
 Canvas, wind and comfort suppress the idle Street Life animation.
+
+The host controller follows newly activated layers. Sidebar and Apps buttons open
+controls; their separate switches change layer visibility. Phone app focus remains
+personal. ECOM uses desired-state activation, so switching off during loading cancels
+the pending activation and failed loads return the switch to off.
+
+See [the canvas library comparison](canvas-options.md) for the next drawing-tool iteration.
 
 ## Session lifecycle and networking
 
@@ -141,6 +156,7 @@ new invitation after deployment. Existing incompatible invitations are rejected.
 ## Verification
 
 ```sh
+node scripts/test_ecom_lifecycle.cjs
 node scripts/test_session.cjs
 node scripts/test_session_connection.cjs
 python3 scripts/test_session_server.py
@@ -158,6 +174,10 @@ browser, and `MR_PLAYWRIGHT` optionally specifies the module installation.
 The default transport is real PeerJS. `MR_TEST_TRANSPORT=memory` substitutes an
 in-memory test transport to test UI/protocol behaviour independently of network
 ICE/TURN restrictions. That transport is never included in the public artifact.
+
+`scripts/test_session_ecom_browser.cjs` isolates the early iframe-response race with
+the deterministic transport. It uses the same `MR_TEST_URL`, `MR_PLAYWRIGHT` and
+`MR_BROWSER` settings and does not require a running ECOM backend.
 
 Actual phone/browser compatibility and workshop-network connectivity still need
 an in-room check; passing the deterministic transport test is not a WebRTC test.
