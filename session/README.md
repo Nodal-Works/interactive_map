@@ -54,11 +54,20 @@ layers and settings are shared. Opening an app does not toggle it. An explicit
 switch changes the table. There are no remote calibration or administration
 commands. Slot releases and pause/end controls are available only through local UI.
 
-The Controls tab adapts the existing desktop dashboard, including ECOM and SAM,
-using the host for its local API requests. The Map tab is a companion map with
-a light-styled OpenStreetMap basemap (no API key) and host-produced analysis results. It does not run a second
-simulation or reproduce every presentation animation. One finger uses the current
-tool; two fingers navigate only the phone map. **Fit table** restores its extent.
+The Controls tab uses compact phone controls, with secondary settings under
+**More settings**. Sliders update their labels immediately and commit when released.
+ECOM loads its shared scenario editor only while its Controls tab is open;
+service computations and their result geometry stay on the host.
+
+The Map tab shows a light-styled OpenStreetMap basemap (no API key), the table
+boundary and drawing inputs. Phones receive no CFD images, analysis results,
+building-footprint background, video or charts. Settings are projected through an
+explicit input-only allowlist and only sent when they change. Drawing objects are
+sent separately, only to the relevant Map tab. Basemap tiles load over HTTP.
+
+One finger always uses the selected input tool; two fingers pan or pinch to zoom
+only the phone map. Navigation never places a point or discards an unfinished
+polygon. Double-tap zoom is disabled. **Fit table** restores the table extent.
 
 Isovist supports placement/movement and a look-toward tool. CoolPaths uses its
 existing Route/Inspect mode and origin/destination behaviour. EPC, ECOM and Street
@@ -82,6 +91,12 @@ The main display owns the round. Closing/reloading it invalidates the invitation
 the next display load creates a new round and an empty Canvas. Closing the host
 panel has no effect. Phones store an invitation-scoped identity and reconnect with
 the same reserved slot after reload or sleep. The host can release reserved slots.
+Heartbeats take priority over bulk messages. Outgoing state updates coalesce under
+backpressure. Signaling interruptions keep an established data channel alive;
+actual channel loss reconnects with bounded backoff. Sleep/wake gets a liveness
+grace period. A quiet connection status replaces repeated unavailable banners.
+Edits pause while disconnected and resume after authoritative state arrives;
+stale gestures are not replayed.
 Two accepted edits to the same analysis setting apply in host arrival order.
 
 Both host and phones need internet for GitHub Pages and PeerJS signaling. They
@@ -127,6 +142,7 @@ new invitation after deployment. Existing incompatible invitations are rejected.
 
 ```sh
 node scripts/test_session.cjs
+node scripts/test_session_connection.cjs
 python3 scripts/test_session_server.py
 .venv/bin/python -m unittest discover -s scripts -p 'test_*.py'
 node scripts/test_cfd_simulation.cjs
@@ -135,7 +151,8 @@ node scripts/test_cfd_visuals.cjs
 
 `scripts/test_session_browser.cjs` runs join/slot, real layer controls, Isovist,
 Canvas undo/redo, reconnect, five-participant permissions, backend routing, CFD
-obstacles, admin pause/release and log checks. Install/use Playwright and set
+obstacles, two-finger navigation, input-only traffic budgets, service-result offloading,
+admin pause/release and log checks. Install/use Playwright and set
 `MR_TEST_URL` to the local host. `MR_BROWSER` optionally selects an installed test
 browser, and `MR_PLAYWRIGHT` optionally specifies the module installation.
 The default transport is real PeerJS. `MR_TEST_TRANSPORT=memory` substitutes an

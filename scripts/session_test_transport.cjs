@@ -1,7 +1,7 @@
 /* In-memory PeerJS-shaped transport for deterministic UI tests, never shipped. */
 const source=String.raw`
 (function(){
-class Emitter {constructor(){this.handlers={};} on(type,fn){(this.handlers[type]||=[]).push(fn);return this;} emit(type,value){for(const fn of this.handlers[type]||[])fn(value);}}
+class Emitter {constructor(){this.handlers={};} on(type,fn){(this.handlers[type]||=[]).push(fn);return this;} off(type,fn){this.handlers[type]=(this.handlers[type]||[]).filter(handler=>handler!==fn);return this;} emit(type,value){for(const fn of this.handlers[type]||[])fn(value);}}
 const peers=new Map(),connections=new Map();
 class Connection extends Emitter {
  constructor(id,peer,metadata){super();this.id=id;this.peer=peer;this.metadata=metadata;this.open=false;this.dataChannel={bufferedAmount:0};connections.set(id,this);}
@@ -22,9 +22,9 @@ window.Peer=class extends Emitter {
 };})();`;
 
 function createTransport(){
- const peers=new Map(),links=new Map();
+ const peers=new Map(),links=new Map(),stats=[];
  async function deliver(page,message){if(!page.isClosed())await page.evaluate(message=>window.__mrReceiveTest(message),message).catch(()=>{});}
- return async context=>{
+ const install=async context=>{
   await context.route('**/peerjs@1.5.5/**',route=>route.fulfill({contentType:'application/javascript',body:source}));
   await context.exposeBinding('mrTestBus',async({page},message)=>{
    if(message.op==='register'){peers.set(message.peer,page);return;}
@@ -36,8 +36,11 @@ function createTransport(){
     await deliver(page,{op:'open',id:message.id});return;
    }
    const link=links.get(message.id);if(!link)return;
-   await deliver(link.find(p=>p!==page),message);
+   const target=link.find(p=>p!==page);
+   if(message.op==='data')stats.push({from:page.url(),to:target.url(),type:message.data.type,bytes:JSON.stringify(message.data).length});
+   await deliver(target,message);
   });
  };
+ install.stats=stats;return install;
 }
 module.exports=createTransport;

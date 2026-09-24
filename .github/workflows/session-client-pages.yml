@@ -21,6 +21,7 @@ jobs:
         with:
           node-version: '22'
       - run: node scripts/test_session.cjs
+      - run: node scripts/test_session_connection.cjs
       - run: python scripts/test_session_server.py
       - run: python scripts/build_session_client.py
       - uses: actions/upload-pages-artifact@v4
