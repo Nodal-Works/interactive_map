@@ -293,7 +293,7 @@
     // also makes BroadcastChannel work between the table and this panel. Then
     // the backend directly, for a controller opened straight off the static
     // server - which needs that origin in the backend's CORS list.
-    const API_CANDIDATES = ['', 'http://localhost:8000', 'http://127.0.0.1:8000'];
+    const API_CANDIDATES = window.MR_SERVICES ? [window.MR_SERVICES.ecom] : ['', 'http://localhost:8000', 'http://127.0.0.1:8000'];
 
     async function findApi() {
         for (const base of API_CANDIDATES) {

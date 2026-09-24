@@ -27,7 +27,10 @@ CONFIG = configuration(os.environ.get('MR_SERVICES_CONFIG'))
 
 def allowed_service(service, path, method):
     """Deliberately limited to APIs used by existing MR Studio dashboards."""
-    pathname = urlsplit(path).path
+    parsed = urlsplit(path)
+    if parsed.scheme or parsed.netloc or path.startswith('//'):
+        return False
+    pathname = parsed.path
     if '..' in unquote(pathname) or not pathname.startswith('/') or pathname.startswith('//'):
         return False
     patterns = {

@@ -2874,10 +2874,18 @@
     let interactionBound = false;
 
     function bindInteraction() {
+        window.mrSelectEcom = coordinate => {
+            const p = map.project(coordinate);
+            const feature = map.queryRenderedFeatures([[p.x - 5, p.y - 5], [p.x + 5, p.y + 5]], {layers: [FILL_LAYER_ID]})[0];
+            let building = feature?.properties?.ecom;
+            if (typeof building === 'string') { try { building = JSON.parse(building); } catch { return; } }
+            if (building) ecomChannel.postMessage({type: 'ecom_selection', building});
+        };
         if (interactionBound) return;
         interactionBound = true;
 
         map.on('click', FILL_LAYER_ID, function (e) {
+            if (window.MR_CANVAS_EDITING) return;
             const feature = e.features && e.features[0];
             if (!feature) return;
 

@@ -1145,6 +1145,7 @@
   }
 
   function onMapClick(e) {
+    if (window.MR_CANVAS_EDITING) return;
     if (!isDragging) {
       const clickPos = [e.lngLat.lng, e.lngLat.lat];
       viewerPosition = getValidPosition(clickPos);
@@ -1153,6 +1154,7 @@
   }
 
   function onMapMouseMove(e) {
+    if (window.MR_CANVAS_EDITING) return;
     if (isDragging && viewerPosition) {
       const newPos = [e.lngLat.lng, e.lngLat.lat];
       viewerPosition = getValidPosition(newPos);
@@ -1193,6 +1195,16 @@
       updateRequestId = null;
     });
   }
+
+  window.isovistSession = {
+    getState: () => ({active: isovistActive, position: viewerPosition, cursor: cursorPosition, radius: MAX_VIEW_DISTANCE, fov: HUMAN_FOV, follow: FOLLOW_CURSOR, humanFov: USE_HUMAN_FOV, trees: INCLUDE_TREES, ambientSound: ambientSoundEnabled}),
+    point(coordinate, headingOnly) {
+      if (!isovistActive) throw Error('Turn on Isovist first');
+      if (headingOnly) cursorPosition = coordinate;
+      else viewerPosition = getValidPosition(coordinate);
+      updateVisualization();
+    }
+  };
 
   function performUpdate() {
     if (!viewerPosition) return;

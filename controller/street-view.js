@@ -10,6 +10,7 @@ let streetViewCurrentPosition = null;
 let streetViewCurrentHeading = 0;
 
 async function loadStreetViewConfig() {
+    if (window.MR_SERVICES) { streetViewApiKey = 'local-host'; return true; }
     if (streetViewApiKey) return true;
     try {
         const response = await fetch('trafik-config.json');
@@ -63,7 +64,7 @@ function updateStreetViewImage() {
     
     // Build Street View Static API URL
     const size = '640x350';
-    const url = `https://maps.googleapis.com/maps/api/streetview?size=${size}&location=${lat},${lng}&heading=${streetViewCurrentHeading}&pitch=0&fov=100&key=${streetViewApiKey}`;
+    const url = window.MR_SERVICES ? `/api/streetview?lat=${lat}&lng=${lng}&heading=${streetViewCurrentHeading}` : `https://maps.googleapis.com/maps/api/streetview?size=${size}&location=${lat},${lng}&heading=${streetViewCurrentHeading}&pitch=0&fov=100&key=${streetViewApiKey}`;
     
     // Set up image load handlers
     img.onload = () => {
@@ -89,7 +90,15 @@ function updateStreetViewImage() {
         if (controls) controls.style.display = 'none';
     };
     
-    img.src = url;
+    if (window.MR_REMOTE_FETCH) {
+        const requested = url;
+        img.dataset.request = requested;
+        fetch(url).then(r => { if (!r.ok) throw Error('Street View unavailable'); return r.blob(); }).then(blob => {
+            if (img.dataset.request !== requested) return;
+            if (img.src.startsWith('blob:')) URL.revokeObjectURL(img.src);
+            img.src = URL.createObjectURL(blob);
+        }).catch(() => img.onerror());
+    } else img.src = url;
 }
 
 function updateStreetViewPosition(position, heading) {
@@ -113,7 +122,7 @@ function updateStreetViewPosition(position, heading) {
 }
 
 // --- SAM Segmentation (Controller side) ---
-const SAM_SERVER_URL = 'http://localhost:8000';
+const SAM_SERVER_URL = window.MR_SERVICES?.sam || 'http://localhost:8002';
 
 function setSamStatus(msg, ok) {
     const el = document.getElementById('sam-server-status');

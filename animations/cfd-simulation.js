@@ -137,13 +137,14 @@
         const a = project(coord), b = project([coord[0] + meters / (111320 * Math.cos(coord[1] * Math.PI / 180)), coord[1]]);
         return Math.hypot(a.x - b.x, a.y - b.y);
       };
-      const solid = CFD.rasterizeBuildings(buildings.features || [], project, grid);
+      const effectiveBuildings = [...(buildings.features || []), ...(window.MR_CFD_OBSTACLES || [])];
+      const solid = CFD.rasterizeBuildings(effectiveBuildings, project, grid);
       const canopy = CFD.rasterizeTrees(trees.features || [], project, radiusPixels, grid);
       const options = { ...grid, ...settings, solid, canopy, dragReferenceCellSize: Math.max(size.w, size.h) / 100 };
       // Only the worker owns distribution arrays. Main thread owns the mask and latest velocity snapshot.
       field = { ...options, ux: new Float32Array(grid.nx * grid.ny), uy: new Float32Array(grid.nx * grid.ny),
         latticeSpeed: Math.min(settings.windSpeed * .005, .05), steps: 0 };
-      field.facadeEdges = CFDVisuals.facadeEdges(buildings.features || [], project, field);
+      field.facadeEdges = CFDVisuals.facadeEdges(effectiveBuildings, project, field);
       heat.width = grid.vw; heat.height = grid.vh;
       heatImage = heatCtx.createImageData(grid.vw, grid.vh);
       walls.width = grid.vw; walls.height = grid.vh;
@@ -217,6 +218,12 @@
     rebuild(); animation = requestAnimationFrame(draw);
   }
   button.addEventListener('click', start);
+  window.cfdSession = {getState: () => ({...settings, active, phase}), preview: () => {
+    if (!active || !field) return null;
+    const preview = document.createElement('canvas'); preview.width = 300; preview.height = Math.round(300 * canvas.height / canvas.width);
+    preview.getContext('2d').drawImage(canvas, 0, 0, preview.width, preview.height);
+    return preview.toDataURL('image/webp', .6);
+  }};
   window.addEventListener('resize', scheduleRebuild);
   window.addEventListener('cfd-geometry-changed', scheduleRebuild);
   if (typeof map !== 'undefined') map.on('moveend', scheduleRebuild);

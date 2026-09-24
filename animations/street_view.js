@@ -629,7 +629,9 @@
   }
   
   // Handle map clicks - place viewer position
+  window.mrSelectStreetView = coordinate => onMapClick({lngLat: {lng: coordinate[0], lat: coordinate[1]}});
   function onMapClick(e) {
+    if (window.MR_CANVAS_EDITING) return;
     if (!streetViewActive) return;
     
     viewerPosition = [e.lngLat.lng, e.lngLat.lat];
@@ -650,6 +652,7 @@
   
   // Handle mouse move - update heading and follow
   function onMapMouseMove(e) {
+    if (window.MR_CANVAS_EDITING) return;
     if (!streetViewActive || !viewerPosition) return;
     
     cursorPosition = [e.lngLat.lng, e.lngLat.lat];

@@ -173,6 +173,7 @@ async function loadEpcBuildings() {
     map.on('mouseenter', 'epc-buildings-fill', () => { map.getCanvas().style.cursor = 'pointer'; });
     map.on('mouseleave', 'epc-buildings-fill', () => { map.getCanvas().style.cursor = ''; });
     map.on('click', 'epc-buildings-fill', event => {
+      if (window.MR_CANVAS_EDITING) return;
       const feature = event.features?.[0];
       if (!feature) return;
       epcSelectedFeature = feature;
@@ -549,6 +550,14 @@ document.getElementById('epc-btn')?.addEventListener('click', () => {
 window.setBasemap = setBasemap;
 window.getBasemap = getBasemap;
 window.map = map;
+window.mrSelectEpc = coordinate => {
+  const p = map.project(coordinate);
+  const feature = map.queryRenderedFeatures([[p.x - 5, p.y - 5], [p.x + 5, p.y + 5]], {layers: ['epc-buildings-fill']})[0];
+  if (!feature) return;
+  epcSelectedFeature = feature;
+  map.getSource('epc-selected').setData({type: 'FeatureCollection', features: [feature]});
+  epcChannel.postMessage({type: 'epc_building_selected', building: {type: 'Feature', geometry: feature.geometry, properties: feature.properties}});
+};
 
 // Laser pointer cursor tracking
 const laserPointer = document.getElementById('laser-pointer');

@@ -3,7 +3,7 @@
   'use strict';
 
   const host = location.protocol === 'file:' ? '127.0.0.1' : location.hostname;
-  const API = `http://${host}:8001/api/coolpaths`;
+  const API = window.MR_SERVICES ? `${window.MR_SERVICES.coolpaths}/api/coolpaths` : `http://${host}:8001/api/coolpaths`;
   const channel = new BroadcastChannel('map_controller_channel');
   const EMPTY = { type: 'FeatureCollection', features: [] };
   const STEPS = window.COOLPATHS_GUIDE;
@@ -449,7 +449,7 @@
     }
   }
 
-  map.on('click', async (event) => {
+  async function selectPoint(event) {
     if (!state.active || !state.ready || ['loading-hour', 'error', 'unavailable'].includes(state.phase)) return;
     if (state.mode === 'inspect') {
       playbackToken += 1;
@@ -493,7 +493,8 @@
       state.message = error.message;
       publish();
     }
-  });
+  }
+  map.on('click', event => { if (!window.MR_CANVAS_EDITING) selectPoint(event); });
 
   channel.addEventListener('message', (event) => {
     const data = event.data || {};
@@ -548,5 +549,5 @@
   });
 
   document.getElementById('thermal-comfort-btn')?.addEventListener('click', toggle);
-  window.thermalComfortLayer = { toggle, clearRoute, getState: () => ({ ...state }) };
+  window.thermalComfortLayer = { toggle, clearRoute, selectPoint: coordinate => selectPoint({lngLat: {lng: coordinate[0], lat: coordinate[1]}}), getState: () => ({ ...state }) };
 }());
