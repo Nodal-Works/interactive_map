@@ -11,7 +11,7 @@ From the MR Studio repository:
 The foreground supervisor starts the local host, ECOM, CoolPaths and SAM, opens
 the launcher, and reports readiness. Launch the main display and controller from
 that launcher so they share an origin. Click the main display's start overlay
-once to enable its audio. **Session** on the dashboard opens the local host panel.
+once to enable its audio. **Session** opens a page inside the desktop controller, with the same header and sidebars.
 
 Default ports are host 8090, ECOM 8000, CoolPaths 8001, and SAM 8002. Copy
 `services.example.json` to ignored `services.local.json` to override ports,
@@ -56,7 +56,7 @@ commands. Slot releases and pause/end controls are available only through local 
 
 The Controls tab adapts the existing desktop dashboard, including ECOM and SAM,
 using the host for its local API requests. The Map tab is a companion map with
-OpenStreetMap context and host-produced analysis results. It does not run a second
+a light CARTO/OpenStreetMap basemap and host-produced analysis results. It does not run a second
 simulation or reproduce every presentation animation. One finger uses the current
 tool; two fingers navigate only the phone map. **Fit table** restores its extent.
 
@@ -64,7 +64,7 @@ Isovist supports placement/movement and a look-toward tool. CoolPaths uses its
 existing Route/Inspect mode and origin/destination behaviour. EPC, ECOM and Street
 View accept targeted selections. CFD's polygon tool creates additional solid
 footprints, preserving the base buildings and trees; no height is requested.
-Close the polygon to commit it and rebuild the flow. Select/move and Edit corners
+Tap **Finish shape** after at least three corners to commit it and rebuild the flow. Select/move and Edit corners
 modify it. Changing the host calibration cancels unfinished phone gestures.
 
 Canvas supports pen, lines, arrows, polygons, markers and anchored comments.
@@ -73,6 +73,8 @@ reshape or delete their annotations and undo/redo their own edits; the host can
 edit anyone's. Undo refuses to overwrite a subsequent edit. Select an annotation
 near a vertex or its marker. Ordinary Canvas polygons never become wind barriers.
 The mouse tools are available from Canvas on the main display and dashboard.
+Canvas switches the table to a light basemap while keeping analysis layers above it.
+Canvas, wind and comfort suppress the idle Street Life animation.
 
 ## Session lifecycle and networking
 

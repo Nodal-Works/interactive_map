@@ -16,7 +16,23 @@
     if(main){MR_ADAPTER.setLayer('canvas-btn',true);MR_SESSION.publish();showDrawing();}
     else {command('layer',{layer:'canvas-btn',enabled:true});command('canvas-tool',{tool:'pen'});showCanvasDashboard();}
   };
-  const admin=document.createElement('a');admin.href='session/';admin.target='mr-studio-admin';admin.textContent='Session';
+  const admin=document.createElement('a');admin.href='controller.html#session';admin.textContent='Session';
+  if(main)admin.target='ACE_Controller';
+  else {
+    admin.href='#session';
+    const panel=document.getElementById('main-panel'),sessionPage=document.createElement('section');
+    sessionPage.id='mr-session-page';sessionPage.hidden=true;panel.append(sessionPage);
+    const showSession=()=>{
+      const visible=location.hash==='#session';document.body.classList.toggle('mr-session-open',visible);sessionPage.hidden=!visible;
+      admin.setAttribute('aria-current',visible?'page':'false');
+      if(visible){document.getElementById('welcome-screen').classList.add('hidden');if(!sessionPage.firstChild){const frame=document.createElement('iframe');frame.src='session/?embedded=1';frame.title='Session management';sessionPage.append(frame);}}
+    };
+    const leaveSession=()=>{if(location.hash==='#session'){history.replaceState(null,'',location.pathname+location.search);showSession();}};
+    document.querySelectorAll('.control-btn').forEach(button=>button.addEventListener('click',leaveSession,true));
+    apps.addEventListener('click',leaveSession);canvas.addEventListener('click',leaveSession);
+    admin.addEventListener('click',()=>{if(location.hash==='#session')showSession();});
+    window.addEventListener('hashchange',showSession);showSession();
+  }
   const strip=document.createElement('div');strip.className='mr-session-strip';const bubbles=document.createElement('div');strip.append(bubbles,apps,canvas,admin);
   if(main){strip.style.cssText='position:fixed;bottom:10px;left:70px;z-index:1001';document.body.append(strip);}
   else document.querySelector('header')?.append(strip);
@@ -63,13 +79,13 @@
     if(typeof QRCode==='undefined')return;
     for(const id of ['left-sidebar','right-sidebar']){
       const sidebar=document.getElementById(id),banner=document.createElement('div');banner.className='mr-qr-banner';banner.title='Join session — click for a larger QR';banner.role='button';banner.tabIndex=0;
-      banner.onclick=()=>window.open('session/','mr-studio-admin');banner.onkeydown=e=>{if(e.key==='Enter')banner.click();};sidebar?.append(banner);new QRCode(banner,{text:url,width:180,height:180,correctLevel:QRCode.CorrectLevel.L});
+      banner.onclick=()=>window.open('controller.html#session','ACE_Controller');banner.onkeydown=e=>{if(e.key==='Enter')banner.click();};sidebar?.append(banner);new QRCode(banner,{text:url,width:180,height:180,correctLevel:QRCode.CorrectLevel.L,colorDark:'#151515',colorLight:'#909090'});
       const place=()=>{
         const occupied=[...sidebar.querySelectorAll('.icon-btn,.sidebar-logo')].map(el=>el.getBoundingClientRect()).filter(r=>r.height>0).map(r=>[r.top-5,r.bottom+5]);
         const title=sidebar.querySelector('.sidebar-title');if(title){const range=document.createRange();range.selectNodeContents(title);const r=range.getBoundingClientRect();occupied.push([r.top-8,r.bottom+8]);}
         occupied.push([innerHeight,innerHeight]);occupied.sort((a,b)=>a[0]-b[0]);let end=8,best=null;
         for(const[start,stop]of occupied){if(start-end>=58&&(!best||start-end>best[1]-best[0]))best=[end,start];end=Math.max(end,stop);}
-        banner.hidden=!best;if(best){banner.style.bottom='auto';banner.style.top=((best[0]+best[1])/2-27)+'px';}
+        banner.hidden=!best;if(best){banner.style.bottom='auto';banner.style.top=((best[0]+best[1])/2-26)+'px';}
       };place();window.addEventListener('resize',place);
     }
   });

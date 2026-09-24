@@ -22,6 +22,7 @@ const base=process.env.MR_TEST_URL || 'http://127.0.0.1:8091';
   const mobile=await browser.newContext({viewport:{width:390,height:844},isMobile:true,hasTouch:true}),phone=await mobile.newPage();
   if(memoryTransport)await memoryTransport(mobile);
   await phone.addInitScript(trackPeers);
+  await phone.addInitScript(()=>{let api;Object.defineProperty(window,'MR_MAP',{get:()=>api,set(value){api=value;const Original=value.CompanionMap;value.CompanionMap=class extends Original{constructor(options){super(options);window.__companionMap=this;}};},configurable:true});});
   phone.on('pageerror',error=>{errors.push(error.message);console.log('PHONE ERROR',error.message);});
   phone.on('console',message=>{if(['warning','error'].includes(message.type()))console.log('PHONE CONSOLE',message.text().slice(0,300));});
   await phone.goto(url,{waitUntil:'domcontentloaded'});
@@ -45,6 +46,13 @@ const base=process.env.MR_TEST_URL || 'http://127.0.0.1:8091';
   await phone.waitForTimeout(1800);
   const box=await phone.locator('#phone-map').boundingBox();await phone.touchscreen.tap(box.x+box.width/2,box.y+box.height/2);
   await page.waitForFunction(()=>window.isovistSession.getState().position!==null);
+  const touch=await mobile.newCDPSession(phone);
+  const beforeDrag=await phone.evaluate(()=>({scroll:scrollY,zoom:__companionMap.map.getZoom()}));
+  await touch.send('Input.dispatchTouchEvent',{type:'touchStart',touchPoints:[{x:box.x+box.width/2,y:box.y+box.height/2}]});
+  for(let y=0;y<80;y+=10)await touch.send('Input.dispatchTouchEvent',{type:'touchMove',touchPoints:[{x:box.x+box.width/2,y:box.y+box.height/2+y}]});
+  await touch.send('Input.dispatchTouchEvent',{type:'touchEnd',touchPoints:[]});
+  assert.equal(await phone.evaluate(()=>scrollY),beforeDrag.scroll,'Isovist dragging must not scroll the page');
+  assert.equal(await phone.evaluate(()=>__companionMap.map.getZoom()),beforeDrag.zoom);
   await phone.screenshot({path:'.runtime/phone-map.png'});
   await phone.getByRole('button',{name:'Open apps'}).click();
   await phone.locator('[data-layer="canvas-btn"] input').check();await phone.locator('[data-layer="canvas-btn"] .open').click();
@@ -57,7 +65,12 @@ const base=process.env.MR_TEST_URL || 'http://127.0.0.1:8091';
   await phone.locator('#redo').click();await page.waitForFunction(()=>window.MR_SESSION.getObjects().length===1);
   await phone.reload();await phone.waitForFunction(()=>document.getElementById('connection').textContent.includes('Controller 1'));
   await phone.screenshot({path:'.runtime/phone-drawer.png'});
-  const admin=await desktop.newPage();await admin.goto(base+'/session/');await admin.locator('#qr img').waitFor();await admin.screenshot({path:'.runtime/admin.png'});
+  const adminPage=await desktop.newPage();await adminPage.goto(base+'/controller.html#session');
+  await adminPage.locator('#mr-session-page iframe').waitFor();
+  const admin=adminPage.frameLocator('#mr-session-page iframe');await admin.locator('#qr img').waitFor();await adminPage.screenshot({path:'.runtime/admin.png'});
+  assert.equal(desktop.pages().length,2,'Session stays inside the controller');
+  const qrBounds=await page.locator('.mr-qr-banner').evaluateAll(nodes=>nodes.filter(n=>!n.hidden).map(n=>{const r=n.getBoundingClientRect(),p=n.parentElement.getBoundingClientRect();return r.left>=p.left&&r.right<=p.right;}));
+  assert.ok(qrBounds.every(Boolean),'QR banners must fit inside the sidebars');
   const send=async(target,message)=>target.evaluate(message=>Object.values(window.__peers[0].connections).flat()[0].send(message),{actionId:crypto.randomUUID(),...message});
   const additional=[];
   for(let slot=2;slot<=5;slot++){
@@ -91,8 +104,23 @@ const base=process.env.MR_TEST_URL || 'http://127.0.0.1:8091';
   await phone.getByRole('button',{name:'Map',exact:true}).click();await phone.locator('#tool').selectOption('obstacle');
   await page.waitForFunction(()=>window.cfdSession.getState().active);
   const windBox=await phone.locator('#phone-map').boundingBox();
-  for(const[x,y]of [[.44,.45],[.56,.45],[.56,.57]])await phone.touchscreen.tap(windBox.x+windBox.width*x,windBox.y+windBox.height*y);
+  const windZoom=await phone.evaluate(()=>__companionMap.map.getZoom());
+  for(const[x,y]of [[.44,.45],[.56,.45],[.56,.57]]){
+    await phone.touchscreen.tap(windBox.x+windBox.width*x,windBox.y+windBox.height*y);
+    assert.ok(await phone.locator('#phone-map .mr-map-overlay g circle').count()>0,'Show polygon corners before saving');
+  }
+  await phone.waitForTimeout(400);
+  assert.equal(await phone.evaluate(()=>__companionMap.map.getZoom()),windZoom,'Drawing must not trigger double-tap zoom');
+  await phone.screenshot({path:'.runtime/phone-wind-preview.png'});
+  // A two-finger pan must preserve the unfinished shape and not add a corner.
+  const pinchPoints=[{x:windBox.x+windBox.width*.35,y:windBox.y+windBox.height*.5},{x:windBox.x+windBox.width*.65,y:windBox.y+windBox.height*.5}];
+  await touch.send('Input.dispatchTouchEvent',{type:'touchStart',touchPoints:pinchPoints});
+  await touch.send('Input.dispatchTouchEvent',{type:'touchMove',touchPoints:pinchPoints.map(p=>({...p,y:p.y+25}))});
+  await touch.send('Input.dispatchTouchEvent',{type:'touchEnd',touchPoints:[]});
+  assert.equal(await phone.evaluate(()=>__companionMap.polygon?.points.length),3,'Two-finger navigation preserves the draft');
   await phone.locator('#finish').click();await page.waitForFunction(()=>window.MR_CFD_OBSTACLES?.length===1);
+  await phone.waitForFunction(()=>__companionMap.objects.some(o=>o.tool==='obstacle'));
+  await phone.waitForFunction(()=>!!window.__companionMap.map.getSource('preview-wind'),null,{timeout:30000});
   await phone.screenshot({path:'.runtime/phone-wind.png'});
   await send(phone,{type:'layer',layer:'cfd-simulation-btn',enabled:false});
   console.log('PASS: additive CFD obstacle drawing');
@@ -104,18 +132,56 @@ const base=process.env.MR_TEST_URL || 'http://127.0.0.1:8091';
   const slot3=await page.evaluate(()=>MR_SESSION.getState().slots[2]);
   await page.evaluate(id=>{const c=new BroadcastChannel('mr_session_admin');c.postMessage({type:'admin-command',action:'release',personId:id});c.close();},slot3);
   await additional[3].page.locator('#choose-slot').click();await additional[3].page.locator('#slots button').nth(2).click();await additional[3].page.waitForFunction(()=>document.getElementById('connection').textContent.includes('Controller 3'));
-  const sessionId=await page.evaluate(()=>MR_SESSION.getState().sessionId);await admin.close();
-  const reopened=await desktop.newPage();await reopened.goto(base+'/session/');await reopened.locator('#qr img').waitFor();
+  const sessionId=await page.evaluate(()=>MR_SESSION.getState().sessionId);await adminPage.close();
+  const reopened=await desktop.newPage();await reopened.goto(base+'/controller.html#session');await reopened.frameLocator('#mr-session-page iframe').locator('#qr img').waitFor();
   assert.equal(await page.evaluate(()=>MR_SESSION.getState().sessionId),sessionId);
   await page.waitForTimeout(500);const log=await(await page.request.get(base+'/api/session/'+sessionId)).json();
   assert.equal(log.schemaVersion,2);assert.equal(log.finalState.objects.length,2);assert.ok(log.events.some(e=>e.kind==='slot.released'));
-  console.log('PASS: pause, release/reclaim, admin reopening and durable log');
+  console.log('PASS: pause, release/reclaim, controller Session page and durable log');
+  // Select an actual EPC footprint through the mobile location tool.
+  await phone.getByRole('button',{name:'Open apps'}).click();
+  await phone.locator('[data-layer="epc-btn"] input').check();await phone.locator('[data-layer="epc-btn"] .open').click();
+  await phone.getByRole('button',{name:'Map',exact:true}).click();
+  await page.waitForFunction(()=>MR_ADAPTER.active['epc-btn']&&map.getSource('epc-buildings'));
+  const epcPoint=await page.evaluate(()=>{
+    const t=MR_ADAPTER.table();
+    for(const f of map.getSource('epc-buildings')._data.features){const ring=f.geometry.type==='Polygon'?f.geometry.coordinates[0]:f.geometry.coordinates[0][0];
+      const c=ring.slice(0,-1).reduce((a,p)=>[a[0]+p[0]/(ring.length-1),a[1]+p[1]/(ring.length-1)],[0,0]),p=MR_MAP.normalized(c,t);
+      if(p.x>.2&&p.x<.8&&p.y>.2&&p.y<.8&&map.queryRenderedFeatures(map.project(c),{layers:['epc-buildings-fill']}).length)return c;
+    }throw Error('No EPC building inside table');
+  });
+  const epcTap=await phone.evaluate(c=>{const p=__companionMap.map.project(c),r=document.getElementById('phone-map').getBoundingClientRect();return{x:r.left+p.x,y:r.top+p.y};},epcPoint);
+  await phone.touchscreen.tap(epcTap.x,epcTap.y);
+  await page.waitForFunction(()=>map.getSource('epc-selected')._data.features.length===1);
+  await phone.getByRole('button',{name:'Controls',exact:true}).click();
+  await phone.waitForFunction(()=>!document.getElementById('dashboard').contentWindow.document.getElementById('dashboard-content').textContent.includes('Click a building on the map'));
+  await phone.screenshot({path:'.runtime/phone-epc-selection.png'});
+  // Each of Canvas, wind and comfort independently suppresses Street Life.
+  for(const id of ['isovist-btn','canvas-btn','epc-btn'])await send(phone,{type:'layer',layer:id,enabled:false});
+  for(const id of ['canvas-btn','cfd-simulation-btn','thermal-comfort-btn']){
+    await send(phone,{type:'layer',layer:id,enabled:true});
+    await page.waitForFunction(id=>MR_ADAPTER.active[id],id);await page.waitForTimeout(300);
+    assert.equal(await page.evaluate(()=>streetLifeAnimation.isActive()),false,id+' suppresses Street Life');
+    if(id==='canvas-btn')assert.equal(await page.evaluate(()=>getBasemap()),'cartoPositron');
+    await send(phone,{type:'layer',layer:id,enabled:false});await page.waitForFunction(id=>!MR_ADAPTER.active[id],id);
+  }
+  console.log('PASS: polygon previews, touch scrolling/zoom, EPC location, light Canvas and Street Life');
   await phone.getByRole('button',{name:'Open apps'}).click();
   for(const id of ['cfd-simulation-btn','stormwater-btn','sun-study-btn','thermal-comfort-btn','isovist-btn','street-view-btn','epc-btn','ecom-energy-btn','bird-sounds-btn','slideshow-btn','campus-demo-btn','fcc-demo-btn','grid-animation-btn']){
     await phone.locator('[data-layer="'+id+'"] .open').click();
     await phone.frameLocator('#dashboard').locator('#dashboard-content').waitFor();
     await phone.waitForTimeout(200);
     await phone.screenshot({path:'.runtime/panel-'+id+'.png'});
+    if(id==='sun-study-btn'){
+      const sun=phone.frameLocator('#dashboard');
+      for(const width of [320,390]){
+        await phone.setViewportSize({width,height:844});
+        for(const selector of ['#sun-date','#sun-time','#shadow-opacity','#sun-speed','#sun-animate-btn','#false-color-btn','#toggle-trees-btn']){
+          assert.ok(await sun.locator(selector).evaluate(el=>{const r=el.getBoundingClientRect();return r.left>=0&&r.right<=innerWidth;}),selector+' fits at '+width);
+        }
+      }
+      await phone.screenshot({path:'.runtime/panel-sun-study-btn.png'});
+    }
     assert.equal(await phone.locator('#dashboard').evaluate(frame=>!!frame.contentWindow.document.querySelector('[data-target="calibrate-btn"]')),false);
     await phone.getByRole('button',{name:'Open apps'}).click();
   }
