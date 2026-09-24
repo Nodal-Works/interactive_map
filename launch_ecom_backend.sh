@@ -22,4 +22,5 @@ if ! "$venv_python" -c 'import fastapi, uvicorn, pydantic, pandas, numpy, networ
 fi
 
 cd "$backend_dir"
-exec "$venv_python" -m uvicorn app.main:app --host 127.0.0.1 --port 8000
+service_port="${MR_SERVICE_PORT:-$(python3 "$repo_dir/scripts/service_config.py" ecom)}"
+exec "$venv_python" -m uvicorn app.main:app --host 127.0.0.1 --port "$service_port"

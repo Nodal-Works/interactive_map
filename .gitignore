@@ -40,6 +40,9 @@ Thumbs.db
 # Temporary files
 *.tmp
 .cache/
+.runtime/
+sessions/
+services.local.json
 
 # Internal documentation
 theory/

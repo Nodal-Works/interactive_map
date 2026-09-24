@@ -10,4 +10,5 @@ if ! "$python_bin" -c 'import fastapi, uvicorn, rasterio, osmnx, pvlib, ee' >/de
     "$python_bin" -m pip install -r "$repo_dir/coolpaths/requirements.txt"
 fi
 cd "$repo_dir"
-exec "$python_bin" -m uvicorn coolpaths.api:app --host 127.0.0.1 --port 8001
+service_port="${MR_SERVICE_PORT:-$(python3 "$repo_dir/scripts/service_config.py" coolpaths)}"
+exec "$python_bin" -m uvicorn coolpaths.api:app --host 127.0.0.1 --port "$service_port"
