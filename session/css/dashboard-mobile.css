@@ -18,3 +18,6 @@ body[data-layer="sun-study-btn"] #dashboard-section{order:1;padding:12px!importa
 .sunrise-label,.sunset-label{font-size:11px;padding:4px;bottom:10px}
 .sunrise-label{left:8px}.sunset-label{right:8px}
 .sun-compact-legend{grid-template-columns:minmax(0,1fr)}
+/* The reused Energy Community panel supplies inputs, not mirrored results. */
+body[data-layer="ecom-energy-btn"] #dashboard-section,#ecom-kpis,.ecom-sky-card,.ecom-story{display:none!important}
+body[data-layer="ecom-energy-btn"] #legend-section{order:0}body[data-layer="ecom-energy-btn"] #metadata-section{order:1}

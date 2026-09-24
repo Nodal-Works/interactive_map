@@ -67,44 +67,13 @@
     }
     return c;
   }
-  const rasterCache = new Map();
-  async function raster(url) {
-    if (!rasterCache.has(url)) {
-      if (rasterCache.size > 12) rasterCache.delete(rasterCache.keys().next().value);
-      rasterCache.set(url, fetch(url).then(r => {if (!r.ok) throw Error('Map preview unavailable'); return r.blob();}).then(blob => new Promise(resolve => {
-        const reader = new FileReader(); reader.onload = () => resolve(reader.result); reader.readAsDataURL(blob);
-      })).catch(() => {rasterCache.delete(url); return null;}));
-    }
-    return rasterCache.get(url);
-  }
-  async function mapState() {
-    const features = [], images = [];
-    const style = map.getStyle();
-    for (const [name, source] of Object.entries(style?.sources || {})) {
-      if (!/^(isovist-|coolpaths-|epc-selected|epc-buildings|ecom-)/.test(name)) continue;
-      if (['isovist-all-trees','isovist-gradient'].includes(name)) continue;
-      const visibleLayers = style.layers.filter(layer => layer.source === name && layer.layout?.visibility !== 'none');
-      if (!visibleLayers.length) continue;
-      const data = map.getSource(name)?._data;
-      if (source.type === 'geojson' && typeof data === 'object') {
-        for (const f of (data.features || []).slice(0, 2500)) features.push({type: 'Feature', geometry: f.geometry,
-          properties: {source: name, color: f.properties?.kind==='coolest' ? '#16a34a' : f.properties?.kind==='shortest' ? '#0ea5e9' : name==='isovist-viewer' ? '#fb7185' : name==='isovist-trees' ? '#4ade80' : name.startsWith('isovist') ? '#eab308' : name.startsWith('coolpaths') ? '#fb923c' : '#38bdf8'}});
-      } else if (source.type === 'image' && source.url && source.coordinates) {
-        const image = await raster(source.url); if (image) images.push({id: name, image, coordinates: source.coordinates});
-      }
-    }
-    if (active['cfd-simulation-btn']) {
-      const image = window.cfdSession?.preview(); if (image) images.push({id: 'wind', image, coordinates: table().corners});
-    }
-    return {type: 'map', table: table(), features, images};
-  }
   function getState() {
     const sun=window.sunStudy;
     return {layers: {...active}, messages: Object.values(snapshots), table: table(),
       isovist: window.isovistSession?.getState(), cfd: window.cfdSession?.getState(),
       thermal: window.thermalComfortLayer?.getState(), sun: sun ? {time:sun.timeOfDay,date:`${sun.date.getFullYear()}-${String(sun.date.getMonth()+1).padStart(2,'0')}-${String(sun.date.getDate()).padStart(2,'0')}`,animating:sun.isAnimating,trees:sun.treesVisible,falseColor:sun.isFalseColorMode,opacity:sun.shadowOpacity,speed:sun.animationSpeed}:null};
   }
-  window.MR_ADAPTER = {table, coordinate, control, setLayer, gesture, getState, mapState, active, channel};
+  window.MR_ADAPTER = {table, coordinate, control, setLayer, gesture, getState, active, channel};
   map.on('moveend', () => { transformRevision++; window.dispatchEvent(new Event('mr-transform')); });
   window.addEventListener('resize', () => { transformRevision++; window.dispatchEvent(new Event('mr-transform')); });
   setTimeout(() => {

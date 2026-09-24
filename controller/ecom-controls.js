@@ -928,6 +928,11 @@
             const layer = await postJson('/api/mr/layer', spec,
                                          controller.signal);
             if (controller.signal.aborted) return;
+            if(window.MR_REMOTE_FETCH && layer.appliedOnHost){
+                lastApplied=clone(spec);state.dirty=false;
+                if(layer.hours)state.hours=layer.hours;
+                setBusy(null);setStatus('Updated on the table','ok');return;
+            }
             channel.postMessage({ type: 'ecom_layer', layer: layer });
             const outcome = changing ? outcomeLine(layer) : null;
             if (changing && !changing.onPanel) reportOutcome(layer);
@@ -3153,7 +3158,7 @@
             // What the spinner was waiting for: the table has redrawn.
             finishBusy();
             paintLink();
-            setStatus('Table redrew: ' + data.flows + ' flows · ' + data.period, 'ok');
+            setStatus(window.MR_REMOTE_FETCH?'Updated on the table':'Table redrew: ' + data.flows + ' flows · ' + data.period, 'ok');
             channel.postMessage({ type: 'ecom_sound_request' });
         }
 

@@ -11,13 +11,13 @@
   class CompanionMap {
     constructor({element,map,send,identity,desktop=false}) {
       this.element=element;this.send=send;this.identity=identity;this.desktop=desktop;
-      this.objects=[];this.drafts=[];this.tool='navigate';this.color='#38bdf8';this.width=3;this.pointers=new Set();this.selected=null;
+      this.objects=[];this.drafts=[];this.tool='off';this.color='#38bdf8';this.width=3;this.pointers=new Set();this.selected=null;
       this.map=map || new maplibregl.Map({container:element,style:{version:8,sources:{base:{type:'raster',tiles:['https://tile.openstreetmap.org/{z}/{x}/{y}.png'],tileSize:256,attribution:'© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap contributors</a>'}},layers:[{id:'base',type:'raster',source:'base',paint:{'raster-saturation':-1,'raster-contrast':-.2,'raster-brightness-min':.25}}]},center:[11.9777,57.6884],zoom:16,attributionControl:true});
       this.svg=node('svg',{'class':'mr-map-overlay','aria-hidden':'true'});
       (desktop?document.body:element).append(this.svg);
       if(desktop)this.svg.classList.add('desktop');
-      this.map.on('render',()=>this.render());
-      this.map.on('load',()=>{this.ready=true;if(this.pendingBase)this.base(this.pendingBase);if(this.pendingMap)this.results(this.pendingMap);if(this.table)this.fit();});
+      this.map.on('move',()=>this.render());this.map.on('resize',()=>this.render());
+      this.map.on('load',()=>{this.ready=true;if(this.table)this.fit();this.render();});
       this.ready=this.map.loaded();
       this.element.addEventListener('pointerdown',e=>this.down(e),true);
       this.element.addEventListener('pointermove',e=>this.move(e),true);
@@ -26,17 +26,17 @@
       // MapLibre also listens to legacy mouse/touch events. Keep single-finger
       // editing separate from its navigation handlers while allowing pinch/pan.
       for(const type of ['touchstart','touchmove','touchend','mousedown','dblclick'])this.element.addEventListener(type,e=>{
-        if(this.tool==='navigate'||this.tool==='off'||!this.identity()?.canEdit)return;
+        if(this.desktop&&(this.tool==='off'||!this.identity()?.canEdit))return;
         if(e.touches?.length>1)this.navigatingTouch=true;
-        if(this.navigatingTouch){if(e.touches?.length===0)this.navigatingTouch=false;return;}
+        if(this.navigatingTouch&&(e.touches?.length>1||type==='touchend')){if(e.touches.length===0)this.navigatingTouch=false;return;}
         if(e.cancelable)e.preventDefault();e.stopImmediatePropagation();
       },{capture:true,passive:false});
     }
     setTool(tool) {
       this.cancel();this.tool=tool;const navigating=['navigate','off'].includes(tool);
       this.element.style.cursor=navigating?'grab':'crosshair';
-      this.map.doubleClickZoom[navigating?'enable':'disable']();
-      if(!this.desktop)this.map.dragPan.enable();
+      this.map.doubleClickZoom[this.desktop&&navigating?'enable':'disable']();
+      if(!this.desktop){this.map.dragPan.enable();this.map.touchZoomRotate.disableRotation();this.map.dragRotate.disable();this.map.touchPitch?.disable();this.map.scrollZoom.disable();this.map.keyboard.disable();}
       this.element.dispatchEvent(new CustomEvent('mr-tool-state',{detail:{tool}}));
     }
     setState(state) {
@@ -44,32 +44,6 @@
       this.table=state.table;this.objects=state.objects||[];this.layers=state.layers||{};this.drafts=state.drafts||[];
       if(!this.didFit&&this.table&&!this.desktop){this.fit();this.didFit=true;}
       this.render();
-    }
-    base(data) {
-      if(!this.ready){this.pendingBase=data;return;}
-      if(this.map.getSource('buildings'))this.map.getSource('buildings').setData(data);
-      else {this.map.addSource('buildings',{type:'geojson',data});this.map.addLayer({id:'buildings',type:'fill',source:'buildings',paint:{'fill-color':'#738397','fill-opacity':.35}},this.map.getLayer('result-fill')?'result-fill':undefined);}
-    }
-    async results(state) {
-      if(this.desktop)return;
-      if(!this.ready){this.pendingMap=state;return;}
-      this.table=state.table;
-      const data={type:'FeatureCollection',features:state.features};
-      if(this.map.getSource('results'))this.map.getSource('results').setData(data);
-      else {
-        this.map.addSource('results',{type:'geojson',data});
-        this.map.addLayer({id:'result-fill',type:'fill',source:'results',filter:['==',['geometry-type'],'Polygon'],paint:{'fill-color':['get','color'],'fill-opacity':.23}});
-        this.map.addLayer({id:'result-line',type:'line',source:'results',filter:['!=',['geometry-type'],'Point'],paint:{'line-color':['get','color'],'line-width':2}});
-        this.map.addLayer({id:'result-point',type:'circle',source:'results',filter:['==',['geometry-type'],'Point'],paint:{'circle-color':['get','color'],'circle-radius':['case',['==',['get','source'],'isovist-trees'],2,5],'circle-stroke-color':'#fff','circle-stroke-width':1}});
-      }
-      const visible=new Set();
-      for(const image of state.images) {
-        const id='preview-'+image.id;visible.add(id);
-        if(this.map.getSource(id))this.map.getSource(id).updateImage({url:image.image,coordinates:image.coordinates});
-        else {this.map.addSource(id,{type:'image',url:image.image,coordinates:image.coordinates});this.map.addLayer({id,type:'raster',source:id,paint:{'raster-opacity':.8,'raster-fade-duration':0}},'result-line');}
-        this.map.setLayoutProperty(id,'visibility','visible');
-      }
-      for(const l of this.map.getStyle().layers)if(l.id.startsWith('preview-')&&!visible.has(l.id))this.map.setLayoutProperty(l.id,'visibility','none');
     }
     fit() {
       if(!this.table||this.desktop)return;
@@ -93,7 +67,7 @@
     down(e) {
       if(e.button && e.button!==0)return;
       this.pointers.add(e.pointerId);
-      if(this.pointers.size>1){this.gesture=null;if(!this.polygon)this.send({type:'draft',object:null});this.render();return;}
+      if(this.pointers.size>1){this.gesture=null;if(!this.polygon&&this.identity()?.canEdit)this.send({type:'draft',object:null});this.render();return;}
       if(this.tool==='navigate'||this.tool==='off'||!this.identity()?.canEdit)return;
       const coordinate=this.location(e);if(!this.within(coordinate))return;
       this.element.setPointerCapture(e.pointerId);
@@ -103,7 +77,7 @@
         if(hit)this.gesture={original:structuredClone(hit.object),object:structuredClone(hit.object),coordinate,vertex:this.tool==='reshape'?hit.index:null};
         this.render();return;
       }
-      if(!drawing){this.gesture={coordinate};this.mapGesture(coordinate,'down');return;}
+      if(!drawing){this.gesture={coordinate,point:true,started:performance.now()};this.render();return;}
       if(['polygon','obstacle'].includes(this.tool)) {
         this.gesture={corner:coordinate};return;
       }
@@ -122,9 +96,9 @@
           const q=this.map.project(p);return this.map.unproject([q.x+now.x-origin.x,q.y+now.y-origin.y]).toArray();
         });
       } else if(g.object) {
-        if(this.tool==='pen'){if(g.object.points.length<2000)g.object.points.push(c);}
+        if(this.tool==='pen'){const a=this.project(g.object.points.at(-1)),b=this.project(c);if(g.object.points.length<2000&&Math.hypot(a.x-b.x,a.y-b.y)>=2)g.object.points.push(c);}
         else if(['line','arrow'].includes(this.tool))g.object.points=[g.coordinate,c];
-      } else if(['viewer','heading'].includes(this.tool))this.mapGesture(c,'move');
+      } else if(g.point){g.coordinate=c;if(['viewer','heading'].includes(this.tool)&&performance.now()-g.started>120)this.mapGesture(c,'move');this.render();}
       if(g.object)this.preview(g.object);
     }
     up(e) {
@@ -139,21 +113,21 @@
         if(g.object.tool==='comment'&&!g.original){const text=prompt('Comment on this place');if(!text){this.cancel();return;}g.object.text=text.slice(0,500);}
         this.send({type:'canvas',operation:g.original?'update':'create',objectId:g.original?.id||MR.id(),object:g.object});
         this.send({type:'draft',object:null});
-      } else if(['viewer','heading'].includes(this.tool))this.mapGesture(this.location(e),'up');
+      } else if(g.point){const c=this.location(e);if(this.within(c))this.mapGesture(c,'up');}
       this.render();
     }
     mapGesture(c,phase) {
-      if(phase==='move'&&performance.now()-(this.lastMove||0)<70)return;
-      this.lastMove=performance.now();
+      if(phase==='move'&&performance.now()-(this.lastMove||0)<100)return;
+      this.lastMove=performance.now();this.lastInput={layer:this.layer,coordinate:c};
       const p=normalized(c,this.table);
       this.send({type:'gesture',layer:this.layer,tool:this.tool,phase,transform:this.table.revision,...p});
     }
     preview(object) {
       this.render();
-      if(performance.now()-(this.lastDraft||0)<90)return;
+      if(performance.now()-(this.lastDraft||0)<300)return;
       this.lastDraft=performance.now();
       // Incomplete polygons are kept on the creating phone until they are valid.
-      if(MR.validObject(object))this.send({type:'draft',object});
+      if(MR.validObject(object)){const step=Math.max(1,Math.ceil(object.points.length/100));const points=object.points.filter((_,i)=>i%step===0||i===object.points.length-1);this.send({type:'draft',object:{...object,points}});}
     }
     finish() {if(this.polygon?.points.length>=3){this.send({type:'canvas',operation:'create',objectId:MR.id(),object:this.polygon});this.cancel();}}
     cancel() {this.gesture=null;this.polygon=null;if(this.identity()?.canEdit)this.send({type:'draft',object:null});this.render();}
@@ -165,6 +139,8 @@
       const defs=node('defs'), marker=node('marker',{id:this.desktop?'host-arrow':'phone-arrow',viewBox:'0 0 10 10',refX:9,refY:5,markerWidth:5,markerHeight:5,orient:'auto-start-reverse'});
       marker.append(node('path',{d:'M 0 0 L 10 5 L 0 10 z',fill:'context-stroke'}));defs.append(marker);this.svg.append(defs);
       if(this.table&&!this.desktop){const pts=this.table.corners.map(c=>{const p=this.project(c);return`${p.x},${p.y}`;}).join(' ');this.svg.append(node('polygon',{points:pts,fill:'none',stroke:'#ffffff66','stroke-width':1,'stroke-dasharray':'5 5'}));}
+      const input=this.gesture?.point?this.gesture.coordinate:this.lastInput&&this.lastInput.layer===this.layer?this.lastInput.coordinate:null;
+      if(input&&!this.desktop){const p=this.project(input);this.svg.append(node('circle',{cx:p.x,cy:p.y,r:7,fill:'#0f766e',stroke:'#fff','stroke-width':3}));}
       const all=[...this.objects,...this.drafts.filter(d=>d.creatorId!==this.identity()?.id).map(d=>({...d,draft:true}))];
       if(this.gesture?.object)all.push({...this.gesture.object,draft:true});
       if(this.polygon)all.push({...this.polygon,draft:true});

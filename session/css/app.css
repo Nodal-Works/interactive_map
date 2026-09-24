@@ -15,3 +15,14 @@
 
 .embedded .standalone-links,.embedded .standalone-links+br{display:none}
 .embedded .admin{padding:24px;max-width:1250px}
+/* Phone controllers contain inputs only; results stay on the table. */
+#phone-controls{padding:0 18px 28px;max-width:600px;margin:auto}
+.control-note{font-size:12px;margin:6px 0 18px}
+.phone-control{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:9px;align-items:center;padding:14px 0;border-bottom:1px solid var(--line);font-size:14px}
+.phone-control input[type=range]{grid-column:1/-1;width:100%;min-width:0;accent-color:var(--accent);padding:0}
+.phone-control input[type=date],.phone-control select{max-width:100%;min-width:0}
+.phone-control input[type=checkbox]{width:23px;height:23px;min-height:0;accent-color:var(--accent)}
+.phone-control output{color:var(--accent);font-size:13px;font-variant-numeric:tabular-nums}
+#phone-controls details{margin:16px 0;border:1px solid var(--line);border-radius:12px;padding:12px}
+#phone-controls summary{cursor:pointer;min-height:32px;display:flex;align-items:center;font-size:13px;color:var(--muted)}
+#phone-controls .actions{margin-top:18px}

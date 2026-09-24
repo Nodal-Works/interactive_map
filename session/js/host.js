@@ -7,7 +7,7 @@
   const undo = new Map(), redo = new Map(), drafts = new Map();
   let peer, invite = '', sessionId = MR.id(), token = MR.id(), startedAt = new Date().toISOString();
   let endedAt = null, paused = false, revision = 0, saveStatus = 'Local canvas', saveTimer, broadcastTimer, saving = false, dirty = false;
-  let local = false, peerStatus = 'Connecting', mapBusy = false;
+  let local = false, peerStatus = 'Connecting';
   let modelRevision = 0;
   const hostActor = {id:'host', name:'Host', avatar:'⌂', color:'#ffffff'};
   const seen = new Set();
@@ -20,25 +20,26 @@
       ...adapter.getState()};
   }
   function summary() {
-    const {messages,...state}=snapshot();
+    const {messages,cfd,thermal,isovist,sun,...state}=snapshot();
     return {...state, type:'admin-state', invite, peerStatus, saveStatus, services:runtime.services,
       events:events.slice(-150).reverse().map(({seq,timestamp,actor,kind,details})=>({seq,timestamp,actor,kind,details})), eventCount:events.length, startedAt};
   }
+  function sendPhoneState(person,state,reset=false) {
+    const compact=MR_PHONE_STATE.project(state,person.focus),signature=JSON.stringify(compact);
+    if(reset||signature!==person.stateSignature){person.stateSignature=signature;person.send(compact);}
+    const visible=MR_PHONE_STATE.drawings(objects,person.focus),drawSignature=JSON.stringify(visible);
+    if(reset||drawSignature!==person.drawSignature){person.drawSignature=drawSignature;person.send({type:'objects',objects:visible});}
+  }
   function publish() {
-    clearTimeout(broadcastTimer);
+    // Throttle instead of debounce: solver activity cannot starve phone input.
+    if(broadcastTimer)return;
     broadcastTimer = setTimeout(() => {
+      broadcastTimer=null;
       const state = snapshot();
-      for (const person of people.values()) if (person.connection?.open) {
-        const messages=state.messages.filter(message=>{
-          const key=message.type+':'+(message.animationId||message.action||'');
-          if(person.versions.get(key)===message.mrVersion)return false;
-          person.versions.set(key,message.mrVersion);return true;
-        });
-        person.send({...state,messages,partial:true});
-      }
+      for (const person of people.values()) if (person.connection?.open)sendPhoneState(person,state);
       admin.postMessage(summary());
       window.dispatchEvent(new CustomEvent('mr-session-state', {detail: state}));
-    }, 60);
+    }, 100);
   }
   function logState() {
     const current = adapter.getState();
@@ -120,7 +121,8 @@
       if(message.method==='POST'&&message.path==='/api/services/ecom/api/mr/layer'&&response.ok){
         if(requestRevision!==modelRevision)throw Error('A newer community edit replaced this calculation');
         const result=JSON.parse(await blob.text());result._mrModelRevision=requestRevision;
-        blob=new Blob([JSON.stringify(result)],{type:'application/json'});
+        adapter.control({type:'ecom_layer',layer:result});
+        blob=new Blob([JSON.stringify({appliedOnHost:true,hours:result.meta?.hours})],{type:'application/json'});
       }
       if (blob.size > 16*1024*1024) throw Error('Response too large');
       const encoded = await new Promise(resolve => {const reader=new FileReader();reader.onload=()=>resolve(reader.result.split(',')[1]);reader.readAsDataURL(blob);});
@@ -163,7 +165,7 @@
         if (message.object === null) drafts.delete(person.id);
         else if (MR.validObject(message.object)) drafts.set(person.id,{...message.object,creatorId:person.id,creatorName:person.name});
         renderObjects();
-        for (const p of people.values()) if (p.connection?.open) p.send({type:'drafts',drafts:[...drafts.values()]});
+        // Drafts appear on the table only, without an echo to every phone.
         return;
       }
       if (typeof message.actionId !== 'string' || message.actionId.length > 80) throw Error('Missing action ID');
@@ -211,14 +213,14 @@
       people.set(person.id,person);
     }
     const previous=person.connection; person.connection=connection; previous?.close();
-    person.versions=new Map();
+    person.stateSignature=null;person.drawSignature=null;
     person.send=MR.wire(connection,message=>{if(person.connection===connection)handle(person,message);});
     connection.on('open',()=>{
       if(person.connection!==connection)return;
-      person.lastSeen=Date.now(); person.send({type:'welcome',personId:person.id,...snapshot()});
+      person.lastSeen=Date.now();sendPhoneState(person,snapshot(),true);
       // Explicit type after the snapshot; it also supplies the initial authoritative state.
       person.send({type:'identity',personId:person.id}); record(reconnect?'participant.reconnected':'participant.joined',person,{});
-      fetch('media/building-footprints.geojson').then(r=>r.json()).then(data=>person.send({type:'base',data})).catch(()=>{});
+
     });
     connection.on('close',()=>{if(person.connection===connection){drafts.delete(person.id);renderObjects();record('participant.disconnected',person,{});}});
     connection.on('error',()=>{});
@@ -260,12 +262,14 @@
     const payload=JSON.stringify({sessionId,endedAt:new Date().toISOString()});
     navigator.sendBeacon('/api/session/end',new Blob([payload],{type:'application/json'}));
   });
-  setInterval(async()=>{
-    for(const person of people.values()) if(person.connection?.open && Date.now()-person.lastSeen>22000)person.connection.close();
-    if(mapBusy || ![...people.values()].some(p=>p.connection?.open && p.focus?.tab==='map'))return;
-    mapBusy=true;
-    try{const state=await adapter.mapState();for(const p of people.values())if(p.connection?.open && p.focus?.tab==='map')p.send(state);}catch(error){console.warn('Companion map:',error.message);}finally{mapBusy=false;}
-  },1200);
+  let lastLeaseCheck=Date.now();
+  setInterval(()=>{
+    const now=Date.now(),woke=now-lastLeaseCheck>15000;lastLeaseCheck=now;
+    for(const person of people.values())if(person.connection?.open){
+      if(woke)person.lastSeen=now;
+      else if(now-person.lastSeen>90000)person.connection.close();
+    }
+  },5000);
   try {
     const response=await fetch('/api/runtime'); if(!response.ok)throw Error('Use start_services.sh to enable remote sessions');
     runtime=await response.json(); local=true;

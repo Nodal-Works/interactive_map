@@ -9,16 +9,17 @@
   let identity;
   try {identity=JSON.parse(localStorage.getItem(identityKey));}catch{}
   if(!identity?.id||!identity?.resumeKey){identity={id:MR.id(),resumeKey:MR.id()};try{localStorage.setItem(identityKey,JSON.stringify(identity));}catch{}}
-  let state=null, connection, peer, sendWire, layer=MR.LAYERS[0], tab='controls', mapView, frameReady=false, ended=false, retryTimer, lastPong=0;
+  let state=null, connection, layer=MR.LAYERS[0], tab='controls', mapView, frameReady=false, ended=false, sessionReady=false, styleOpen=false;
   const requests=new Map();
+  const controls=new MR_CONTROLS($('phone-controls'),send);
   function notice(text){$('notice').textContent=text;$('notice').hidden=!text;}
   function person(){return state?.participants.find(p=>p.id===identity.id);}
-  function canEdit(){return !!connection?.open && !state?.paused && !state?.endedAt && !!person()?.slot;}
+  function canEdit(){return !!connection?.open && sessionReady && !state?.paused && !state?.endedAt && !!person()?.slot;}
   function send(message){
-    if(!connection?.open){notice('Reconnecting. Edits are paused until the host returns.');return false;}
+    if(!connection?.open)return false;
     if(['layer','control','gesture','canvas'].includes(message.type))message.actionId=MR.id();
     if(message.type==='canvas')message.transform=state?.table.revision;
-    sendWire(message);return true;
+    return connection.send(message);
   }
   function focus(){send({type:'focus',layer:layer.id,tab});}
   function frame(message){if(frameReady)$('dashboard').contentWindow.postMessage(message,location.origin);}
@@ -30,42 +31,56 @@
     layer=next;$('drawer').hidden=true;$('workspace').hidden=false;
     $('layer-title').textContent=layer.name;$('layer-icon').textContent=layer.icon;
     $('layer-enabled').checked=!!state?.layers[layer.id];$('layer-enabled').disabled=!canEdit();
-    $('dashboard').hidden=layer.id==='canvas-btn';$('canvas-controls').hidden=layer.id!=='canvas-btn';
-    frame({type:'open-layer',layer:layer.id});selectTab('controls');
+    $('canvas-controls').hidden=layer.id!=='canvas-btn';
+    controls.open(layer);controls.update(state,canEdit());
+    selectTab(layer.id==='canvas-btn'?'map':'controls');
   }
   function selectTab(next){
     tab=next;document.body.classList.toggle('map-open',tab==='map');$('controls-tab').setAttribute('aria-selected',String(tab==='controls'));$('map-tab').setAttribute('aria-selected',String(tab==='map'));
     $('controls-view').hidden=tab!=='controls';$('map-view').hidden=tab!=='map';
+    const ecom=layer.id==='ecom-energy-btn'&&tab==='controls';
+    $('dashboard').hidden=!ecom;$('phone-controls').hidden=ecom||layer.id==='canvas-btn';
+    if(ecom&&!$('dashboard').getAttribute('src'))$('dashboard').src=dashboardUrl.href;
+    else if(!ecom&&$('dashboard').getAttribute('src')){frameReady=false;$('dashboard').removeAttribute('src');}
     if(tab==='map'){
       if(!mapView){
         mapView=new MR_MAP.CompanionMap({element:$('phone-map'),send,identity:()=>({id:identity.id,canEdit:canEdit()&&!!state?.layers[layer.id]})});
         $('phone-map').addEventListener('mr-tool-state',updateTools);
         $('phone-map').addEventListener('mr-drawing-state',({detail})=>{
           $('finish').disabled=detail.corners<3;$('delete').disabled=!detail.selected;$('edit-text').disabled=!detail.selected;
-          if(['polygon','obstacle'].includes(mapView.tool))$('map-hint').textContent=detail.corners?`${detail.corners} corners · ${detail.corners<3?'add '+(3-detail.corners)+' more':'tap Finish shape to save'} · pinch to navigate`:'Tap corners to draw · Finish shape to save · pinch to navigate';
+          updateHint();
         });
       }
       mapView.layer=layer.id;if(state)mapView.setState(state);
-      if(baseData)mapView.base(baseData);
-      const choices=[['navigate','Move / zoom']];
+      const choices=[];
       if(layer.id==='canvas-btn')choices.push(['pen','Pen'],['line','Line'],['arrow','Arrow'],['polygon','Polygon'],['marker','Marker'],['comment','Comment'],['select','Select / move'],['reshape','Edit vertices']);
       else if(layer.id==='cfd-simulation-btn')choices.push(['obstacle','Draw wind obstacle'],['select','Move obstacle'],['reshape','Edit corners']);
       else if(layer.tool)choices.push([layer.tool,layer.id==='thermal-comfort-btn'?'Select route / inspect':layer.id==='isovist-btn'?'Place / move viewer':'Select location']);
       if(layer.id==='isovist-btn')choices.push(['heading','Look toward']);
       $('tool').replaceChildren(...choices.map(([value,label])=>new Option(label,value)));
-      $('tool').value=layer.tool||'navigate';mapView.setTool($('tool').value);mapView.map.resize();
+      $('tool').value=layer.tool||'off';$('tool').hidden=choices.length<2;mapView.setTool(layer.tool||'off');mapView.map.resize();
       updateTools();
-      if(!state?.layers[layer.id])notice('Turn this layer on to interact with the shared table.');
+
     }
     focus();
   }
   function updateTools(){
     const tool=mapView.tool,drawing=['canvas-btn','cfd-simulation-btn'].includes(layer.id),shape=['polygon','obstacle'].includes(tool),editing=['select','reshape'].includes(tool);
-    for(const id of ['color','width'])$(id).hidden=!drawing||editing||tool==='navigate';
-    $('finish').hidden=!shape;$('finish').textContent='Finish shape';$('cancel').hidden=!drawing||tool==='navigate';
+    $('drawing-options').hidden=layer.id!=='canvas-btn'||editing;
+    for(const id of ['color','width'])$(id).hidden=!styleOpen||layer.id!=='canvas-btn'||editing;
+    $('finish').hidden=!shape;$('finish').textContent='Finish shape';$('cancel').hidden=!shape;
     $('delete').hidden=!editing;$('edit-text').hidden=tool!=='select'||layer.id!=='canvas-btn';
     $('undo').hidden=!drawing;$('redo').hidden=!drawing;
-    $('map-hint').textContent=shape?'Tap corners to draw · Finish shape to save · pinch to navigate':tool==='pen'?'Drag to sketch · lift to save · pinch to navigate':tool==='viewer'?'Drag to move the viewpoint · pinch to navigate':tool==='navigate'?'Drag to pan · pinch to zoom':editing?'Touch a point to select and drag · pinch to navigate':'Touch the map to '+(tool==='location'?'select a location':tool==='heading'?'look toward a place':tool==='route'?'set your route':'draw')+' · pinch to navigate';
+    updateHint();
+  }
+  function updateHint(){
+    if(!mapView)return;
+    const tool=mapView.tool,shape=['polygon','obstacle'].includes(tool),editing=['select','reshape'].includes(tool);
+    const navigation='Two fingers to pan or zoom';
+    let input=shape?'Tap corners, then Finish shape':tool==='pen'?'Drag to sketch; lift to save':tool==='viewer'?'Drag to move the viewpoint':tool==='off'?'':editing?'Touch a point to select and drag':'Touch to '+(tool==='location'?'select a location':tool==='heading'?'look toward a place':tool==='route'?'set your route':'draw');
+    if(shape&&mapView.polygon?.points.length)input=mapView.polygon.points.length+' corners · '+(mapView.polygon.points.length<3?'add '+(3-mapView.polygon.points.length)+' more':'tap Finish shape');
+    if(!canEdit())input='';else if(!state?.layers[layer.id])input='Turn on this layer to add input';
+    $('map-hint').textContent=input?input+' · '+navigation:navigation;
   }
   function render(){
     if(!state)return;
@@ -81,9 +96,9 @@
       const label=document.createElement('span');label.textContent=`${index+1} · ${p?p.avatar+' '+p.name+(!p.online?' · reserved':''):'Available'}`;
       const button=document.createElement('button');button.textContent=id===identity.id?'Yours':'Join';button.disabled=!!id||!!me?.slot||!connection?.open;button.onclick=()=>send({type:'claim-slot',slot:index+1});row.append(label,button);return row;
     }));
-    $('release-slot').disabled=!me?.slot;syncFrame();if(mapView)mapView.setState(state);
+    $('release-slot').disabled=!me?.slot;syncFrame();controls.update(state,canEdit());if(mapView)mapView.setState(state);updateHint();
     if(state.paused)notice('The host has paused remote editing. You can still explore.');
-    else if(state.layers[layer.id]&&$('notice').textContent==='Turn this layer on to interact with the shared table.')notice('');
+    else if($('notice').textContent==='The host has paused remote editing. You can still explore.')notice('');
   }
   for(const group of [...new Set(MR.LAYERS.map(l=>l.group))]){
     const title=document.createElement('h2');title.textContent=group;const grid=document.createElement('div');grid.className='app-grid';
@@ -94,7 +109,7 @@
     }
     $('layer-list').append(title,grid);
   }
-  $('apps').onclick=()=>{document.body.classList.remove('map-open');$('workspace').hidden=true;$('drawer').hidden=false;if(mapView)mapView.cancel();send({type:'focus',layer:layer.id,tab:'controls'});};
+  $('apps').onclick=()=>{frameReady=false;$('dashboard').removeAttribute('src');document.body.classList.remove('map-open');$('workspace').hidden=true;$('drawer').hidden=false;if(mapView)mapView.cancel();send({type:'focus',layer:layer.id,tab:'controls'});};
   $('controls-tab').onclick=()=>selectTab('controls');$('map-tab').onclick=()=>selectTab('map');$('start-drawing').onclick=()=>selectTab('map');
   $('layer-enabled').onchange=e=>send({type:'layer',layer:layer.id,enabled:e.target.checked});
   $('tool').onchange=e=>mapView?.setTool(e.target.value);$('color').oninput=e=>{if(mapView)mapView.color=e.target.value;};$('width').onchange=e=>{if(mapView)mapView.width=Number(e.target.value);};
@@ -106,7 +121,7 @@
   $('profile-button').onclick=profile;$('choose-slot').onclick=profile;
   $('save-profile').onclick=()=>{send({type:'profile',name:$('name').value.trim(),avatar:$('avatar').value});$('profile').close();};
   $('release-slot').onclick=()=>send({type:'release-slot'});
-  $('dashboard').src=dashboardUrl.href;
+  $('drawing-options').onclick=()=>{styleOpen=!styleOpen;$('drawing-options').setAttribute('aria-expanded',String(styleOpen));updateTools();};
   window.addEventListener('message',({source,origin,data})=>{
     if(source!==$('dashboard').contentWindow||origin!==location.origin)return;
     if(data?.type==='dashboard-ready'){frameReady=true;frame({type:'open-layer',layer:layer.id});syncFrame();}
@@ -116,47 +131,34 @@
       if(!send({...data,type:'rpc',requestId})){const req=requests.get(requestId);clearTimeout(req.timer);requests.delete(requestId);frame({type:'rpc-result',requestId:data.requestId,error:'Host disconnected'});}
     }
   });
-  let baseData;
   function receive(message){
     if(message.type==='state'||message.type==='welcome'){
-      if(message.partial&&state?.sessionId===message.sessionId){
-        const messages=new Map((state.messages||[]).map(m=>[m.type+':'+(m.animationId||m.action||''),m]));
-        for(const m of message.messages)messages.set(m.type+':'+(m.animationId||m.action||''),m);
-        message.messages=[...messages.values()];
-      }
-      state=message;lastPong=Date.now();render();
+      state={...message,objects:state?.sessionId===message.sessionId?state.objects||[]:[]};sessionReady=true;render();
     }
     if(message.type==='identity'){identity.id=message.personId;render();}
-    if(message.type==='map')mapView?.results(message);
-    if(message.type==='base'){baseData=message.data;mapView?.base(baseData);}
-    if(message.type==='drafts'&&mapView){mapView.drafts=message.drafts;mapView.render();}
-    if(message.type==='pong')lastPong=Date.now();
-    if(message.type==='rejected'||message.type==='ended'){ended=true;notice(message.text);$('connection').textContent='Session unavailable';connection?.close();}
+    if(message.type==='objects'&&state){state.objects=message.objects;if(mapView)mapView.setState(state);}
+    if(message.type==='rejected'||message.type==='ended'){ended=true;notice(message.text);$('connection').textContent='Session unavailable';connection?.stop();}
     if(message.type==='error'){render();notice(message.text);}
     if(message.type==='rpc-result'||message.type==='error'&&message.requestId){
       const req=requests.get(message.requestId);if(req){clearTimeout(req.timer);requests.delete(message.requestId);frame({...message,type:'rpc-result',requestId:req.frameId,error:message.type==='error'?message.text:undefined});}
     }
   }
-  function retry(){if(ended)return;clearTimeout(retryTimer);retryTimer=setTimeout(connect,1800);}
-  function connect(){
-    if(ended||connection?.open)return;
-    if(!peer||peer.destroyed){
-      peer=new Peer(MR_CONFIG.peer);peer.on('open',connect);peer.on('error',error=>{notice('Connection: '+error.type+'. Retrying…');retry();});
-      peer.on('disconnected',()=>{try{peer.reconnect();}catch{}retry();});return;
+  function status(value){
+    if(ended)return;
+    if(value==='connected'){focus();render();return;}
+    if(value==='disconnected'){
+      sessionReady=false;
+      for(const req of requests.values()){clearTimeout(req.timer);frame({type:'rpc-result',requestId:req.frameId,error:'Connection interrupted. Please try again.'});}requests.clear();
     }
-    if(!peer.id){retry();return;}
-    const next=peer.connect(invitation.host,{reliable:true,metadata:{token:invitation.token,clientId:identity.id,resumeKey:identity.resumeKey,release:MR.RELEASE}});
-    connection=next;sendWire=MR.wire(next,receive);
-    next.on('open',()=>{if(connection!==next)return;notice('');lastPong=Date.now();focus();render();});
-    next.on('close',()=>{if(connection!==next)return;render();syncFrame();for(const req of requests.values()){clearTimeout(req.timer);frame({type:'rpc-result',requestId:req.frameId,error:'Host disconnected'});}requests.clear();retry();});
-    next.on('error',()=>{next.close();retry();});
-    setTimeout(()=>{if(connection===next&&!next.open){notice('The connection is taking longer than expected. This network may require a TURN relay; ask the host to check Session status.');next.close();retry();}},30000);
+    if(state)render();else $('connection').textContent='Connecting…';
   }
-  setInterval(()=>{if(connection?.open){if(Date.now()-lastPong>20000){connection.close();retry();}else send({type:'ping',time:Date.now()});}},5000);
-  document.addEventListener('visibilitychange',()=>{if(!document.hidden){if(connection?.open)send({type:'ping',time:Date.now()});else connect();}});
-  window.addEventListener('online',connect);
+  document.addEventListener('visibilitychange',()=>{if(!document.hidden)connection?.resume();});
+  window.addEventListener('online',()=>connection?.resume());
   if(!invitation.host||!invitation.token){ended=true;notice('Scan the QR code on the MR Studio display to join a session.');$('connection').textContent='Waiting for an invitation';}
   else if(invitation.release!==MR.RELEASE){ended=true;notice('This invitation uses a different client version. Reload, then scan the host’s current QR.');}
   else if(typeof Peer==='undefined')notice('Connection library could not load. Check internet access and reload.');
-  else connect();
+  else {
+    connection=new MR_CONNECTION({host:invitation.host,metadata:{token:invitation.token,clientId:identity.id,resumeKey:identity.resumeKey,release:MR.RELEASE},onMessage:receive,onStatus:status});
+    connection.start();
+  }
 })();

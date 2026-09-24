@@ -19,7 +19,7 @@ def build():
         target = OUT / relative
         target.parent.mkdir(parents=True, exist_ok=True)
         shutil.copy2(ROOT / relative, target)
-    for name in ('config', 'shared', 'map', 'client', 'dashboard-bridge', 'services'):
+    for name in ('config', 'shared', 'map', 'client', 'connection', 'controls', 'dashboard-bridge', 'services'):
         copy(f'session/js/{name}.js')
     for name in ('app', 'dashboard-mobile', 'desktop'):
         copy(f'session/css/{name}.css')
@@ -28,7 +28,7 @@ def build():
             copy(str(path.relative_to(ROOT)))
     for relative in ('controller.js', 'style.css', 'ecom-palette.js', 'animations/coolpaths-guide.js',
                      'animations/cfd-core.js', 'animations/cfd-visuals.js', 'media/chalmers_logo.png',
-                     'media/dtcc_logo.png', 'media/survey_qr.png', 'media/FCC_DTCC_VR.mp4',
+                     'media/dtcc_logo.png', 'media/survey_qr.png',
                      'media/ecom/ecom-buildings.geojson'):
         copy(relative)
     controller = (ROOT / 'controller.html').read_text()

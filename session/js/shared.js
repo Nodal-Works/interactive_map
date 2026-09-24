@@ -1,6 +1,6 @@
 (function(root) {
   'use strict';
-  const RELEASE = '20260924-session-3';
+  const RELEASE = '20260924-session-4';
   const LAYERS = [
     ['cfd-simulation-btn', 'Wind · CFD', 'Environment', '🌬', 'obstacle'],
     ['stormwater-btn', 'Stormwater', 'Environment', '💧'],
@@ -70,10 +70,11 @@
     return {before: old || null, after: next};
   }
   // Large results use bounded chunks; ordinary messages remain small and ordered.
-  function wire(connection, receive, failure = () => {}) {
+  function wire(connection, receive, failure = () => {}, activity = () => {}) {
     const pending = new Map();
     connection.on('data', value => {
       if (!value || typeof value !== 'object') return;
+      activity();
       if (value.type !== 'chunk') { receive(value); return; }
       if (typeof value.id !== 'string' || typeof value.data !== 'string' || value.data.length > 12000 ||
           !Number.isInteger(value.index) || !Number.isInteger(value.total) || value.total < 1 || value.total > 3000 || value.index < 0 || value.index >= value.total) return;
@@ -92,21 +93,50 @@
       }
     });
     connection.on('close', () => { for (const entry of pending.values()) clearTimeout(entry.timer); pending.clear(); });
-    let queue = Promise.resolve();
-    return value => {
-      queue = queue.then(async () => {
-        if (!connection.open) return;
-        const json = JSON.stringify(value);
-        if (json.length < 12000) { connection.send(value); return; }
-        const messageId = id(), total = Math.ceil(json.length / 12000);
-        for (let index = 0; index < total; index++) {
-          while (connection.open && (connection.dataChannel?.bufferedAmount || 0) > 256000) await new Promise(resolve => setTimeout(resolve, 20));
-          if (!connection.open) return;
-          connection.send({type: 'chunk', id: messageId, index, total, data: json.slice(index * 12000, (index + 1) * 12000)});
+    const urgent=[],ordered=[],latest=new Map();let running=false,closed=false;
+    const priority=new Set(['ping','pong','ack','error','identity','ended','rejected']);
+    function key(value){
+      if(['state','objects','draft','focus'].includes(value.type))return value.type;
+      if(value.type==='gesture'&&value.phase==='move')return 'gesture:'+value.layer;
+      return null;
+    }
+    const wait=ms=>new Promise(resolve=>setTimeout(resolve,ms));
+    async function capacity(){while(!closed&&connection.open&&(connection.dataChannel?.bufferedAmount||0)>64000)await wait(20);return !closed&&connection.open;}
+    async function flushUrgent(){while(urgent.length&&await capacity())connection.send(urgent.shift());}
+    async function drain(){
+      if(running)return;running=true;
+      try{
+        while(!closed&&connection.open&&(urgent.length||ordered.length||latest.size)){
+          await flushUrgent();if(!await capacity())break;await flushUrgent();
+          let value=ordered.shift();
+          if(!value&&latest.size){const k=latest.keys().next().value;value=latest.get(k);latest.delete(k);}
+          if(!value)continue;
+          const json=JSON.stringify(value);
+          if(json.length<12000){connection.send(value);continue;}
+          const messageId=id(),total=Math.ceil(json.length/12000);
+          for(let index=0;index<total;index++){
+            await flushUrgent();if(!await capacity())break;await flushUrgent();
+            connection.send({type:'chunk',id:messageId,index,total,data:json.slice(index*12000,(index+1)*12000)});
+            await wait(0); // Permit heartbeat callbacks between chunks.
+          }
         }
-      }).catch(failure);
+      }catch(error){failure(error);}finally{running=false;}
+    }
+    connection.on('close',()=>{closed=true;urgent.length=0;ordered.length=0;latest.clear();});
+    return value=>{
+      if(closed||!connection.open)return;
+      const k=key(value);
+      if(priority.has(value.type))urgent.push(value);
+      else if(k)latest.set(k,value);
+      else {
+        if(value.type==='gesture')latest.delete('gesture:'+value.layer);
+        if(ordered.length>=256){failure(Error('Connection is congested'));return;}
+        ordered.push(value);
+      }
+      drain();
     };
   }
+
   const MR = {RELEASE, LAYERS, ACTIONS, ECOM, AVATARS, COLORS, id, validControl, point, validObject, editObject, wire};
   root.MR = MR;
   if (typeof module !== 'undefined') module.exports = MR;
