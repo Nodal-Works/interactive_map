@@ -10,7 +10,11 @@
     if (!MR.validControl(data) && data.type !== 'control_action') {
       snapshots[data.type === 'animation_state' ? data.animationId : data.type] = data;
       window.dispatchEvent(new CustomEvent('mr-state', {detail: data}));
-    } else if (!data.sessionAction) window.dispatchEvent(new CustomEvent('mr-desktop-action', {detail: data}));
+    } else if (!data.sessionAction) {
+      snapshots['control:' + data.type + ':' + data.action] = data;
+      window.dispatchEvent(new CustomEvent('mr-desktop-action', {detail: data}));
+      window.dispatchEvent(new CustomEvent('mr-state', {detail: data}));
+    }
   });
   function table() {
     const size = computeOverlayPixelSize(), rect = map.getContainer().getBoundingClientRect();
@@ -34,7 +38,12 @@
   function setLayer(layer, enabled) {
     if (!(layer in active) || typeof enabled !== 'boolean') throw Error('Unknown layer');
     if (layer === 'canvas-btn') { active[layer] = enabled; window.dispatchEvent(new CustomEvent('mr-canvas-visibility', {detail: enabled})); return; }
-    if (active[layer] !== enabled) document.getElementById(layer)?.click();
+    if (active[layer] !== enabled) {
+      const button=document.getElementById(layer);
+      if(!button)throw Error('This layer is unavailable on the host');
+      active[layer]=enabled; // Serialize repeated desired-state commands before asynchronous broadcasts arrive.
+      button.click();
+    }
     // Handlers emit authoritative animation_state asynchronously through BroadcastChannel.
   }
   function gesture(message) {
@@ -65,12 +74,13 @@
     const style = map.getStyle();
     for (const [name, source] of Object.entries(style?.sources || {})) {
       if (!/^(isovist-|coolpaths-|epc-selected|ecom-)/.test(name)) continue;
+      if (['isovist-all-trees','isovist-gradient'].includes(name)) continue;
       const visibleLayers = style.layers.filter(layer => layer.source === name && layer.layout?.visibility !== 'none');
       if (!visibleLayers.length) continue;
       const data = map.getSource(name)?._data;
       if (source.type === 'geojson' && typeof data === 'object') {
         for (const f of (data.features || []).slice(0, 2500)) features.push({type: 'Feature', geometry: f.geometry,
-          properties: {source: name, color: name.startsWith('isovist') ? '#4ade80' : name.startsWith('coolpaths') ? '#fb923c' : '#38bdf8'}});
+          properties: {source: name, color: f.properties?.kind==='coolest' ? '#16a34a' : f.properties?.kind==='shortest' ? '#0ea5e9' : name==='isovist-viewer' ? '#fb7185' : name==='isovist-trees' ? '#4ade80' : name.startsWith('isovist') ? '#eab308' : name.startsWith('coolpaths') ? '#fb923c' : '#38bdf8'}});
       } else if (source.type === 'image' && source.url && source.coordinates) {
         const image = await raster(source.url); if (image) images.push({id: name, image, coordinates: source.coordinates});
       }
@@ -81,9 +91,10 @@
     return {type: 'map', table: table(), features, images};
   }
   function getState() {
+    const sun=window.sunStudy;
     return {layers: {...active}, messages: Object.values(snapshots), table: table(),
       isovist: window.isovistSession?.getState(), cfd: window.cfdSession?.getState(),
-      thermal: window.thermalComfortLayer?.getState()};
+      thermal: window.thermalComfortLayer?.getState(), sun: sun ? {time:sun.timeOfDay,date:`${sun.date.getFullYear()}-${String(sun.date.getMonth()+1).padStart(2,'0')}-${String(sun.date.getDate()).padStart(2,'0')}`,animating:sun.isAnimating,trees:sun.treesVisible,falseColor:sun.isFalseColorMode,opacity:sun.shadowOpacity,speed:sun.animationSpeed}:null};
   }
   window.MR_ADAPTER = {table, coordinate, control, setLayer, gesture, getState, mapState, active, channel};
   map.on('moveend', () => { transformRevision++; window.dispatchEvent(new Event('mr-transform')); });

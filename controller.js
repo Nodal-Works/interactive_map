@@ -1722,6 +1722,20 @@ channel.onmessage = (event) => {
     if (data.type === MSG_TYPES.ANIMATION_STATE) {
         // Received actual animation state from main window - update our tracking
         setAnimationState(data.animationId, data.isActive);
+    } else if (data.type === 'isovist_state') {
+        const radius = document.getElementById('isovist-radius'), fov = document.getElementById('isovist-fov');
+        if (radius) radius.value = data.radius;
+        if (fov) {fov.value = data.fov;fov.disabled = !data.humanFov;}
+        if (document.getElementById('radius-display')) document.getElementById('radius-display').textContent = data.radius + 'm';
+        if (document.getElementById('fov-display')) document.getElementById('fov-display').textContent = data.fov + '°';
+        document.getElementById('toggle-360-btn')?.classList.toggle('active', !data.humanFov);
+        document.getElementById('toggle-follow-btn')?.classList.toggle('active', data.follow);
+    } else if (data.type === 'sun_state') {
+        sunStudyState.time = data.time;sunStudyState.date = data.date;
+        for (const [id, value] of [['sun-time',data.time],['sun-date',data.date],['sun-speed',data.speed],['shadow-opacity',data.opacity]]) {
+            const input = document.getElementById(id);if(input) input.value = value;
+        }
+        updateSunStudySky(data.time, data.date);
     } else if (data.type === 'cfd_state') {
         cfdState = { ...cfdState, ...data };
         renderCfdState();

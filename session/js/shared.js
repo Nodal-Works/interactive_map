@@ -27,7 +27,7 @@
     campus_demo_control: 'autoplay next previous stop',
     fcc_demo_control: 'play pause seek set_speed set_video_duration toggle'
   };
-  const ECOM = new Set('ecom_ping ecom_request_summary ecom_hour ecom_release ecom_layer ecom_filters ecom_caption ecom_uniform ecom_flows ecom_sound ecom_sound_request ecom_change ecom_change_result ecom_audio_request ecom_vehicles_request'.split(' '));
+  const ECOM = new Set('ecom_ui_state ecom_ping ecom_request_summary ecom_hour ecom_release ecom_layer ecom_filters ecom_caption ecom_uniform ecom_flows ecom_sound ecom_sound_request ecom_change ecom_change_result ecom_audio_request ecom_vehicles_request'.split(' '));
   const AVATARS = ['🦊','🐙','🦉','🐸','🐢','🐧','🦋','🦄'];
   const COLORS = ['#38bdf8','#fb923c','#c084fc','#4ade80','#fb7185','#facc15'];
   function id() { return crypto.randomUUID().replaceAll('-', ''); }
@@ -40,6 +40,9 @@
     if (v !== undefined && !['number','string','boolean'].includes(typeof v)) return false;
     if (typeof v === 'number' && (!Number.isFinite(v) || Math.abs(v) > 100000)) return false;
     if (typeof v === 'string' && v.length > 100) return false;
+    const ranges={isovist_control:{set_radius:[50,500],set_fov:[30,180],set_ambient_volume:[0,1]},sun_control:{set_time:[0,24],set_opacity:[0,1],set_speed:[.5,5]},bird_control:{set_volume:[0,1]},fcc_demo_control:{seek:[0,1],set_speed:[.25,2],set_video_duration:[1,86400]}};
+    const range=ranges[message.type]?.[message.action];
+    if(range&&(!Number.isFinite(Number(v))||Number(v)<range[0]||Number(v)>range[1]))return false;
     if (message.action === 'set_date' && (typeof v !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(v) || !Number.isFinite(Date.parse(v)))) return false;
     return true;
   }

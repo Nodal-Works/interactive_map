@@ -252,6 +252,24 @@
         autoApply: true,
         optimizer: null        // last optimizer run, or an in-flight job
     };
+    const sessionEditorId = Math.random().toString(36).slice(2);
+    let sharedUi = null;
+    function publishSharedUi() {
+        if (!state.working) return;
+        channel.postMessage({type:'ecom_ui_state', editorId:sessionEditorId, ui:{working:clone(state.working),excluded:[...state.excluded],paramValues:{...state.paramValues},startMonth:state.startMonth,startDay:state.startDay,spanDays:state.spanDays,year:state.year}});
+    }
+    function receiveSharedUi(data) {
+        if (data.editorId === sessionEditorId || !data.ui?.working?.buildings || !Array.isArray(data.ui.excluded)) return;
+        sharedUi = data.ui;
+        if (!state.base) return;
+        state.working = clone(sharedUi.working);
+        state.excluded = new Set(sharedUi.excluded);
+        state.paramValues = {...sharedUi.paramValues};
+        for (const key of ['startMonth','startDay','spanDays','year']) if (Number.isFinite(sharedUi[key])) state[key]=sharedUi[key];
+        if (applyTimer !== null) {clearTimeout(applyTimer);applyTimer=null;}
+        applyPending=false;state.dirty=false;
+        render();
+    }
 
     // ------------------------------------------------------------------ api
 
@@ -825,6 +843,7 @@
     let pendingWaiters = [];
 
     function markDirty() {
+        publishSharedUi();
         state.dirty = true;
         renderKpis();       // dims them, rather than leaving last run looking live
         if (state.autoApply) {
@@ -889,6 +908,7 @@
         setStatus('Dispatching…', 'busy');
 
         const spec = buildSpec();
+        publishSharedUi();
         // Announced first, and deliberately not awaited: the announce beat is
         // what the dispatch round trip happens inside, so the new layer lands
         // during the animation instead of arriving after it as a jump.
@@ -2959,7 +2979,9 @@
         // someone happens to move a control, which reads as "no KPIs" rather
         // than "not asked for any yet" - and the table is already showing this
         // very community, so it changes nothing on screen.
-        applyNow();
+        if (sharedUi) {receiveSharedUi({ui:sharedUi});setStatus('Shared session settings loaded', 'ok');}
+        else if (!window.MR_REMOTE_FETCH) applyNow();
+        else setStatus('Ready — settings are applied when you change them', 'ok');
 
         // Re-checked rather than probed once: the display can be opened, closed
         // or reloaded at any point while this panel sits there.
@@ -3013,6 +3035,8 @@
     // another simulation does not pay for a scenario fetch nobody will read.
     channel.addEventListener('message', function (event) {
         const data = event.data || {};
+        if (data.type === 'ecom_ui_state') receiveSharedUi(data);
+        if (data.type === 'ecom_layer' && data.layer) {state.layer=data.layer;renderKpis();}
 
         if (data.type === 'animation_state' &&
             data.animationId === 'ecom-energy-btn' &&
