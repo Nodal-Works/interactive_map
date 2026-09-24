@@ -67,7 +67,7 @@ class StormwaterFlowAnimation {
     this.particleTrailColor = 'rgba(0, 150, 255, 0.3)';
     
     // Audio setup
-    this.rainAudio = new Audio('media/sound/rain.mp3');
+    this.rainAudio = new Audio(window.mrAsset('media/sound/rain.mp3'));
     this.rainAudio.loop = true;
     
     // Bind methods
@@ -88,7 +88,7 @@ class StormwaterFlowAnimation {
       }
       
       // Load the DEM GeoTIFF file
-      const response = await fetch('media/stormwater_dem.tif', { cache: 'no-cache' });
+      const response = await fetch(window.mrAsset('media/stormwater_dem.tif'), { cache: 'no-cache' });
       if (!response.ok) {
         throw new Error('Building-aware DEM missing. Run python scripts/process_dem_flow.py --browser-only');
       }

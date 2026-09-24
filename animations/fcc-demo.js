@@ -183,7 +183,7 @@
   
   async function loadPathData() {
     try {
-      const response = await fetch('media/VR-movement.geojson');
+      const response = await fetch(window.mrAsset('media/VR-movement.geojson'));
       const geojson = await response.json();
       
       if (geojson.features && geojson.features.length > 0) {
@@ -220,7 +220,7 @@
     }
     
     // Try to fetch from file
-    fetch('media/building-footprints.geojson')
+    fetch(window.mrAsset('media/building-footprints.geojson'))
       .then(res => res.json())
       .then(data => processGeoJSON(data))
       .catch(e => console.warn('FCC Demo: Could not load building footprints:', e));
@@ -262,7 +262,7 @@
     treeObstacles = [];
     
     try {
-      const response = await fetch('media/trees.geojson');
+      const response = await fetch(window.mrAsset('media/trees.geojson'));
       const geojson = await response.json();
       
       if (geojson.features) {

@@ -12,7 +12,7 @@
   status.id = 'cfd-status'; status.setAttribute('role', 'status'); status.hidden = true;
   canvas.insertAdjacentElement('afterend', status);
   const channel = new BroadcastChannel('map_controller_channel');
-  const audio = new Audio('media/sound/wind.mp3'); audio.loop = true;
+  const audio = new Audio(window.mrAsset('media/sound/wind.mp3')); audio.loop = true;
   const settings = { ...CFD.DEFAULTS };
   let heatColors;
   function refreshColors() {
@@ -119,8 +119,8 @@
       const source = map.getSource('usergeo');
       const userData = source?._data;
       const userFeatures = userData?.features?.filter(f => ['Polygon', 'MultiPolygon'].includes(f.geometry?.type));
-      const buildingTask = userFeatures?.length ? Promise.resolve({ features: userFeatures }) : loadJSON('media/building-footprints.geojson');
-      const treeTask = settings.trees ? loadJSON('media/trees.geojson') : Promise.resolve({ features: [] });
+      const buildingTask = userFeatures?.length ? Promise.resolve({ features: userFeatures }) : loadJSON(window.mrAsset('media/building-footprints.geojson'));
+      const treeTask = settings.trees ? loadJSON(window.mrAsset('media/trees.geojson')) : Promise.resolve({ features: [] });
       const [buildings, trees] = await Promise.all([buildingTask, treeTask]);
       if (!active || generation !== id) return;
       const size = computeOverlayPixelSize();

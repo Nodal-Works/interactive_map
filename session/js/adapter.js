@@ -23,7 +23,7 @@
     const size = computeOverlayPixelSize(), rect = map.getContainer().getBoundingClientRect();
     const left = (innerWidth - size.w) / 2 - rect.left, top = (innerHeight - size.h) / 2 - rect.top;
     const corners = [[left,top],[left+size.w,top],[left+size.w,top+size.h],[left,top+size.h]].map(p => map.unproject(p).toArray());
-    return {widthCm: 100, heightCm: 60, width: size.w, height: size.h, left, top, corners,
+    return {widthCm: window.MR_CALIBRATION.dimensions.tableWidth, heightCm: window.MR_CALIBRATION.dimensions.tableHeight, width: size.w, height: size.h, left, top, corners,
       revision: transformRevision, bearing: map.getBearing()};
   }
   function coordinate(message) {

@@ -154,7 +154,7 @@ function makeAppHarness() {
   const map={getSource(){return null;},getContainer(){return canvas;},project(c){return {x:c[0],y:c[1]};},
     on(type,fn){mapEvents[type]=fn;}};
   class Worker {constructor(){workers.push(this);}postMessage(data){this.init=data;}terminate(){this.terminated=true;}}
-  const window={addEventListener(type,fn){events[type]=fn;}};
+  const window={mrAsset:path=>path,addEventListener(type,fn){events[type]=fn;}};
   let channel;
   const sandbox={CFD:C,CFDVisuals:V,console:{...console,error(){},warn(){}},Math,Number,Float32Array,Uint8Array,Map,Worker,window,map,
     document:{getElementById:id=>id===button.id?button:canvas,createElement:element,addEventListener(){}},

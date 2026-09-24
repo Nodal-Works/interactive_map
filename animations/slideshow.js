@@ -24,7 +24,7 @@ let transitionAnimationFrame = null;
 const mediaCache = new Map();
 
 // Config path
-const SLIDESHOW_CONFIG_PATH = 'media/slideshow/slideshow-config.json';
+const SLIDESHOW_CONFIG_PATH = window.mrAsset('media/slideshow/slideshow-config.json');
 const SLIDESHOW_MEDIA_PATH = 'media/slideshow/';
 
 // Load slideshow configuration

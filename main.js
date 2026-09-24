@@ -1,19 +1,11 @@
 // MapLibre GL JS implementation for interactive_map
 // Native bearing/rotation support and raster basemap switching
 
-// Global function to compute overlay pixel size based on physical dimensions
-// Defaults match the controller values
+// Physical sizing uses the selected calibration's dimensions.
 window.computeOverlayPixelSize = function() {
-  const SCREEN_WIDTH_CM = 111.93;
-  // const SCREEN_HEIGHT_CM = 62.96; // Not used for width-based scaling
-  const TABLE_WIDTH_CM = 100;
-  const TABLE_HEIGHT_CM = 60;
-  
-  const pxPerCm = window.innerWidth / SCREEN_WIDTH_CM;
-  const w = Math.round(TABLE_WIDTH_CM * pxPerCm);
-  const h = Math.round(TABLE_HEIGHT_CM * pxPerCm);
-  
-  return { w, h };
+  const d = window.MR_CALIBRATION.dimensions;
+  const px = window.innerWidth / d.screenWidth;
+  return {w: Math.round(d.tableWidth * px), h: Math.round(d.tableHeight * px)};
 };
 
 // Handle Start Overlay and Audio Context
@@ -45,47 +37,10 @@ function showToast(msg, timeout = 3000) {
 }
 window.showToast = showToast;
 
-// Default fallback values (used if calibration file fails to load)
-let tableCenter = [11.97776390135823, 57.6883812195459]; // [lon, lat]
-let initialZoom = 16.22141031611213;
-let initialBearing = -92.58546386659737; // degrees
+let tableCenter = [window.MR_CALIBRATION.current.center.lng, window.MR_CALIBRATION.current.center.lat];
+let initialZoom = window.MR_CALIBRATION.current.zoom;
+let initialBearing = window.MR_CALIBRATION.current.bearing;
 let mapboxToken = '';
-let defaultCalibrationOverride = null;
-
-// Try to load calibration synchronously via XMLHttpRequest (for compatibility with other scripts)
-try {
-  const xhr = new XMLHttpRequest();
-  xhr.open('GET', 'map-calibration.json', false); // synchronous request
-  xhr.send(null);
-  if (xhr.status === 200) {
-    const calibration = JSON.parse(xhr.responseText);
-    tableCenter = [calibration.center.lng, calibration.center.lat];
-    initialZoom = calibration.zoom;
-    initialBearing = calibration.bearing;
-    console.log('Loaded map calibration from map-calibration.json');
-  }
-} catch (e) {
-  console.warn('Could not load map-calibration.json, using defaults:', e);
-}
-
-try {
-  const savedDefault = localStorage.getItem('interactive_map_default_calibration');
-  if (savedDefault) defaultCalibrationOverride = JSON.parse(savedDefault);
-  const selectedId = localStorage.getItem('interactive_map_selected_calibration');
-  const saved = JSON.parse(localStorage.getItem('interactive_map_calibrations') || '[]');
-  const selected = selectedId && selectedId !== 'original'
-    ? saved.find(calibration => calibration.id === selectedId)
-    : null;
-  const calibration = selectedId === 'original' ? null : selected || defaultCalibrationOverride;
-  if (calibration?.center && Number.isFinite(calibration.zoom) && Number.isFinite(calibration.bearing)) {
-    tableCenter = [calibration.center.lng, calibration.center.lat];
-    initialZoom = calibration.zoom;
-    initialBearing = calibration.bearing;
-    console.log('Loaded selected calibration from local storage');
-  }
-} catch (e) {
-  console.warn('Could not load saved calibration');
-}
 
 try {
   const xhr = new XMLHttpRequest();
@@ -147,7 +102,7 @@ function setEpcMode(active) {
 
 async function loadEpcBuildings() {
   try {
-    const response = await fetch('media/building-footprints-epc.geojson');
+    const response = await fetch(window.mrAsset('media/building-footprints-epc.geojson'));
     if (!response.ok) throw new Error(`HTTP ${response.status}`);
     const data = await response.json();
     map.addSource('epc-buildings', { type: 'geojson', data });
@@ -330,12 +285,7 @@ map.on('load', () => {
   loadEpcBuildings();
 
   // Add table polygon and markers as a GeoJSON source
-  const tableCorners = [
-    [11.98451803339398,57.682927961987396],
-    [11.983585758783713,57.6941405253463],
-    [11.971022042873042,57.693840269664186],
-    [11.971958186071914,57.68262783563063]
-  ];
+  const tableCorners = window.APP_CONFIG.area.corners;
 
   const tableGeo = {
     type: 'FeatureCollection',
@@ -689,6 +639,7 @@ ${JSON.stringify(calibration, null, 2)}`;
                 saved.unshift(calibration);
                 localStorage.setItem('interactive_map_calibrations', JSON.stringify(saved));
                 localStorage.setItem('interactive_map_selected_calibration', calibration.id);
+                window.MR_CALIBRATION.applyDimensions(calibration.dimensions);
                 if (action === 'overwrite_default_calibration') {
                   localStorage.setItem('interactive_map_default_calibration', JSON.stringify(calibration));
                   tableCenter = [calibration.center.lng, calibration.center.lat];
@@ -708,6 +659,7 @@ ${JSON.stringify(calibration, null, 2)}`;
               const calibration = data.calibration;
               if (!calibration?.center) return;
               localStorage.setItem('interactive_map_selected_calibration', calibration.id || 'original');
+              window.MR_CALIBRATION.applyDimensions(calibration.dimensions);
               map.jumpTo({
                 center: [calibration.center.lng, calibration.center.lat],
                 zoom: calibration.zoom,

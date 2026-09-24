@@ -459,7 +459,7 @@
     // touch screen than a pair of decimals.
     const CP_PLACE = 'the P-hus';
     const CP_PLACE_ID = 'p-hus';
-    const FOOTPRINTS_URL = 'media/ecom/ecom-buildings.geojson';
+    const FOOTPRINTS_URL = window.mrAsset('media/ecom/ecom-buildings.geojson');
 
     // Bays inside the building, ordered along its length. Kept this far from
     // its walls, because the marker is drawn with a glow several times its own

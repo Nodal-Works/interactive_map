@@ -417,7 +417,7 @@
     const map = window.map;
     
     try {
-      const response = await fetch('media/building-footprints.geojson');
+      const response = await fetch(window.mrAsset('media/building-footprints.geojson'));
       if (!response.ok) {
         console.warn('Campus Demo: Building footprints file not found');
         return;
@@ -514,7 +514,7 @@
   async function loadSVG() {
     if (svgLoaded) return;
     try {
-      const response = await fetch('media/campus_v2.svg');
+      const response = await fetch(window.mrAsset('media/campus_v2.svg'));
       const svgText = await response.text();
       
       // Parse SVG

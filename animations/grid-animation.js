@@ -7,16 +7,20 @@ const gridBtn = document.getElementById('grid-animation-btn');
 const gridChannel = new BroadcastChannel('map_controller_channel');
 
 // Table physical dimensions
-const TABLE_WIDTH_CM = 100;
-const TABLE_HEIGHT_CM = 60;
-const TILE_SIZE_CM = 20;
-const COLS = Math.floor(TABLE_WIDTH_CM / TILE_SIZE_CM); // 5
-const ROWS = Math.floor(TABLE_HEIGHT_CM / TILE_SIZE_CM); // 3
+let TABLE_WIDTH_CM = window.MR_CALIBRATION.dimensions.tableWidth;
+let TABLE_HEIGHT_CM = window.MR_CALIBRATION.dimensions.tableHeight;
+const TILE_SIZE_CM = window.APP_CONFIG.table.tileSize;
+let COLS = Math.floor(TABLE_WIDTH_CM / TILE_SIZE_CM); // 5
+let ROWS = Math.floor(TABLE_HEIGHT_CM / TILE_SIZE_CM); // 3
 
 let animationFrame = null;
 let isAnimating = false;
 
 function resizeGridCanvas() {
+  TABLE_WIDTH_CM = window.MR_CALIBRATION.dimensions.tableWidth;
+  TABLE_HEIGHT_CM = window.MR_CALIBRATION.dimensions.tableHeight;
+  COLS = Math.floor(TABLE_WIDTH_CM / TILE_SIZE_CM);
+  ROWS = Math.floor(TABLE_HEIGHT_CM / TILE_SIZE_CM);
   // Use the same calculation as table overlay
   const s = computeOverlayPixelSize();
   gridCanvas.width = s.w;

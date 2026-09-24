@@ -84,14 +84,14 @@
   
   // Nature sounds (bird sounds)
   const natureSounds = [
-    'media/sound/XC372879 - Thrush Nightingale - Luscinia luscinia.mp3',
-    'media/sound/XC647538 - European Pied Flycatcher - Ficedula hypoleuca.mp3',
-    'media/sound/XC900416 - Black Redstart - Phoenicurus ochruros.mp3'
+    window.mrAsset('media/sound/XC372879 - Thrush Nightingale - Luscinia luscinia.mp3'),
+    window.mrAsset('media/sound/XC647538 - European Pied Flycatcher - Ficedula hypoleuca.mp3'),
+    window.mrAsset('media/sound/XC900416 - Black Redstart - Phoenicurus ochruros.mp3')
   ];
   
   // City/urban sounds
   const citySounds = [
-    'media/sound/city.mp3'
+    window.mrAsset('media/sound/city.mp3')
   ];
   
   // Active audio elements and gain nodes
@@ -1023,7 +1023,7 @@
 
   async function loadTreeObstacles() {
     try {
-      const response = await fetch('media/trees.geojson');
+      const response = await fetch(window.mrAsset('media/trees.geojson'));
       if (!response.ok) {
         console.warn('Trees file not found');
         return;
@@ -1107,7 +1107,7 @@
 
   async function loadDefaultBuildings() {
     try {
-      const response = await fetch('media/building-footprints.geojson');
+      const response = await fetch(window.mrAsset('media/building-footprints.geojson'));
       if (!response.ok) {
         throw new Error('Building footprints file not found');
       }

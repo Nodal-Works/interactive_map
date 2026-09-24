@@ -22,7 +22,7 @@
 
     const channel = new BroadcastChannel('map_controller_channel');
 
-    const STREETS_URL = 'media/street-network.geojson';
+    const STREETS_URL = window.mrAsset('media/street-network.geojson');
     const SOURCE_ID = 'ecom-vehicles-source';
     const LAYER_ID = 'ecom-vehicles';
     const ICON_ID = 'ecom-car';

@@ -16,7 +16,7 @@
     ['fcc-demo-btn', 'FCC walkthrough', 'Present', '▷'],
     ['grid-animation-btn', 'Table grid', 'Present', '▦'],
     ['canvas-btn', 'Canvas', 'Create', '✎', 'pen']
-  ].map(([id, name, group, icon, tool]) => ({id, name, group, icon, tool}));
+  ].filter(([id]) => !(root.APP_CONFIG?.disabledLayers || []).includes(id)).map(([id, name, group, icon, tool]) => ({id, name, group, icon, tool}));
   const ACTIONS = {
     cfd_control: 'get_state set_wind_speed set_wind_direction set_viscosity set_resolution toggle_trees set_particles set_visual_style set_facade_glow set_color_palette set_color_range set_particle_speed',
     thermal_control: 'request_state clear_route set_mode tour_play tour_pause tour_step tour_next tour_back tour_end tour_explore tour_layer set_hour show_raster show_streets',

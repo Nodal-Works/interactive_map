@@ -4,7 +4,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 const vm = require('node:vm');
 const context = vm.createContext({
-  console, Audio: function () {},
+  window: {mrAsset:path=>path}, console, Audio: function () {},
   document: { readyState: 'loading', addEventListener() {} },
 });
 vm.runInContext(fs.readFileSync(path.join(__dirname, '../animations/stormwater-flow.js'), 'utf8'), context);

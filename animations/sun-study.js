@@ -81,12 +81,12 @@ class SunStudy {
     this.isFalseColorMode = false;
     
     // Sweden location (Gothenburg - matches map center)
-    this.latitude = 57.68839377903814;
-    this.longitude = 11.977770568930168;
-    this.timezone = 1; // CET = UTC+1 (standard time; DST not modelled)
+    this.latitude = window.APP_CONFIG.area.sunLocation.lat;
+    this.longitude = window.APP_CONFIG.area.sunLocation.lng;
+    this.timezone = window.APP_CONFIG.area.sunLocation.timezone; // CET = UTC+1 (standard time; DST not modelled)
     
     // Map bearing for alignment
-    this.mapBearing = -92.58546386659737;
+    this.mapBearing = window.MR_CALIBRATION.current.bearing;
     
     // Time settings
     // Default to June 21st (Summer Solstice)
@@ -1414,7 +1414,7 @@ class SunStudy {
     console.log('Loading STL model (buildings/terrain)...');
     
     loader.load(
-      './media/mesh.stl',
+      window.mrAsset('./media/mesh.stl'),
       (geometry) => {
         console.log('STL loaded, vertices:', geometry.attributes.position.count);
         
@@ -1528,7 +1528,7 @@ class SunStudy {
      */
     
     loader.load(
-      './media/trees_instanced.glb',
+      window.mrAsset('./media/trees_instanced.glb'),
       (gltf) => {
         console.log('Trees GLB loaded');
         

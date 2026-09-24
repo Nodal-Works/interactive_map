@@ -1,14 +1,5 @@
 // Manual projector calibration controls and saved presets.
-const ORIGINAL_CALIBRATION = {
-    id: 'original',
-    name: 'Original Calibration',
-    author: 'Project default',
-    timestamp: null,
-    center: { lng: 11.97776390135823, lat: 57.6883812195459 },
-    zoom: 16.22141031611213,
-    bearing: -92.58546386659737,
-    dimensions: { screenWidth: 111.93, screenHeight: 62.96, tableWidth: 100, tableHeight: 60 }
-};
+const ORIGINAL_CALIBRATION = {id: 'original', name: 'Original Calibration', author: 'Project default', timestamp: null, ...window.MR_CALIBRATION.original, dimensions: {...window.APP_CONFIG.table}};
 
 function escapeCalibrationText(value) {
     return String(value ?? '').replace(/[&<>\'"]/g, character => ({
@@ -181,6 +172,7 @@ function renderManualCalibration(dashboardTitle, legendTitle, dashboardContent, 
         tableHeight: document.getElementById('ctrl-table-h')
     };
 
+    Object.entries(calibrationDimensionInputs).forEach(([key, input]) => {input.value = window.MR_CALIBRATION.dimensions[key];});
     try {
         const selectedId = localStorage.getItem('interactive_map_selected_calibration');
         const selected = readCalibrationHistory().find(item => item.id === selectedId);

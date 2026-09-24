@@ -17,9 +17,9 @@
 (function () {
     'use strict';
 
-    const DATA_URL = 'media/ecom/ecom-buildings.geojson';
-    const NODES_URL = 'media/ecom/ecom-nodes.geojson';
-    const FLOWS_URL = 'media/ecom/ecom-flows.geojson';
+    const DATA_URL = window.mrAsset('media/ecom/ecom-buildings.geojson');
+    const NODES_URL = window.mrAsset('media/ecom/ecom-nodes.geojson');
+    const FLOWS_URL = window.mrAsset('media/ecom/ecom-flows.geojson');
 
     const SOURCE_ID = 'ecom-buildings-source';
     const CONTEXT_FILL_LAYER_ID = 'ecom-context-fill';
