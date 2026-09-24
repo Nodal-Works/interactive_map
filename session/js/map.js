@@ -12,7 +12,7 @@
     constructor({element,map,send,identity,desktop=false}) {
       this.element=element;this.send=send;this.identity=identity;this.desktop=desktop;
       this.objects=[];this.drafts=[];this.tool='navigate';this.color='#38bdf8';this.width=3;this.pointers=new Set();this.selected=null;
-      this.map=map || new maplibregl.Map({container:element,style:{version:8,sources:{base:{type:'raster',tiles:['https://tile.openstreetmap.org/{z}/{x}/{y}.png'],tileSize:256,attribution:'© OpenStreetMap contributors'}},layers:[{id:'base',type:'raster',source:'base',paint:{'raster-saturation':-.5}}]},center:[11.9777,57.6884],zoom:16,attributionControl:true});
+      this.map=map || new maplibregl.Map({container:element,style:{version:8,sources:{base:{type:'raster',tiles:['https://a.basemaps.cartocdn.com/light_all/{z}/{x}/{y}@2x.png'],tileSize:256,attribution:'© OpenStreetMap contributors © CARTO'}},layers:[{id:'base',type:'raster',source:'base'}]},center:[11.9777,57.6884],zoom:16,attributionControl:true});
       this.svg=node('svg',{'class':'mr-map-overlay','aria-hidden':'true'});
       (desktop?document.body:element).append(this.svg);
       if(desktop)this.svg.classList.add('desktop');
@@ -23,8 +23,22 @@
       this.element.addEventListener('pointermove',e=>this.move(e),true);
       this.element.addEventListener('pointerup',e=>this.up(e),true);
       this.element.addEventListener('pointercancel',e=>{this.pointers.delete(e.pointerId);this.cancel();},true);
+      // MapLibre also listens to legacy mouse/touch events. Keep single-finger
+      // editing separate from its navigation handlers while allowing pinch/pan.
+      for(const type of ['touchstart','touchmove','touchend','mousedown','dblclick'])this.element.addEventListener(type,e=>{
+        if(this.tool==='navigate'||this.tool==='off'||!this.identity()?.canEdit)return;
+        if(e.touches?.length>1)this.navigatingTouch=true;
+        if(this.navigatingTouch){if(e.touches?.length===0)this.navigatingTouch=false;return;}
+        if(e.cancelable)e.preventDefault();e.stopImmediatePropagation();
+      },{capture:true,passive:false});
     }
-    setTool(tool) {this.cancel();this.tool=tool;this.element.style.cursor=tool==='navigate'?'grab':'crosshair';if(!this.desktop){if(tool==='navigate')this.map.dragPan.enable();else this.map.dragPan.disable();}}
+    setTool(tool) {
+      this.cancel();this.tool=tool;const navigating=['navigate','off'].includes(tool);
+      this.element.style.cursor=navigating?'grab':'crosshair';
+      this.map.doubleClickZoom[navigating?'enable':'disable']();
+      if(!this.desktop)this.map.dragPan.enable();
+      this.element.dispatchEvent(new CustomEvent('mr-tool-state',{detail:{tool}}));
+    }
     setState(state) {
       if(this.table && state.table?.revision!==this.table.revision)this.cancel();
       this.table=state.table;this.objects=state.objects||[];this.layers=state.layers||{};this.drafts=state.drafts||[];
@@ -34,7 +48,7 @@
     base(data) {
       if(!this.ready){this.pendingBase=data;return;}
       if(this.map.getSource('buildings'))this.map.getSource('buildings').setData(data);
-      else {this.map.addSource('buildings',{type:'geojson',data});this.map.addLayer({id:'buildings',type:'fill',source:'buildings',paint:{'fill-color':'#738397','fill-opacity':.35}});}
+      else {this.map.addSource('buildings',{type:'geojson',data});this.map.addLayer({id:'buildings',type:'fill',source:'buildings',paint:{'fill-color':'#738397','fill-opacity':.35}},this.map.getLayer('result-fill')?'result-fill':undefined);}
     }
     async results(state) {
       if(this.desktop)return;
@@ -68,6 +82,9 @@
     hit(c) {
       const p=this.project(c);let best=null,dist=24;
       for(const object of [...this.objects].reverse())for(let i=0;i<object.points.length;i++) {
+        if(object.tool==='obstacle'?!this.layers['cfd-simulation-btn']:!this.layers['canvas-btn'])continue;
+        if(this.layer==='cfd-simulation-btn'&&object.tool!=='obstacle')continue;
+        if(!this.desktop&&object.creatorId!==this.identity()?.id)continue;
         const q=this.project(object.points[i]),d=Math.hypot(q.x-p.x,q.y-p.y);
         if(d<dist){best={object,index:i};dist=d;}
       }
@@ -76,7 +93,7 @@
     down(e) {
       if(e.button && e.button!==0)return;
       this.pointers.add(e.pointerId);
-      if(this.pointers.size>1){this.cancel();return;}
+      if(this.pointers.size>1){this.gesture=null;if(!this.polygon)this.send({type:'draft',object:null});this.render();return;}
       if(this.tool==='navigate'||this.tool==='off'||!this.identity()?.canEdit)return;
       const coordinate=this.location(e);if(!this.within(coordinate))return;
       this.element.setPointerCapture(e.pointerId);
@@ -88,9 +105,7 @@
       }
       if(!drawing){this.gesture={coordinate};this.mapGesture(coordinate,'down');return;}
       if(['polygon','obstacle'].includes(this.tool)) {
-        if(this.polygon?.points.length>=3&&Math.hypot(this.project(coordinate).x-this.project(this.polygon.points[0]).x,this.project(coordinate).y-this.project(this.polygon.points[0]).y)<20){this.finish();return;}
-        if(!this.polygon)this.polygon=this.newObject([coordinate]);else this.polygon.points.push(coordinate);
-        this.preview(this.polygon);return;
+        this.gesture={corner:coordinate};return;
       }
       this.gesture={object:this.newObject([coordinate]),coordinate};
       this.render();
@@ -116,7 +131,11 @@
       this.pointers.delete(e.pointerId);
       if(!this.gesture)return;
       const g=this.gesture;this.gesture=null;
-      if(g.object) {
+      if(g.corner){
+        if(this.polygon?.points.length>=3&&Math.hypot(this.project(g.corner).x-this.project(this.polygon.points[0]).x,this.project(g.corner).y-this.project(this.polygon.points[0]).y)<20){this.finish();return;}
+        if(!this.polygon)this.polygon=this.newObject([g.corner]);else this.polygon.points.push(g.corner);
+        this.preview(this.polygon);
+      } else if(g.object) {
         if(g.object.tool==='comment'&&!g.original){const text=prompt('Comment on this place');if(!text){this.cancel();return;}g.object.text=text.slice(0,500);}
         this.send({type:'canvas',operation:g.original?'update':'create',objectId:g.original?.id||MR.id(),object:g.object});
         this.send({type:'draft',object:null});
@@ -146,17 +165,19 @@
       const defs=node('defs'), marker=node('marker',{id:this.desktop?'host-arrow':'phone-arrow',viewBox:'0 0 10 10',refX:9,refY:5,markerWidth:5,markerHeight:5,orient:'auto-start-reverse'});
       marker.append(node('path',{d:'M 0 0 L 10 5 L 0 10 z',fill:'context-stroke'}));defs.append(marker);this.svg.append(defs);
       if(this.table&&!this.desktop){const pts=this.table.corners.map(c=>{const p=this.project(c);return`${p.x},${p.y}`;}).join(' ');this.svg.append(node('polygon',{points:pts,fill:'none',stroke:'#ffffff66','stroke-width':1,'stroke-dasharray':'5 5'}));}
-      const all=[...this.objects,...this.drafts.filter(d=>d.creatorId!==this.identity()?.id)];
+      const all=[...this.objects,...this.drafts.filter(d=>d.creatorId!==this.identity()?.id).map(d=>({...d,draft:true}))];
       if(this.gesture?.object)all.push({...this.gesture.object,draft:true});
       if(this.polygon)all.push({...this.polygon,draft:true});
+      this.element.dispatchEvent(new CustomEvent('mr-drawing-state',{detail:{corners:this.polygon?.points.length||0,selected:!!this.selected}}));
       for(const o of all) {
         if(!o.draft&&o.tool!=='obstacle'&&!this.layers?.['canvas-btn'])continue;
         if(o.tool==='obstacle'&&!this.layers?.['cfd-simulation-btn'])continue;
-        if(this.gesture?.original?.id===o.id)continue;
+        if(!o.draft&&this.gesture?.original && this.gesture.original.id===o.id)continue;
         const pts=o.points.map(c=>this.project(c)),str=pts.map(p=>`${p.x},${p.y}`).join(' '),first=pts[0];if(!first)continue;
-        const group=node('g',{'opacity':o.draft?.7:1});
+        const group=node('g',{'opacity':o.draft?.85:1});
         group.append(node(['polygon','obstacle'].includes(o.tool)?'polygon':'polyline',{points:str,fill:['polygon','obstacle'].includes(o.tool)?o.color+'44':'none',stroke:o.color,'stroke-width':o.width,'stroke-linecap':'round','stroke-linejoin':'round',...(o.tool==='arrow'?{'marker-end':`url(#${this.desktop?'host-arrow':'phone-arrow'})`}:{})}));
         if(['marker','comment'].includes(o.tool))group.append(node('circle',{cx:first.x,cy:first.y,r:6,fill:o.color,stroke:'#fff','stroke-width':2}));
+        if(o.tool==='pen'&&pts.length===1)group.append(node('circle',{cx:first.x,cy:first.y,r:o.width/2,fill:o.color}));
         if(o.tool==='comment')group.append(node('text',{x:first.x+10,y:first.y-10,fill:o.color,stroke:'#0b111c','stroke-width':4,'paint-order':'stroke','font-size':14},o.text));
         if(o.id===this.selected||o.draft&&['polygon','obstacle'].includes(o.tool))pts.forEach(p=>group.append(node('circle',{cx:p.x,cy:p.y,r:5,fill:'#fff',stroke:o.color,'stroke-width':2})));
         group.append(node('title',{},o.creatorName||'Drawing'));this.svg.append(group);

@@ -1442,6 +1442,7 @@ function startStreetLifeAnimation() {
   if (isStreetLifeAnimating) return;
   
   loadStreetLifeData().then(() => {
+    if (isAnyVisualizationActive() || isStreetLifeAnimating) return;
     if (streetPaths.length === 0) {
       console.warn('Street Life: No paths available for animation');
       return;
@@ -1517,9 +1518,12 @@ function stopStreetLifeAnimation() {
 
 // Check if any visualization is active
 function isAnyVisualizationActive() {
+  if (window.MR_ADAPTER?.active['canvas-btn']) return true;
   // Check for active/toggled-on/toggled-off buttons
   const activeButtons = [
     'cfd-simulation-btn',
+    'canvas-btn',
+    'thermal-comfort-btn',
     'stormwater-btn', 
     'sun-study-btn',
     'slideshow-btn',
@@ -1598,6 +1602,8 @@ function setupVisibilityObserver() {
     observer.observe(canvas, { attributes: true, attributeFilter: ['class'] });
   });
 }
+
+window.addEventListener('mr-canvas-visibility', updateStreetLifeVisibility);
 
 // Initialize on load
 function initStreetLife() {

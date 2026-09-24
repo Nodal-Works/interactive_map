@@ -1,6 +1,7 @@
 (function(){
   if(new URLSearchParams(location.search).get('sessionController')!=='1')return;
   'use strict';
+  const assetVersion=new URL(document.currentScript.src).search;
   window.MR_REMOTE_FETCH=true;
   window.MR_SERVICES={ecom:'/api/services/ecom',coolpaths:'/api/services/coolpaths',sam:'/api/services/sam'};
   const channels=new Set(),pending=new Map();
@@ -35,7 +36,7 @@
   function open(layer){
     if(layer==='canvas-btn'||currentLayer===layer)return;
     if(typeof updateDashboard!=='function')return;
-    currentLayer=layer;
+    currentLayer=layer;document.body.dataset.layer=layer;
     if(typeof stopTour==='function')stopTour();
     updateMetadata(layer);updateDashboard(layer);
     for(const key of [...delivered.keys()])if(/^(cfd_state|thermal_state|sun_state|isovist_state|epc_building_selected|isovist_stats)/.test(key))delivered.delete(key);
@@ -61,7 +62,7 @@
     }
   });
   document.addEventListener('DOMContentLoaded',()=>{
-    const link=document.createElement('link');link.rel='stylesheet';link.href='session/css/dashboard-mobile.css';document.head.append(link);
+    const link=document.createElement('link');link.rel='stylesheet';link.href='session/css/dashboard-mobile.css'+assetVersion;document.head.append(link);
     document.querySelectorAll('[data-target="calibrate-btn"]').forEach(n=>n.remove());
     send({type:'dashboard-ready'});
   });

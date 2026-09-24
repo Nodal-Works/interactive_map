@@ -1,15 +1,15 @@
 (function(root) {
   'use strict';
-  const RELEASE = '20260924-session-1';
+  const RELEASE = '20260924-session-2';
   const LAYERS = [
     ['cfd-simulation-btn', 'Wind · CFD', 'Environment', '🌬', 'obstacle'],
     ['stormwater-btn', 'Stormwater', 'Environment', '💧'],
     ['sun-study-btn', 'Sun study', 'Environment', '☀'],
     ['thermal-comfort-btn', 'Comfort · CoolPaths', 'Environment', '🌡', 'route'],
     ['isovist-btn', 'Isovist', 'Explore', '◉', 'viewer'],
-    ['street-view-btn', 'Street View', 'Explore', '📍', 'select'],
-    ['epc-btn', 'Building energy · EPC', 'Energy', '▥', 'select'],
-    ['ecom-energy-btn', 'Energy community', 'Energy', '⚡', 'select'],
+    ['street-view-btn', 'Street View', 'Explore', '📍', 'location'],
+    ['epc-btn', 'Building energy · EPC', 'Energy', '▥', 'location'],
+    ['ecom-energy-btn', 'Energy community', 'Energy', '⚡', 'location'],
     ['bird-sounds-btn', 'Bird sounds', 'Explore', '♫'],
     ['slideshow-btn', 'Slideshow', 'Present', '▧'],
     ['campus-demo-btn', 'Campus vision', 'Present', '⌂'],

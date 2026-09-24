@@ -3,6 +3,7 @@
   const channel = new BroadcastChannel('map_controller_channel');
   let transformRevision = 0;
   let messageRevision = 0;
+  let canvasBasemap;
   const snapshots = {};
   const active = Object.fromEntries(MR.LAYERS.map(layer => [layer.id, false]));
   channel.addEventListener('message', ({data}) => {
@@ -39,7 +40,12 @@
   }
   function setLayer(layer, enabled) {
     if (!(layer in active) || typeof enabled !== 'boolean') throw Error('Unknown layer');
-    if (layer === 'canvas-btn') { active[layer] = enabled; window.dispatchEvent(new CustomEvent('mr-canvas-visibility', {detail: enabled})); return; }
+    if (layer === 'canvas-btn') {
+      if(enabled && !active[layer]) { canvasBasemap=window.getBasemap();window.setBasemap('cartoPositron'); }
+      if(!enabled && active[layer] && window.getBasemap()==='cartoPositron' && canvasBasemap)window.setBasemap(canvasBasemap);
+      active[layer] = enabled;document.getElementById(layer)?.classList.toggle('active',enabled);
+      window.dispatchEvent(new CustomEvent('mr-canvas-visibility', {detail: enabled})); return;
+    }
     if (active[layer] !== enabled) {
       const button=document.getElementById(layer);
       if(!button)throw Error('This layer is unavailable on the host');

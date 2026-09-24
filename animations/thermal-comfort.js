@@ -432,6 +432,7 @@
 
   async function toggle() {
     state.active = !state.active;
+    document.getElementById('thermal-comfort-btn')?.classList.toggle('active',state.active);
     requestNumber += 1;
     channel.postMessage({ type: 'animation_state', animationId: 'thermal-comfort-btn', isActive: state.active });
     if (state.active) await initialize();

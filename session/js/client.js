@@ -2,6 +2,7 @@
   'use strict';
   const $=id=>document.getElementById(id), params=new URLSearchParams(location.search);
   const scriptUrl=document.currentScript.src, dashboardUrl=new URL('../../controller.html?sessionController=1',scriptUrl);
+  dashboardUrl.searchParams.set('v',MR.RELEASE);
   let invitation={host:params.get('host'),token:params.get('token'),release:params.get('release')};
   try {if(!invitation.host)invitation=JSON.parse(localStorage.getItem('mr-last-invitation'))||invitation;else localStorage.setItem('mr-last-invitation',JSON.stringify(invitation));}catch{}
   const identityKey='mr-person-'+invitation.token;
@@ -33,10 +34,17 @@
     frame({type:'open-layer',layer:layer.id});selectTab('controls');
   }
   function selectTab(next){
-    tab=next;$('controls-tab').setAttribute('aria-selected',String(tab==='controls'));$('map-tab').setAttribute('aria-selected',String(tab==='map'));
+    tab=next;document.body.classList.toggle('map-open',tab==='map');$('controls-tab').setAttribute('aria-selected',String(tab==='controls'));$('map-tab').setAttribute('aria-selected',String(tab==='map'));
     $('controls-view').hidden=tab!=='controls';$('map-view').hidden=tab!=='map';
     if(tab==='map'){
-      if(!mapView)mapView=new MR_MAP.CompanionMap({element:$('phone-map'),send,identity:()=>({id:identity.id,canEdit:canEdit()&&!!state?.layers[layer.id]})});
+      if(!mapView){
+        mapView=new MR_MAP.CompanionMap({element:$('phone-map'),send,identity:()=>({id:identity.id,canEdit:canEdit()&&!!state?.layers[layer.id]})});
+        $('phone-map').addEventListener('mr-tool-state',updateTools);
+        $('phone-map').addEventListener('mr-drawing-state',({detail})=>{
+          $('finish').disabled=detail.corners<3;$('delete').disabled=!detail.selected;$('edit-text').disabled=!detail.selected;
+          if(['polygon','obstacle'].includes(mapView.tool))$('map-hint').textContent=detail.corners?`${detail.corners} corners · ${detail.corners<3?'add '+(3-detail.corners)+' more':'tap Finish shape to save'} · pinch to navigate`:'Tap corners to draw · Finish shape to save · pinch to navigate';
+        });
+      }
       mapView.layer=layer.id;if(state)mapView.setState(state);
       if(baseData)mapView.base(baseData);
       const choices=[['navigate','Move / zoom']];
@@ -46,12 +54,18 @@
       if(layer.id==='isovist-btn')choices.push(['heading','Look toward']);
       $('tool').replaceChildren(...choices.map(([value,label])=>new Option(label,value)));
       $('tool').value=layer.tool||'navigate';mapView.setTool($('tool').value);mapView.map.resize();
-      const drawing=['canvas-btn','cfd-simulation-btn'].includes(layer.id);
-      for(const id of ['color','width','finish','cancel','delete','edit-text','undo','redo'])$(id).hidden=!drawing;
-      $('map-hint').textContent=drawing?'Choose a tool · tap corners to draw shapes · two fingers to zoom':layer.tool?'One finger to interact · two fingers to zoom and pan':'Companion map · live animation plays on the table';
+      updateTools();
       if(!state?.layers[layer.id])notice('Turn this layer on to interact with the shared table.');
     }
     focus();
+  }
+  function updateTools(){
+    const tool=mapView.tool,drawing=['canvas-btn','cfd-simulation-btn'].includes(layer.id),shape=['polygon','obstacle'].includes(tool),editing=['select','reshape'].includes(tool);
+    for(const id of ['color','width'])$(id).hidden=!drawing||editing||tool==='navigate';
+    $('finish').hidden=!shape;$('finish').textContent='Finish shape';$('cancel').hidden=!drawing||tool==='navigate';
+    $('delete').hidden=!editing;$('edit-text').hidden=tool!=='select'||layer.id!=='canvas-btn';
+    $('undo').hidden=!drawing;$('redo').hidden=!drawing;
+    $('map-hint').textContent=shape?'Tap corners to draw · Finish shape to save · pinch to navigate':tool==='pen'?'Drag to sketch · lift to save · pinch to navigate':tool==='viewer'?'Drag to move the viewpoint · pinch to navigate':tool==='navigate'?'Drag to pan · pinch to zoom':editing?'Touch a point to select and drag · pinch to navigate':'Touch the map to '+(tool==='location'?'select a location':tool==='heading'?'look toward a place':tool==='route'?'set your route':'draw')+' · pinch to navigate';
   }
   function render(){
     if(!state)return;
@@ -80,7 +94,7 @@
     }
     $('layer-list').append(title,grid);
   }
-  $('apps').onclick=()=>{$('workspace').hidden=true;$('drawer').hidden=false;if(mapView)mapView.cancel();send({type:'focus',layer:layer.id,tab:'controls'});};
+  $('apps').onclick=()=>{document.body.classList.remove('map-open');$('workspace').hidden=true;$('drawer').hidden=false;if(mapView)mapView.cancel();send({type:'focus',layer:layer.id,tab:'controls'});};
   $('controls-tab').onclick=()=>selectTab('controls');$('map-tab').onclick=()=>selectTab('map');$('start-drawing').onclick=()=>selectTab('map');
   $('layer-enabled').onchange=e=>send({type:'layer',layer:layer.id,enabled:e.target.checked});
   $('tool').onchange=e=>mapView?.setTool(e.target.value);$('color').oninput=e=>{if(mapView)mapView.color=e.target.value;};$('width').onchange=e=>{if(mapView)mapView.width=Number(e.target.value);};
