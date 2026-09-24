@@ -8,24 +8,34 @@
   let peer, invite = '', sessionId = MR.id(), token = MR.id(), startedAt = new Date().toISOString();
   let endedAt = null, paused = false, revision = 0, saveStatus = 'Local canvas', saveTimer, broadcastTimer, saving = false, dirty = false;
   let local = false, peerStatus = 'Connecting', mapBusy = false;
+  let modelRevision = 0;
   const hostActor = {id:'host', name:'Host', avatar:'⌂', color:'#ffffff'};
   const seen = new Set();
+  const resultActors=new Map(), resultSignatures=new Map();
   let runtime = {clientUrl: MR_CONFIG.clientUrl, services:{}};
   function roster() {return [...people.values()].map(p => ({id:p.id,name:p.name,avatar:p.avatar,color:p.color,
     online:!!p.connection?.open, slot:slots.indexOf(p.id) + 1 || null, focus:p.focus, joinedAt:p.joinedAt,lastSeen:p.lastSeen}));}
   function snapshot() {
-    return {type:'state', sessionId, revision, endedAt, paused, participants:roster(), slots, objects,
+    return {type:'state', sessionId, revision, endedAt, paused, participants:roster(), slots, objects,drafts:[...drafts.values()],
       ...adapter.getState()};
   }
   function summary() {
-    return {...snapshot(), type:'admin-state', invite, peerStatus, saveStatus, services:runtime.services,
-      events:events.slice(-150).reverse(), eventCount:events.length, startedAt};
+    const {messages,...state}=snapshot();
+    return {...state, type:'admin-state', invite, peerStatus, saveStatus, services:runtime.services,
+      events:events.slice(-150).reverse().map(({seq,timestamp,actor,kind,details})=>({seq,timestamp,actor,kind,details})), eventCount:events.length, startedAt};
   }
   function publish() {
     clearTimeout(broadcastTimer);
     broadcastTimer = setTimeout(() => {
       const state = snapshot();
-      for (const person of people.values()) if (person.connection?.open) person.send(state);
+      for (const person of people.values()) if (person.connection?.open) {
+        const messages=state.messages.filter(message=>{
+          const key=message.type+':'+(message.animationId||message.action||'');
+          if(person.versions.get(key)===message.mrVersion)return false;
+          person.versions.set(key,message.mrVersion);return true;
+        });
+        person.send({...state,messages,partial:true});
+      }
       admin.postMessage(summary());
       window.dispatchEvent(new CustomEvent('mr-session-state', {detail: state}));
     }, 60);
@@ -33,7 +43,7 @@
   function logState() {
     const current = adapter.getState();
     return {layers:current.layers, objects:structuredClone(objects), table:current.table,
-      isovist:current.isovist,cfd:current.cfd,thermal:current.thermal,
+      isovist:current.isovist,cfd:current.cfd,thermal:current.thermal,sun:current.sun,
       controls: current.messages.filter(m => MR.validControl(m) && m.type !== 'ecom_layer')};
   }
   function documentLog() {
@@ -102,10 +112,16 @@
     if ((message.body?.length || 0) > 8*1024*1024) throw Error('Request too large');
     person.requests++;
     const connection = person.connection;
+    const requestRevision=modelRevision;
     try {
       const body = message.body == null ? undefined : Uint8Array.from(atob(message.body), c => c.charCodeAt(0));
       const response = await fetch(message.path,{method:message.method,headers:{'Content-Type':String(message.contentType || 'application/json').slice(0,200)},body,signal:AbortSignal.timeout(180000)});
-      const blob = await response.blob();
+      let blob = await response.blob();
+      if(message.method==='POST'&&message.path==='/api/services/ecom/api/mr/layer'&&response.ok){
+        if(requestRevision!==modelRevision)throw Error('A newer community edit replaced this calculation');
+        const result=JSON.parse(await blob.text());result._mrModelRevision=requestRevision;
+        blob=new Blob([JSON.stringify(result)],{type:'application/json'});
+      }
       if (blob.size > 16*1024*1024) throw Error('Response too large');
       const encoded = await new Promise(resolve => {const reader=new FileReader();reader.onload=()=>resolve(reader.result.split(',')[1]);reader.readAsDataURL(blob);});
       if (connection !== person.connection || !connection.open) return;
@@ -153,13 +169,28 @@
       if (typeof message.actionId !== 'string' || message.actionId.length > 80) throw Error('Missing action ID');
       const key=person.id+':'+message.actionId;
       if (seen.has(key)) {person.send({type:'ack',actionId:message.actionId});return;}
-      if (message.type === 'layer') adapter.setLayer(message.layer,message.enabled);
-      else if (message.type === 'control') adapter.control(message.message);
+      if (message.type === 'layer') {resultActors.set(message.layer,person);adapter.setLayer(message.layer,message.enabled);}
+      else if (message.type === 'control') {
+        resultActors.set(message.message?.type?.split('_')[0],person);
+        if(message.message?.type==='ecom_ui_state')modelRevision++;
+        if(message.message?.type==='ecom_layer'&&message.message.layer?._mrModelRevision!==modelRevision)throw Error('A newer community edit replaced this result');
+        adapter.control(message.message);
+      }
       else if (message.type === 'gesture') {
+        resultActors.set(message.layer==='thermal-comfort-btn'?'thermal':message.layer==='epc-btn'?'epc':message.layer==='ecom-energy-btn'?'ecom':'isovist',person);
         const c=adapter.gesture(message);
         window.dispatchEvent(new CustomEvent('mr-pointer',{detail:{...person,coordinate:c}}));
         if (message.phase === 'move') {seen.add(key);return;}
-      } else if (message.type === 'canvas') canvas(person,message);
+      } else if (message.type === 'canvas') {
+        if(['create','update'].includes(message.operation)){
+          if(message.transform!==adapter.table().revision)throw Error('Table alignment changed. Try this drawing again.');
+          const required=message.object?.tool==='obstacle'?'cfd-simulation-btn':'canvas-btn';
+          if(!adapter.active[required])throw Error('Turn on this layer before drawing');
+          const table=adapter.table();
+          if(!MR.validObject(message.object)||message.object.points.some(c=>{const p=map.project(c);return p.x<table.left||p.x>table.left+table.width||p.y<table.top||p.y>table.top+table.height;}))throw Error('Keep the annotation inside the table');
+        }
+        canvas(person,message);
+      }
       else throw Error('Unknown session action');
       seen.add(key); if (seen.size>10000) seen.delete(seen.values().next().value);
       if (message.type !== 'canvas') record(message.type,person,message.type === 'control' ? {type:message.message.type,action:message.message.action,value:message.message.value} : {layer:message.layer,enabled:message.enabled,x:message.x,y:message.y});
@@ -180,6 +211,7 @@
       people.set(person.id,person);
     }
     const previous=person.connection; person.connection=connection; previous?.close();
+    person.versions=new Map();
     person.send=MR.wire(connection,message=>{if(person.connection===connection)handle(person,message);});
     connection.on('open',()=>{
       if(person.connection!==connection)return;
@@ -206,12 +238,23 @@
     if(data.action==='start' && endedAt)location.reload();
     if(data.action==='canvas')try{canvas(hostActor,data.command);}catch(e){admin.postMessage({type:'notice',text:e.message});}
     if(data.action==='layer')adapter.setLayer(data.layer,!!data.enabled);
-    if(data.action==='canvas-tool')window.dispatchEvent(new CustomEvent('mr-canvas-tool',{detail:data.tool}));
+    if(data.action==='canvas-tool')window.dispatchEvent(new CustomEvent('mr-canvas-tool',{detail:{tool:data.tool,color:data.color,width:data.width}}));
   };
   window.MR_SESSION={canvas:command=>canvas(hostActor,command),getObjects:()=>objects,getState:snapshot,publish,hostActor};
-  window.addEventListener('mr-state',publish);
+  window.addEventListener('mr-state',({detail:data})=>{
+    publish();
+    if(endedAt||!['animation_state','cfd_state','thermal_state','epc_building_selected','ecom_applied'].includes(data.type))return;
+    const {mrVersion,steps,diagnostics,...meaningful}=data;
+    const key=data.animationId||data.type,signature=JSON.stringify(meaningful);
+    if(resultSignatures.get(key)===signature)return;resultSignatures.set(key,signature);
+    record(data.type+'.changed',resultActors.get(data.animationId||data.type.split('_')[0])||hostActor,{active:data.isActive??data.active,phase:data.phase});
+  });
   window.addEventListener('mr-transform',()=>{drafts.clear();renderObjects();record('table.changed',hostActor,{});});
-  window.addEventListener('mr-desktop-action',event=>{if(!endedAt && !/request|get_state|ping/.test(event.detail.action||event.detail.type))record('desktop.control',hostActor,{type:event.detail.type,action:event.detail.action,value:event.detail.value});});
+  window.addEventListener('mr-desktop-action',event=>{
+    resultActors.set(event.detail.type.split('_')[0],hostActor);
+    if(event.detail.type==='ecom_ui_state')modelRevision++;
+    if(!endedAt && !/request|get_state|ping/.test(event.detail.action||event.detail.type))record('desktop.control',hostActor,{type:event.detail.type,action:event.detail.action,value:event.detail.value});
+  });
   window.addEventListener('beforeunload',()=>{
     if(!local || endedAt)return;
     const payload=JSON.stringify({sessionId,endedAt:new Date().toISOString()});

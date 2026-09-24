@@ -27,7 +27,7 @@
     setTool(tool) {this.cancel();this.tool=tool;this.element.style.cursor=tool==='navigate'?'grab':'crosshair';if(!this.desktop){if(tool==='navigate')this.map.dragPan.enable();else this.map.dragPan.disable();}}
     setState(state) {
       if(this.table && state.table?.revision!==this.table.revision)this.cancel();
-      this.table=state.table;this.objects=state.objects||[];this.layers=state.layers||{};
+      this.table=state.table;this.objects=state.objects||[];this.layers=state.layers||{};this.drafts=state.drafts||[];
       if(!this.didFit&&this.table&&!this.desktop){this.fit();this.didFit=true;}
       this.render();
     }
@@ -139,6 +139,7 @@
     finish() {if(this.polygon?.points.length>=3){this.send({type:'canvas',operation:'create',objectId:MR.id(),object:this.polygon});this.cancel();}}
     cancel() {this.gesture=null;this.polygon=null;if(this.identity()?.canEdit)this.send({type:'draft',object:null});this.render();}
     remove() {if(this.selected){this.send({type:'canvas',operation:'delete',objectId:this.selected});this.selected=null;}}
+    editText() {const object=this.objects.find(o=>o.id===this.selected&&o.tool==='comment');if(!object)return;const text=prompt('Edit comment',object.text);if(text!==null)this.send({type:'canvas',operation:'update',objectId:object.id,object:{...object,text:text.slice(0,500)}});}
     render() {
       if(!this.svg)return;
       this.svg.replaceChildren();

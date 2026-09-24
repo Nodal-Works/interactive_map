@@ -259,6 +259,17 @@ A secondary controller screen provides a touch-friendly interface for operating 
 
 ## How to Run
 
+### Collaborative phone sessions
+
+Run `./start_services.sh` to coordinate the local MR Studio host, ECOM, CoolPaths,
+and SAM from one terminal. Open the main display through the launcher, then use
+**Session** on the dashboard for its QR, participants, four editing slots, and
+session logs. Phones use the GitHub Pages client and PeerJS; calibration stays local.
+**Apps** opens the shared layer drawer and **Canvas** adds collaborative annotations.
+
+See [the session guide](session/README.md) for port configuration, prerequisites,
+phone tools, host controls, networking, publishing, and verification.
+
 ### Launcher (recommended)
 
 Open the app using the launcher: [launcher.html](launcher.html). You can double-click the file in Finder or open it directly in your browser.

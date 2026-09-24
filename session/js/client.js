@@ -16,6 +16,7 @@
   function send(message){
     if(!connection?.open){notice('Reconnecting. Edits are paused until the host returns.');return false;}
     if(['layer','control','gesture','canvas'].includes(message.type))message.actionId=MR.id();
+    if(message.type==='canvas')message.transform=state?.table.revision;
     sendWire(message);return true;
   }
   function focus(){send({type:'focus',layer:layer.id,tab});}
@@ -35,7 +36,7 @@
     tab=next;$('controls-tab').setAttribute('aria-selected',String(tab==='controls'));$('map-tab').setAttribute('aria-selected',String(tab==='map'));
     $('controls-view').hidden=tab!=='controls';$('map-view').hidden=tab!=='map';
     if(tab==='map'){
-      if(!mapView)mapView=new MR_MAP.CompanionMap({element:$('phone-map'),send,identity:()=>({id:identity.id,canEdit:canEdit()})});
+      if(!mapView)mapView=new MR_MAP.CompanionMap({element:$('phone-map'),send,identity:()=>({id:identity.id,canEdit:canEdit()&&!!state?.layers[layer.id]})});
       mapView.layer=layer.id;if(state)mapView.setState(state);
       if(baseData)mapView.base(baseData);
       const choices=[['navigate','Move / zoom']];
@@ -46,7 +47,7 @@
       $('tool').replaceChildren(...choices.map(([value,label])=>new Option(label,value)));
       $('tool').value=layer.tool||'navigate';mapView.setTool($('tool').value);mapView.map.resize();
       const drawing=['canvas-btn','cfd-simulation-btn'].includes(layer.id);
-      for(const id of ['color','width','finish','cancel','delete','undo','redo'])$(id).hidden=!drawing;
+      for(const id of ['color','width','finish','cancel','delete','edit-text','undo','redo'])$(id).hidden=!drawing;
       $('map-hint').textContent=drawing?'Choose a tool · tap corners to draw shapes · two fingers to zoom':layer.tool?'One finger to interact · two fingers to zoom and pan':'Companion map · live animation plays on the table';
       if(!state?.layers[layer.id])notice('Turn this layer on to interact with the shared table.');
     }
@@ -84,6 +85,7 @@
   $('layer-enabled').onchange=e=>send({type:'layer',layer:layer.id,enabled:e.target.checked});
   $('tool').onchange=e=>mapView?.setTool(e.target.value);$('color').oninput=e=>{if(mapView)mapView.color=e.target.value;};$('width').onchange=e=>{if(mapView)mapView.width=Number(e.target.value);};
   $('fit').onclick=()=>mapView?.fit();$('finish').onclick=()=>mapView?.finish();$('cancel').onclick=()=>mapView?.cancel();$('delete').onclick=()=>mapView?.remove();
+  $('edit-text').onclick=()=>mapView?.editText();
   $('undo').onclick=()=>send({type:'canvas',operation:'undo'});$('redo').onclick=()=>send({type:'canvas',operation:'redo'});
   $('avatar').replaceChildren(...MR.AVATARS.map(a=>new Option(a,a)));
   function profile(){const me=person();$('name').value=me?.name||'';$('avatar').value=me?.avatar||MR.AVATARS[0];$('profile').showModal();}
@@ -102,14 +104,21 @@
   });
   let baseData;
   function receive(message){
-    if(message.type==='state'||message.type==='welcome'){state=message;lastPong=Date.now();render();}
+    if(message.type==='state'||message.type==='welcome'){
+      if(message.partial&&state?.sessionId===message.sessionId){
+        const messages=new Map((state.messages||[]).map(m=>[m.type+':'+(m.animationId||m.action||''),m]));
+        for(const m of message.messages)messages.set(m.type+':'+(m.animationId||m.action||''),m);
+        message.messages=[...messages.values()];
+      }
+      state=message;lastPong=Date.now();render();
+    }
     if(message.type==='identity'){identity.id=message.personId;render();}
     if(message.type==='map')mapView?.results(message);
     if(message.type==='base'){baseData=message.data;mapView?.base(baseData);}
     if(message.type==='drafts'&&mapView){mapView.drafts=message.drafts;mapView.render();}
     if(message.type==='pong')lastPong=Date.now();
     if(message.type==='rejected'||message.type==='ended'){ended=true;notice(message.text);$('connection').textContent='Session unavailable';connection?.close();}
-    if(message.type==='error'){notice(message.text);render();}
+    if(message.type==='error'){render();notice(message.text);}
     if(message.type==='rpc-result'||message.type==='error'&&message.requestId){
       const req=requests.get(message.requestId);if(req){clearTimeout(req.timer);requests.delete(message.requestId);frame({...message,type:'rpc-result',requestId:req.frameId,error:message.type==='error'?message.text:undefined});}
     }

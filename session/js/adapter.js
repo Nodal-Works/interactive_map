@@ -2,10 +2,12 @@
   'use strict';
   const channel = new BroadcastChannel('map_controller_channel');
   let transformRevision = 0;
+  let messageRevision = 0;
   const snapshots = {};
   const active = Object.fromEntries(MR.LAYERS.map(layer => [layer.id, false]));
   channel.addEventListener('message', ({data}) => {
     if (!data?.type || /calibrat|memory|sam_segment/.test(data.type)) return;
+    data.mrVersion = ++messageRevision;
     if (data.type === 'animation_state' && data.animationId in active) active[data.animationId] = !!data.isActive;
     if (!MR.validControl(data) && data.type !== 'control_action') {
       snapshots[data.type === 'animation_state' ? data.animationId : data.type] = data;
@@ -33,7 +35,7 @@
     if (!MR.validControl(message)) throw Error('Control is not available remotely');
     channel.postMessage({...message, sessionAction: true});
     // BroadcastChannel deliberately does not deliver to its sending object.
-    snapshots['control:' + message.type + ':' + message.action] = message;
+    snapshots['control:' + message.type + ':' + message.action] = {...message,mrVersion:++messageRevision};
   }
   function setLayer(layer, enabled) {
     if (!(layer in active) || typeof enabled !== 'boolean') throw Error('Unknown layer');
@@ -73,7 +75,7 @@
     const features = [], images = [];
     const style = map.getStyle();
     for (const [name, source] of Object.entries(style?.sources || {})) {
-      if (!/^(isovist-|coolpaths-|epc-selected|ecom-)/.test(name)) continue;
+      if (!/^(isovist-|coolpaths-|epc-selected|epc-buildings|ecom-)/.test(name)) continue;
       if (['isovist-all-trees','isovist-gradient'].includes(name)) continue;
       const visibleLayers = style.layers.filter(layer => layer.source === name && layer.layout?.visibility !== 'none');
       if (!visibleLayers.length) continue;
