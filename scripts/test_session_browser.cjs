@@ -113,11 +113,14 @@ const base=process.env.MR_TEST_URL || 'http://127.0.0.1:8091';
   assert.equal(await phone.evaluate(()=>__companionMap.map.getZoom()),windZoom,'Drawing must not trigger double-tap zoom');
   await phone.screenshot({path:'.runtime/phone-wind-preview.png'});
   // A two-finger pan must preserve the unfinished shape and not add a corner.
+  const beforePan=await phone.evaluate(()=>__companionMap.map.getCenter().toArray());
   const pinchPoints=[{x:windBox.x+windBox.width*.35,y:windBox.y+windBox.height*.5},{x:windBox.x+windBox.width*.65,y:windBox.y+windBox.height*.5}];
   await touch.send('Input.dispatchTouchEvent',{type:'touchStart',touchPoints:pinchPoints});
   await touch.send('Input.dispatchTouchEvent',{type:'touchMove',touchPoints:pinchPoints.map(p=>({...p,y:p.y+25}))});
   await touch.send('Input.dispatchTouchEvent',{type:'touchEnd',touchPoints:[]});
   assert.equal(await phone.evaluate(()=>__companionMap.polygon?.points.length),3,'Two-finger navigation preserves the draft');
+  await phone.waitForTimeout(100);
+  assert.notDeepEqual(await phone.evaluate(()=>__companionMap.map.getCenter().toArray()),beforePan,'Two fingers pan the map while drawing');
   await phone.locator('#finish').click();await page.waitForFunction(()=>window.MR_CFD_OBSTACLES?.length===1);
   await phone.waitForFunction(()=>__companionMap.objects.some(o=>o.tool==='obstacle'));
   await phone.waitForFunction(()=>!!window.__companionMap.map.getSource('preview-wind'),null,{timeout:30000});
