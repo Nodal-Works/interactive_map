@@ -10,13 +10,34 @@
         "description": "Building footprint data for the study area",
         "legend": {
           "items": [
-            { "color": "#ff6600", "label": "Bostad (316 buildings)" },
-            { "color": "#999999", "label": "Komplementbyggnad (224 buildings)" },
-            { "color": "#9966ff", "label": "Samhällsfunktion (186 buildings)" },
-            { "color": "#3388ff", "label": "Verksamhet (53 buildings)" },
-            { "color": "#ffcc00", "label": "Övrig byggnad (5 buildings)" },
-            { "color": "#cc3399", "label": "Industri (3 buildings)" },
-            { "color": "#66cc66", "label": "Ekonomibyggnad (1 building)" }
+            {
+              "color": "#ff6600",
+              "label": "Bostad (316 buildings)"
+            },
+            {
+              "color": "#999999",
+              "label": "Komplementbyggnad (224 buildings)"
+            },
+            {
+              "color": "#9966ff",
+              "label": "Samhällsfunktion (186 buildings)"
+            },
+            {
+              "color": "#3388ff",
+              "label": "Verksamhet (53 buildings)"
+            },
+            {
+              "color": "#ffcc00",
+              "label": "Övrig byggnad (5 buildings)"
+            },
+            {
+              "color": "#cc3399",
+              "label": "Industri (3 buildings)"
+            },
+            {
+              "color": "#66cc66",
+              "label": "Ekonomibyggnad (1 building)"
+            }
           ]
         },
         "style": {
@@ -45,15 +66,42 @@
         "description": "Road and path network in the study area",
         "legend": {
           "items": [
-            { "color": "#ff4444", "label": "Footway (602 segments)" },
-            { "color": "#4444ff", "label": "Service roads (214 segments)" },
-            { "color": "#44ff44", "label": "Residential (153 segments)" },
-            { "color": "#ff8800", "label": "Path (149 segments)" },
-            { "color": "#8844ff", "label": "Tertiary (63 segments)" },
-            { "color": "#ffff44", "label": "Living street (37 segments)" },
-            { "color": "#00ffff", "label": "Cycleway (15 segments)" },
-            { "color": "#ff44ff", "label": "Unclassified (11 segments)" },
-            { "color": "#888888", "label": "Pedestrian (2 segments)" }
+            {
+              "color": "#ff4444",
+              "label": "Footway (602 segments)"
+            },
+            {
+              "color": "#4444ff",
+              "label": "Service roads (214 segments)"
+            },
+            {
+              "color": "#44ff44",
+              "label": "Residential (153 segments)"
+            },
+            {
+              "color": "#ff8800",
+              "label": "Path (149 segments)"
+            },
+            {
+              "color": "#8844ff",
+              "label": "Tertiary (63 segments)"
+            },
+            {
+              "color": "#ffff44",
+              "label": "Living street (37 segments)"
+            },
+            {
+              "color": "#00ffff",
+              "label": "Cycleway (15 segments)"
+            },
+            {
+              "color": "#ff44ff",
+              "label": "Unclassified (11 segments)"
+            },
+            {
+              "color": "#888888",
+              "label": "Pedestrian (2 segments)"
+            }
           ]
         },
         "style": {
@@ -138,6 +186,230 @@
         "description": "Wind velocity at a height of 1.5m above ground",
         "source": "Chalmers Fraunhofer - Franziska Hunger, Andreas Mark"
       }
+    },
+    {
+      "type": "wms",
+      "duration": 10000,
+      "transition": "fade",
+      "wms": {
+        "url": "https://hades.slu.se/lm/ortofoto/wms/v1.3",
+        "layers": "Ortofoto_0.5",
+        "format": "image/jpeg",
+        "version": "1.1.1"
+      },
+      "metadata": {
+        "title": "Ortofoto (Current Aerial Photo)",
+        "description": "High-resolution colour orthophoto imagery of the study area at 0.5 m resolution",
+        "source": "Lantmäteriet via SLU"
+      },
+      "enabled": true,
+      "verification": {
+        "date": "2026-09-24",
+        "extent": "Chalmers campus",
+        "result": "HTTP 200 image response with CORS; campus GetMap request"
+      }
+    },
+    {
+      "type": "wms",
+      "duration": 10000,
+      "transition": "fade",
+      "wms": {
+        "url": "https://hades.slu.se/lm/ortofoto/wms/v1.3",
+        "layers": "Ortofoto_IR",
+        "format": "image/jpeg",
+        "version": "1.1.1"
+      },
+      "metadata": {
+        "title": "Ortofoto Infrared",
+        "description": "Infrared orthophoto at 0.5 m resolution — reveals vegetation health and water features",
+        "source": "Lantmäteriet via SLU"
+      },
+      "enabled": true,
+      "verification": {
+        "date": "2026-09-24",
+        "extent": "Chalmers campus",
+        "result": "HTTP 200 image response with CORS; campus GetMap request"
+      }
+    },
+    {
+      "type": "wms",
+      "duration": 10000,
+      "transition": "fade",
+      "wms": {
+        "url": "https://hades.slu.se/lm/historiska-ortofoton/wms/v1",
+        "layers": "OI.Histortho_60",
+        "format": "image/jpeg",
+        "version": "1.1.1"
+      },
+      "metadata": {
+        "title": "Historical Aerial Photo ~1960",
+        "description": "Black-and-white aerial photography from around 1960 — see how the area looked over 60 years ago",
+        "source": "Lantmäteriet via SLU"
+      },
+      "enabled": true,
+      "verification": {
+        "date": "2026-09-24",
+        "extent": "Chalmers campus",
+        "result": "HTTP 200 image response with CORS; campus GetMap request"
+      }
+    },
+    {
+      "type": "wms",
+      "duration": 10000,
+      "transition": "fade",
+      "wms": {
+        "url": "https://hades.slu.se/lm/historiska-ortofoton/wms/v1",
+        "layers": "OI.Histortho_75",
+        "format": "image/jpeg",
+        "version": "1.1.1"
+      },
+      "metadata": {
+        "title": "Historical Aerial Photo ~1975",
+        "description": "Black-and-white aerial photography from around 1975 — traces of urban development emerge",
+        "source": "Lantmäteriet via SLU"
+      },
+      "enabled": true,
+      "verification": {
+        "date": "2026-09-24",
+        "extent": "Chalmers campus",
+        "result": "HTTP 200 image response with CORS; campus GetMap request"
+      }
+    },
+    {
+      "type": "wms",
+      "duration": 10000,
+      "transition": "fade",
+      "wms": {
+        "url": "https://hades.slu.se/lm/topowebb/wms/v1",
+        "layers": "topowebbkartan",
+        "format": "image/png",
+        "version": "1.1.1"
+      },
+      "metadata": {
+        "title": "Topographic Map",
+        "description": "Detailed topographic web map showing terrain, roads, buildings, and land cover",
+        "source": "Lantmäteriet via SLU"
+      },
+      "enabled": false,
+      "verification": {
+        "date": "2026-09-24",
+        "extent": "Chalmers campus",
+        "result": "HTTP 200 image response with CORS; campus GetMap request"
+      },
+      "disabledReason": "Optional context layer; excluded from the curated presentation."
+    },
+    {
+      "type": "wms",
+      "duration": 10000,
+      "transition": "fade",
+      "wms": {
+        "url": "https://hades.slu.se/lm/topowebb/wms/v1",
+        "layers": "topowebbkartan_nedtonad",
+        "format": "image/png",
+        "version": "1.1.1"
+      },
+      "metadata": {
+        "title": "Topographic Map (Muted)",
+        "description": "Subdued topographic map — useful as a neutral basemap for overlaying analysis data",
+        "source": "Lantmäteriet via SLU"
+      },
+      "enabled": false,
+      "verification": {
+        "date": "2026-09-24",
+        "extent": "Chalmers campus",
+        "result": "HTTP 200 image response with CORS; campus GetMap request"
+      },
+      "disabledReason": "Optional context layer; excluded from the curated presentation."
+    },
+    {
+      "type": "wms",
+      "duration": 10000,
+      "transition": "fade",
+      "wms": {
+        "url": "https://hades.slu.se/lm/hojdmodell/wms/v1.1",
+        "layers": "terrangskuggning",
+        "format": "image/png",
+        "version": "1.1.1"
+      },
+      "metadata": {
+        "title": "Terrain Hillshade",
+        "description": "Shaded relief map derived from the national elevation model — reveals landform and micro-topography",
+        "source": "Lantmäteriet via SLU"
+      },
+      "enabled": true,
+      "verification": {
+        "date": "2026-09-24",
+        "extent": "Chalmers campus",
+        "result": "HTTP 200 image response with CORS; campus GetMap request"
+      }
+    },
+    {
+      "type": "wms",
+      "duration": 10000,
+      "transition": "fade",
+      "wms": {
+        "url": "https://hades.slu.se/lm/hojdmodell/wms/v1.1",
+        "layers": "terranglutning",
+        "format": "image/png",
+        "version": "1.1.1"
+      },
+      "metadata": {
+        "title": "Terrain Slope",
+        "description": "Slope gradient map in greyscale — steeper areas appear darker, useful for drainage and accessibility analysis",
+        "source": "Lantmäteriet via SLU"
+      },
+      "enabled": false,
+      "verification": {
+        "date": "2026-09-24",
+        "extent": "Chalmers campus",
+        "result": "HTTP 200 image response with CORS; campus GetMap request"
+      },
+      "disabledReason": "Optional context layer; excluded from the curated presentation."
+    },
+    {
+      "type": "wms",
+      "duration": 10000,
+      "transition": "fade",
+      "wms": {
+        "url": "https://hades.slu.se/lm/fastighet/wms/v1.1",
+        "layers": "granser,text",
+        "format": "image/png",
+        "version": "1.1.1"
+      },
+      "metadata": {
+        "title": "Property Boundaries",
+        "description": "Cadastral boundaries and property designations from the Swedish land registry",
+        "source": "Lantmäteriet via SLU"
+      },
+      "enabled": true,
+      "verification": {
+        "date": "2026-09-24",
+        "extent": "Chalmers campus",
+        "result": "HTTP 200 image response with CORS; campus GetMap request"
+      }
+    },
+    {
+      "type": "wms",
+      "duration": 10000,
+      "transition": "fade",
+      "wms": {
+        "url": "https://hades.slu.se/lm/inspire/hy/wms/v1",
+        "layers": "HY.PhysicalWaters.Waterbodies,HY.Network",
+        "format": "image/png",
+        "version": "1.1.1"
+      },
+      "metadata": {
+        "title": "Hydrography",
+        "description": "Water bodies, watercourses, and the hydrographic network",
+        "source": "Lantmäteriet via SLU (INSPIRE)"
+      },
+      "enabled": false,
+      "verification": {
+        "date": "2026-09-24",
+        "extent": "Chalmers campus",
+        "result": "HTTP 200 image response with CORS; campus GetMap request"
+      },
+      "disabledReason": "Optional context layer; excluded from the curated presentation."
     }
   ],
   "settings": {
@@ -145,6 +417,7 @@
     "autoAdvance": false,
     "showMetadata": true,
     "metadataPosition": "bottom-right",
-    "fitMode": "contain"
+    "fitMode": "contain",
+    "wmsTransitionDuration": 700
   }
 }
