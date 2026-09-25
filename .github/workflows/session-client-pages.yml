@@ -2,7 +2,7 @@ name: Publish MR Studio phone client
 on:
   push:
     branches: [main]
-    paths: ['session/**', 'controller/**', 'controller.js', 'controller.html', 'style.css', 'ecom-palette.js', 'animations/coolpaths-guide.js', 'animations/cfd-core.js', 'animations/cfd-visuals.js', 'scripts/build_session_client.py', '.github/workflows/session-client-pages.yml']
+    paths: ['app-config.js', 'app-config-runtime.js', 'session/**', 'controller/**', 'controller.js', 'controller.html', 'style.css', 'ecom-palette.js', 'animations/coolpaths-guide.js', 'animations/cfd-core.js', 'animations/cfd-visuals.js', 'scripts/build_session_client.py', '.github/workflows/session-client-pages.yml']
   workflow_dispatch:
 permissions:
   contents: read
