@@ -26,7 +26,7 @@ def build():
     for path in (ROOT / 'controller').glob('*'):
         if path.suffix in ('.js', '.css') and path.name != 'manual-calibration.js':
             copy(str(path.relative_to(ROOT)))
-    for relative in ('app-config.js', 'app-config-runtime.js', 'controller.js', 'style.css', 'ecom-palette.js', 'animations/coolpaths-guide.js',
+    for relative in ('app-config.js', 'app-config-runtime.js', 'table-layout.js', 'controller.js', 'style.css', 'ecom-palette.js', 'animations/coolpaths-guide.js',
                      'animations/cfd-core.js', 'animations/cfd-visuals.js', 'media/chalmers_logo.png',
                      'media/dtcc_logo.png', 'media/survey_qr.png',
                      'media/ecom/ecom-buildings.geojson'):

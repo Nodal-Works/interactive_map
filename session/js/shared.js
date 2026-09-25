@@ -1,6 +1,6 @@
 (function(root) {
   'use strict';
-  const RELEASE = '20260925-session-6';
+  const RELEASE = '20260925-locations-1';
   const LAYERS = [
     ['cfd-simulation-btn', 'Wind · CFD', 'Environment', '🌬', 'obstacle'],
     ['stormwater-btn', 'Stormwater', 'Environment', '💧'],
@@ -17,7 +17,9 @@
     ['grid-animation-btn', 'Table grid', 'Present', '▦'],
     ['canvas-btn', 'Canvas', 'Create', '✎', 'pen']
   ].filter(([id]) => !(root.APP_CONFIG?.disabledLayers || []).includes(id)).map(([id, name, group, icon, tool]) => ({id, name, group, icon, tool}));
+  if (root.APP_CONFIG?.layerCatalog) LAYERS.splice(0, LAYERS.length, ...root.APP_CONFIG.layerCatalog.map(({id,name,group,icon,tool})=>({id,name,group,icon,tool})));
   const ACTIONS = {
+    cultural_gravity_control: 'next stop',
     cfd_control: 'get_state set_wind_speed set_wind_direction set_viscosity set_resolution toggle_trees set_particles set_visual_style set_facade_glow set_color_palette set_color_range set_particle_speed',
     thermal_control: 'request_state clear_route set_mode tour_play tour_pause tour_step tour_next tour_back tour_end tour_explore tour_layer set_hour show_raster show_streets',
     isovist_control: 'request_state set_radius set_fov toggle_360 toggle_follow toggle_trees toggle_ambient_sound set_ambient_volume',

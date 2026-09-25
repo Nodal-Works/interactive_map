@@ -12,7 +12,7 @@
   status.id = 'cfd-status'; status.setAttribute('role', 'status'); status.hidden = true;
   canvas.insertAdjacentElement('afterend', status);
   const channel = new BroadcastChannel('map_controller_channel');
-  const audio = new Audio(window.mrAsset('media/sound/wind.mp3')); audio.loop = true;
+  const audio = (window.mrMuseumAudio || (url=>new Audio(url)))(window.mrAsset('media/sound/wind.mp3')); audio.loop = true;
   const settings = { ...CFD.DEFAULTS };
   let heatColors;
   function refreshColors() {
@@ -21,6 +21,7 @@
   refreshColors();
   let active = false, generation = 0, worker = null, fallback = null, runnerTimer = null;
   let animation = null, rebuildTimer = null, field = null, visuals = null, lastTime = null;
+  let renderWorker=null,renderReady=false,renderBusy=false;
   let compatibilityMode = false;
   let phase = 'Stopped', lastStateTime = 0, heatImage = null, lastSnapshot = 0, lastHeatTime = 0;
   let targetField = null;
@@ -40,12 +41,13 @@
     if (phase !== value) { phase = value; status.textContent = value; sendState(); }
   }
   function haltRunner() {
+    renderWorker?.terminate();renderWorker=null;renderReady=false;renderBusy=false;
     if (worker) { worker.terminate(); worker = null; }
     clearTimeout(runnerTimer); runnerTimer = null; fallback = null;
   }
   function fail(message) {
     haltRunner(); active = false; generation++;
-    cancelAnimationFrame(animation); animation = null;
+    (window.MR_FRAMES ? window.MR_FRAMES.cancel.bind(window.MR_FRAMES) : cancelAnimationFrame)(animation); animation = null;
     audio.pause(); audio.currentTime = 0;
     button.classList.remove('toggled-on');
     ctx.clearRect(0, 0, canvas.width, canvas.height);
@@ -58,7 +60,7 @@
     if (data.type === 'error') { fail(data.message); return; }
     const { ux, uy, ...metadata } = data;
     Object.assign(field, metadata);
-    targetField = { ux, uy };
+    if(renderWorker)renderWorker.postMessage({type:'snapshot',value:{...metadata,ux,uy}},[ux.buffer,uy.buffer]);else targetField = { ux, uy };
     setPhase((data.developing ? 'Developing flow' : 'Flow settled') + (compatibilityMode ? ' · compatibility mode' : ''));
     if (performance.now() - lastStateTime > 1000) { lastStateTime = performance.now(); sendState(); }
   }
@@ -68,8 +70,7 @@
     // One atomic lattice step must also fit comfortably on the UI thread.
     // High resolutions remain available in worker mode.
     if (options.resolution > 100) {
-      settings.resolution = 100;
-      scheduleRebuild();
+      fail('A worker is required for this wind resolution. Reload to retry.');
       return;
     }
     try {
@@ -153,7 +154,17 @@
         wallImage.data[(y * grid.vw + x) * 4 + 3] = solid[(y + grid.y0) * grid.nx + x + grid.x0] ? 255 : 0;
       }
       wallCtx.putImageData(wallImage, 0, 0);
-      visuals = new CFDVisuals.Renderer(field, settings);
+      if(typeof OffscreenCanvas!=='undefined' && typeof createImageBitmap==='function'){
+        renderWorker=new Worker('animations/cfd-render-worker.js');
+        renderWorker.onmessage=({data})=>{
+          if(!active || generation!==id){data.bitmap?.close();return;}
+          if(data.type==='error'){fail('Wind drawing failed: '+data.message);return;}
+          if(data.type==='ready')renderReady=true;
+          if(data.type==='frame'){renderBusy=false;ctx.clearRect(0,0,canvas.width,canvas.height);ctx.drawImage(data.bitmap,0,0);data.bitmap.close();window.MR_FRAMES?.recordRender?.('wind');}
+        };
+        renderWorker.onerror=()=>{if(active && generation===id)fail('Wind drawing worker could not start.');};
+        renderWorker.postMessage({type:'init',field,settings,width:canvas.width,height:canvas.height,scale:window.mrTableScale?.()??1});
+      }else visuals = new CFDVisuals.Renderer(field, settings);
       startRunner(options, id);
     } catch (error) { if (active && generation === id) fail(error.message); }
   }
@@ -177,6 +188,10 @@
   }
   function draw(now) {
     if (!active) return;
+    if(renderWorker){
+      if(renderReady && !renderBusy){renderBusy=true;renderWorker.postMessage({type:'frame',now});}
+      animation=(window.MR_FRAMES ? window.MR_FRAMES.request.bind(window.MR_FRAMES,'wind') : requestAnimationFrame)(draw);return;
+    }
     const dt = lastTime === null ? 0 : Math.min(.05, Math.max(0, (now - lastTime) / 1000)); lastTime = now;
     ctx.clearRect(0, 0, canvas.width, canvas.height);
     if (field && visuals) {
@@ -197,11 +212,11 @@
       // The facade halo straddles the vector edge; flow marks remain masked.
       visuals.drawFacades(ctx);
     }
-    animation = requestAnimationFrame(draw);
+    animation = (window.MR_FRAMES ? window.MR_FRAMES.request.bind(window.MR_FRAMES, 'wind') : requestAnimationFrame)(draw);
   }
   function stop() {
     active = false; generation++; haltRunner(); clearTimeout(rebuildTimer);
-    cancelAnimationFrame(animation); animation = null; lastTime = null;
+    (window.MR_FRAMES ? window.MR_FRAMES.cancel.bind(window.MR_FRAMES) : cancelAnimationFrame)(animation); animation = null; lastTime = null;
     field = null; targetField = null; visuals = null;
     canvas.classList.remove('active'); button.classList.remove('toggled-on');
     audio.pause(); audio.currentTime = 0; status.hidden = true;
@@ -215,9 +230,10 @@
     canvas.classList.add('active'); button.classList.add('toggled-on'); status.hidden = false;
     channel.postMessage({ type: 'animation_state', animationId: button.id, isActive: true });
     audio.play().catch(() => {});
-    rebuild(); animation = requestAnimationFrame(draw);
+    rebuild(); animation = (window.MR_FRAMES ? window.MR_FRAMES.request.bind(window.MR_FRAMES, 'wind') : requestAnimationFrame)(draw);
   }
   button.addEventListener('click', start);
+  window.MR_LAYERS?.register(button.id,{getEnabled:()=>active,enable:()=>{if(!active)start();},disable:stop,isReady:()=>!!field && field.steps>0,getError:()=>phase.startsWith('Wind stopped:')?phase:null});
   window.cfdSession = {getState: () => ({...settings, active, phase}), preview: () => {
     if (!active || !field) return null;
     const preview = document.createElement('canvas'); preview.width = 300; preview.height = Math.round(300 * canvas.height / canvas.width);
@@ -272,6 +288,7 @@
       default: return;
     }
     if (reset) scheduleRebuild();
+    else if (renderWorker)renderWorker.postMessage({type:'settings',settings});
     else if (visuals) visuals.configure(settings);
     sendState();
   };

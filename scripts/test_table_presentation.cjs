@@ -1,0 +1,33 @@
+const assert=require('node:assert/strict');
+require('../table-layout.js');
+require('../table-presentation.js');
+let footprint={w:960,h:720,left:160,top:0};
+global.MR_CALIBRATION={dimensions:{tableWidth:320,tableHeight:240,layoutMode:'preview',sidebarWidth:7.5}};
+global.getTableLayout=()=>footprint;
+global.document={body:{classList:{toggle(){}}},documentElement:{style:{setProperty(){}}}};
+const layers=new Map();
+const map={addLayer(layer){layers.set(layer.id,layer);return this;},removeLayer(id){layers.delete(id);return this;},getLayer:id=>layers.get(id),
+ setPaintProperty(id,key,value){layers.get(id).paint[key]=value;return this;},
+ setLayoutProperty(id,key,value){layers.get(id).layout[key]=value;return this;}};
+updateTablePresentation();
+const refresh=installTableMapScale(map);
+map.addLayer({id:'streets',type:'line',source:'unchanged',paint:{'line-width':2,'line-opacity':.7},layout:{'text-size':16}});
+assert.equal(layers.get('streets').paint['line-width'],.75);
+assert.equal(layers.get('streets').layout['text-size'],6);
+assert.equal(layers.get('streets').source,'unchanged');
+assert.equal(layers.get('streets').paint['line-opacity'],.7);
+const zoom=['interpolate',['linear'],['zoom'],10,2,16,8];
+map.setPaintProperty('streets','line-width',zoom);
+assert.deepEqual(layers.get('streets').paint['line-width'],['interpolate',['linear'],['zoom'],10,.75,16,3]);
+assert.deepEqual(zoom,['interpolate',['linear'],['zoom'],10,2,16,8],'Never mutate caller expressions');
+footprint={w:1920,h:1440,left:320,top:0};updateTablePresentation();refresh();refresh();
+assert.deepEqual(layers.get('streets').paint['line-width'],['interpolate',['linear'],['zoom'],10,1.5,16,6]);
+assert.equal(layers.get('streets').layout['text-size'],12,'Double-resolution keeps the same physical text height');
+map.setPaintProperty('streets','line-width',['step',['zoom'],1,12,3]);
+assert.deepEqual(layers.get('streets').paint['line-width'],['step',['zoom'],.75,12,2.25]);
+MR_CALIBRATION.dimensions.layoutMode='legacy';updateTablePresentation();refresh();
+assert.deepEqual(layers.get('streets').paint['line-width'],['step',['zoom'],1,12,3]);
+assert.equal(layers.get('streets').layout['text-size'],16,'Legacy controller sizes preserved');
+map.removeLayer('streets');refresh();
+map.addLayer({id:'streets',paint:{'line-width':4},layout:{}});refresh();assert.equal(layers.get('streets').paint['line-width'],4);
+console.log('PASS physical marks: width/text scaling, zoom grammar, live changes, repeat resize, remove/re-add, legacy restoration');

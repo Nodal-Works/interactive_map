@@ -36,11 +36,12 @@ from .thermal import pet_memi, radiant_temperature, shadow_mask, sky_view_factor
 
 ROOT = Path(__file__).resolve().parents[1]
 DATA_ROOT = Path(os.environ.get("COOLPATHS_DATA_DIR", Path(__file__).resolve().parent / "data"))
-STUDY_DATE = date(2026, 7, 15)
+ASSET_DIR = Path(os.environ.get("COOLPATHS_ASSET_DIR", ROOT / "media"))
+STUDY_DATE = date.fromisoformat(os.environ.get("COOLPATHS_STUDY_DATE", "2026-07-15"))
 HOURS = range(8, 21)
 TIMEZONE = ZoneInfo("Europe/Stockholm")
 CRS = "EPSG:3006"
-RESOLUTION_M = 2
+RESOLUTION_M = float(os.environ.get("COOLPATHS_RESOLUTION", "2"))
 LOG = logging.getLogger("coolpaths.prepare")
 
 
@@ -57,7 +58,7 @@ def project_id() -> str:
 
 def study_bounds() -> tuple[float, float, float, float]:
     """Cover the map's committed street network with a 100 m data margin."""
-    features = json.loads((ROOT / "media/street-network.geojson").read_text())["features"]
+    features = json.loads((ASSET_DIR / "street-network.geojson").read_text())["features"]
     coordinates = [p for feature in features for p in feature["geometry"]["coordinates"]]
     west, east = min(p[0] for p in coordinates), max(p[0] for p in coordinates)
     south, north = min(p[1] for p in coordinates), max(p[1] for p in coordinates)
@@ -168,7 +169,7 @@ def walking_graph_and_buildings(bounds, existing_graph=None):
     network = None if existing_graph else ox.graph_from_polygon(region, network_type="walk")
     osm_buildings = ox.features_from_polygon(region, {"building": True})
     osm_buildings = osm_buildings[osm_buildings.geometry.geom_type.isin(["Polygon", "MultiPolygon"])]
-    local = gpd.read_file(ROOT / "media/building-footprints.geojson")
+    local = gpd.read_file(ASSET_DIR / "building-footprints.geojson")
     local = local.set_crs("EPSG:4326", allow_override=True).to_crs(CRS)
     osm_buildings = osm_buildings.to_crs(CRS)
     local_envelope = box(*local.total_bounds)
@@ -238,7 +239,7 @@ def prepared_geometry(folder: Path, bounds, force: bool):
 
 
 def local_tree_heights(affine, shape) -> np.ndarray:
-    trees = gpd.read_file(ROOT / "media/trees.geojson").to_crs(CRS)
+    trees = gpd.read_file(ASSET_DIR / "trees.geojson").to_crs(CRS)
     circles = []
     for _, row in trees.iterrows():
         height = float(row.get("height") or 0)
@@ -398,7 +399,7 @@ def prepare(force: bool = False) -> Path:
     graph, buildings = prepared_geometry(folder, bounds, force)
 
     dem = aligned_raster(inputs["dem"], affine, shape)
-    local_dem = aligned_raster(ROOT / "media/clipped_dem.geotiff.tif", affine, shape,
+    local_dem = aligned_raster(ASSET_DIR / "clipped_dem.geotiff.tif", affine, shape,
                                source_crs=CRS)
     dem = np.where(np.isfinite(local_dem), local_dem, dem)
     projector = Transformer.from_crs("EPSG:4326", CRS, always_xy=True).transform

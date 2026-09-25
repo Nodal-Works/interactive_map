@@ -1,0 +1,12 @@
+const fs=require('node:fs'),vm=require('node:vm'),assert=require('node:assert/strict');
+const root={APP_CONFIG:{layerCatalog:[{id:'canvas-btn',name:'Canvas',group:'Create',icon:'✎',tool:'pen'}]}};
+const context={window:root,console,crypto:require('node:crypto').webcrypto};vm.createContext(context);
+vm.runInContext(fs.readFileSync('session/js/shared.js','utf8'),context);
+assert.deepEqual(Array.from(root.MR.LAYERS,l=>l.id),['canvas-btn']);
+assert.equal(root.MR.validControl({type:'cultural_gravity_control',action:'next'}),true);
+assert.equal(root.MR.validControl({type:'cultural_gravity_control',action:'execute'}),false);
+vm.runInContext(fs.readFileSync('session/js/phone-state.js','utf8'),context);
+const state={sessionId:'test',participants:[],slots:[],layers:{'canvas-btn':true},table:{corners:[],bearing:0,revision:1},location:{id:'uppsala',title:'Uppsala'},catalog:root.MR.LAYERS,objects:[],messages:[]};
+const compact=root.MR_PHONE_STATE.project(state,{layer:'canvas-btn',tab:'map'});
+assert.equal(compact.location.id,'uppsala');assert.equal(compact.catalog.length,1);assert.equal(compact.credentials,undefined);
+console.log('PASS host-authoritative location/catalog and Cultural Gravity control boundary');

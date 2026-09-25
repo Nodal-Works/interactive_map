@@ -14,6 +14,8 @@ import webbrowser
 
 ROOT = Path(__file__).resolve().parents[1]
 RUNTIME = ROOT / '.runtime'
+sys.path.insert(0,str(ROOT))
+from studio import runtime as location_runtime
 
 
 def configuration(path=None):
@@ -24,6 +26,8 @@ def configuration(path=None):
     ports = [config[name] for name in ('host', 'ecom', 'coolpaths', 'sam')]
     if any(type(port) is not int or not 1024 <= port <= 65535 for port in ports) or len(set(ports)) != 4:
         raise ValueError('Service ports must be distinct integers between 1024 and 65535')
+    if config['client_url'] == 'https://nodal-works.github.io/interactive_map/client.html':
+        config['client_url'] = 'https://nodal-works.github.io/interactive_map/dev/client.html'
     return config
 
 
@@ -34,7 +38,7 @@ def probe(name, port):
             data = json.load(response)
         return {'host': data.get('service') == 'mr-studio',
                 'ecom': 'pvgis_cached_orientations' in data,
-                'coolpaths': 'ready' in data,
+                'coolpaths': 'ready' in data and data.get('location_id') == location_runtime.environment().get('MR_LOCATION_ID'),
                 'sam': 'Street View Segmentation' in data.get('message', '')}[name]
     except (OSError, ValueError):
         return False
@@ -53,7 +57,7 @@ def main():
     args = parser.parse_args()
     config = configuration(args.config)
     if args.check:
-        for name in ('host', 'ecom', 'coolpaths', 'sam'):
+        for name in location_runtime.selected_services():
             print(f'{name:10} :{config[name]} ' + ('ready' if probe(name, config[name]) else 'not running / not ready'))
         return
     RUNTIME.mkdir(exist_ok=True)
@@ -62,7 +66,7 @@ def main():
         fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
     except BlockingIOError:
         sys.exit('MR Studio services are already supervised. Use --check for status.')
-    conflicts = [f'{name} port {config[name]}' for name in ('host', 'ecom', 'coolpaths', 'sam')
+    conflicts = [f'{name} port {config[name]}' for name in location_runtime.selected_services()
                  if occupied(config[name]) and not probe(name, config[name])]
     if conflicts:
         sys.exit('Unrelated or unready process occupies ' + ', '.join(conflicts) + '. Stop it or change services.local.json; no processes were killed.')
@@ -72,8 +76,12 @@ def main():
            'MR_HOST_PORT': str(config['host'])}
     commands = {'host': [sys.executable, str(ROOT / 'host_server.py')],
                 'ecom': ['bash', str(ROOT / 'launch_ecom_backend.sh')],
-                'coolpaths': ['bash', str(ROOT / 'launch_coolpaths_server.sh')],
+                'coolpaths': [location_runtime.preparation_python(), '-m', 'uvicorn', 'coolpaths.api:app', '--host', '127.0.0.1', '--port', str(config['coolpaths'])] if location_runtime.signature() else ['bash', str(ROOT / 'launch_coolpaths_server.sh')],
                 'sam': ['bash', str(ROOT / 'launch_sam_server.sh')]}
+    all_commands = commands.copy()
+    commands = {name:command for name,command in all_commands.items() if name in location_runtime.selected_services()}
+    location_signature = location_runtime.signature()
+    env.update(location_runtime.environment())
     children, handles, statuses = {}, [], {}
     running = True
 
@@ -98,6 +106,31 @@ def main():
         opened = False
         began = time.monotonic()
         while running:
+            if location_runtime.signature() != location_signature:
+                # The host remains alive. Only processes owned by this supervisor are stopped.
+                location_signature = location_runtime.signature()
+                for name, child in list(children.items()):
+                    if name != 'host':
+                        if child.poll() is None:
+                            os.killpg(child.pid, signal.SIGTERM)
+                            try: child.wait(timeout=5)
+                            except subprocess.TimeoutExpired: os.killpg(child.pid, signal.SIGKILL); child.wait()
+                        del children[name]
+                commands = {name:command for name,command in all_commands.items() if name in location_runtime.selected_services()}
+                if 'coolpaths' in commands and location_signature:
+                    commands['coolpaths'] = [location_runtime.preparation_python(), '-m', 'uvicorn', 'coolpaths.api:app', '--host', '127.0.0.1', '--port', str(config['coolpaths'])]
+                statuses = {name:statuses.get(name, 'starting') for name in commands}
+                for name, command in commands.items():
+                    if name == 'host': continue
+                    if occupied(config[name]):
+                        statuses[name] = 'unavailable'
+                        print(f'{name}: existing listener was not started by this supervisor; not replacing it', flush=True)
+                        continue
+                    log = (RUNTIME / f'{name}.log').open('a'); handles.append(log)
+                    child_env = {**env, **location_runtime.environment(), 'MR_SERVICE_PORT':str(config[name]),
+                        'MR_SAM_DIRECTORY':str((ROOT / config['sam_directory']).resolve())}
+                    children[name] = subprocess.Popen(command,cwd=ROOT,env=child_env,stdout=log,stderr=subprocess.STDOUT,start_new_session=True)
+                began = time.monotonic()
             for name in commands:
                 child = children.get(name)
                 new = ('failed' if child and child.poll() is not None else

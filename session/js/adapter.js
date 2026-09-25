@@ -20,8 +20,8 @@
     }
   });
   function table() {
-    const size = computeOverlayPixelSize(), rect = map.getContainer().getBoundingClientRect();
-    const left = (innerWidth - size.w) / 2 - rect.left, top = (innerHeight - size.h) / 2 - rect.top;
+    const size = window.getTableLayout();
+    const left = size.mapLeft, top = size.mapTop;
     const corners = [[left,top],[left+size.w,top],[left+size.w,top+size.h],[left,top+size.h]].map(p => map.unproject(p).toArray());
     return {widthCm: window.MR_CALIBRATION.dimensions.tableWidth, heightCm: window.MR_CALIBRATION.dimensions.tableHeight, width: size.w, height: size.h, left, top, corners,
       revision: transformRevision, bearing: map.getBearing()};
@@ -33,6 +33,9 @@
     return map.unproject([t.left + message.x * t.width, t.top + message.y * t.height]).toArray();
   }
   function control(message) {
+    const layerForControl={cfd_control:'cfd-simulation-btn',thermal_control:'thermal-comfort-btn',isovist_control:'isovist-btn',sun_control:'sun-study-btn',bird_control:'bird-sounds-btn',slideshow_control:'slideshow-btn',campus_demo_control:'campus-demo-btn',fcc_demo_control:'fcc-demo-btn',cultural_gravity_control:'cultural-gravity-btn'};
+    const required=message?.type?.startsWith('ecom_')?'ecom-energy-btn':layerForControl[message?.type];
+    if(required && !(required in active))throw Error('This layer is unavailable for this location');
     if (message?.type === 'ecom_activate') return setLayer('ecom-energy-btn', true);
     if (!MR.validControl(message)) throw Error('Control is not available remotely');
     channel.postMessage({...message, sessionAction: true});
@@ -41,6 +44,7 @@
   }
   function setLayer(layer, enabled) {
     if (!(layer in active) || typeof enabled !== 'boolean') throw Error('Unknown layer');
+    if (window.MR_LAYERS?.has(layer)) return window.MR_LAYERS.setEnabled(layer, enabled);
     if (layer === 'ecom-energy-btn') {
       if (!window.ecomEnergyLayer) throw Error('ECOM is still starting. Please try again.');
       return window.ecomEnergyLayer.setEnabled(enabled);
@@ -74,7 +78,7 @@
   }
   function getState() {
     const sun=window.sunStudy;
-    return {layers: {...active}, messages: Object.values(snapshots), table: table(),
+    return {layerStatus: window.MR_LAYERS?.getState() || {}, layers: {...active}, messages: Object.values(snapshots), table: table(),
       isovist: window.isovistSession?.getState(), cfd: window.cfdSession?.getState(),
       thermal: window.thermalComfortLayer?.getState(), sun: sun ? {time:sun.timeOfDay,date:`${sun.date.getFullYear()}-${String(sun.date.getMonth()+1).padStart(2,'0')}-${String(sun.date.getDate()).padStart(2,'0')}`,animating:sun.isAnimating,trees:sun.treesVisible,falseColor:sun.isFalseColorMode,opacity:sun.shadowOpacity,speed:sun.animationSpeed}:null};
   }

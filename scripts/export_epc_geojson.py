@@ -12,7 +12,6 @@ import json
 import math
 from pathlib import Path
 from typing import Any
-import duckdb
 
 EPC_FIELDS = [
     "IdAdr",
@@ -140,6 +139,7 @@ def main() -> None:
     if not identities:
         raise SystemExit("No objektidentitet values found in the map GeoJSON")
 
+    import duckdb
     database = duckdb.connect(str(args.database.resolve()), read_only=True)
     try:
         columns = {row[0] for row in database.execute("DESCRIBE epc").fetchall()}

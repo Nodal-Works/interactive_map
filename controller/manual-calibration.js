@@ -9,7 +9,7 @@ function escapeCalibrationText(value) {
 
 function readCalibrationHistory() {
     try {
-        return [ORIGINAL_CALIBRATION, ...JSON.parse(localStorage.getItem('interactive_map_calibrations') || '[]')];
+        return [ORIGINAL_CALIBRATION, ...JSON.parse(localStorage.getItem((window.APP_CONFIG?.location?.id ? 'interactive_map_calibrations:' + window.APP_CONFIG.location.id : 'interactive_map_calibrations')) || '[]')];
     } catch (error) {
         return [ORIGINAL_CALIBRATION];
     }
@@ -17,7 +17,7 @@ function readCalibrationHistory() {
 
 function renderCalibrationHistory(container) {
     if (!container) return;
-    const selectedId = localStorage.getItem('interactive_map_selected_calibration') || 'original';
+    const selectedId = localStorage.getItem((window.APP_CONFIG?.location?.id ? 'interactive_map_selected_calibration:' + window.APP_CONFIG.location.id : 'interactive_map_selected_calibration')) || 'original';
     const calibrations = readCalibrationHistory();
     container.innerHTML = `
         <div class="dashboard-card">
@@ -37,9 +37,11 @@ function renderCalibrationHistory(container) {
         tile.addEventListener('click', () => {
             const calibration = calibrations.find(item => item.id === tile.dataset.calibrationId);
             if (!calibration) return;
-            localStorage.setItem('interactive_map_selected_calibration', calibration.id);
+            localStorage.setItem((window.APP_CONFIG?.location?.id ? 'interactive_map_selected_calibration:' + window.APP_CONFIG.location.id : 'interactive_map_selected_calibration'), calibration.id);
+            window.MR_CALIBRATION.current=calibration;
+            window.MR_CALIBRATION.applyDimensions(calibration.dimensions,!calibration.dimensions?.layoutMode && calibration.id!=='original');
             channel.postMessage({ type: MSG_TYPES.CALIBRATE_ACTION, action: 'load_calibration', calibration });
-            renderCalibrationHistory(container);
+            renderManualCalibration(document.getElementById('dashboard-title'),document.getElementById('legend-title'),document.getElementById('dashboard-content'),container);
         });
     });
 }
@@ -67,11 +69,11 @@ function renderManualCalibration(dashboardTitle, legendTitle, dashboardContent, 
                 <div class="dashboard-section-title">Manual Calibration</div>
 
                 <div class="control-row">
-                    <span class="control-label">Screen Width (cm)</span>
+                    <span class="control-label">Projected Image Width (cm)</span>
                     <input type="number" id="ctrl-screen-w" class="modern-date" value="111.93" step="0.1" style="width: 80px;">
                 </div>
                 <div class="control-row">
-                    <span class="control-label">Screen Height (cm)</span>
+                    <span class="control-label">Projected Image Height (cm)</span>
                     <input type="number" id="ctrl-screen-h" class="modern-date" value="62.96" step="0.1" style="width: 80px;">
                 </div>
                 <div class="control-row">
@@ -83,6 +85,20 @@ function renderManualCalibration(dashboardTitle, legendTitle, dashboardContent, 
                     <input type="number" id="ctrl-table-h" class="modern-date" value="60" step="0.1" style="width: 80px;">
                 </div>
 
+                <div class="control-row">
+                    <span class="control-label">Layout</span>
+                    <select id="ctrl-layout-mode"><option value="preview">Preview</option><option value="projector">Projector</option><option value="legacy">Legacy preset</option></select>
+                </div>
+                <div class="control-row">
+                    <label>Columns <input id="ctrl-table-cols" type="number" min="1" step="1" style="width:65px"></label>
+                    <label>Rows <input id="ctrl-table-rows" type="number" min="1" step="1" style="width:65px"></label>
+                </div>
+                <p class="info-text">Preview fits the model inside the display. Projector uses the measured physical size of the entire projected image. ${window.APP_CONFIG.location?.id==='universeum' ? 'Universeum’s 320 × 240 cm footprint is provisional; measure it on site.' : 'Measure the model and projected image on site.'}</p>
+                <p id="ctrl-table-measurement-note" class="info-text"></p>
+                <div class="action-grid">
+                    <button id="ctrl-fit-table" class="modern-btn primary">Fit table</button>
+                    <button id="ctrl-flip-table" class="modern-btn">Flip 180°</button>
+                </div>
                 <div class="action-grid">
                     <button id="ctrl-show-overlay" class="modern-btn">Show Overlay</button>
                     <button id="ctrl-hide-overlay" class="modern-btn">Hide Overlay</button>
@@ -147,11 +163,8 @@ function renderManualCalibration(dashboardTitle, legendTitle, dashboardContent, 
 
     // Add event listeners for manual calibration
     document.getElementById('ctrl-show-overlay').addEventListener('click', () => {
-        const sw = document.getElementById('ctrl-screen-w').value;
-        const sh = document.getElementById('ctrl-screen-h').value;
-        const tw = document.getElementById('ctrl-table-w').value;
-        const th = document.getElementById('ctrl-table-h').value;
-        channel.postMessage({ type: MSG_TYPES.CALIBRATE_ACTION, action: 'show_overlay', params: { sw, sh, tw, th } });
+        const dimensions=readDimensions();
+        if(dimensions)channel.postMessage({ type: MSG_TYPES.CALIBRATE_ACTION, action: 'show_overlay', dimensions });
     });
 
     document.getElementById('ctrl-hide-overlay').addEventListener('click', () => {
@@ -169,23 +182,29 @@ function renderManualCalibration(dashboardTitle, legendTitle, dashboardContent, 
         screenWidth: document.getElementById('ctrl-screen-w'),
         screenHeight: document.getElementById('ctrl-screen-h'),
         tableWidth: document.getElementById('ctrl-table-w'),
-        tableHeight: document.getElementById('ctrl-table-h')
+        tableHeight: document.getElementById('ctrl-table-h'),
+        columns: document.getElementById('ctrl-table-cols'),
+        rows: document.getElementById('ctrl-table-rows'),
+        layoutMode: document.getElementById('ctrl-layout-mode')
     };
 
-    Object.entries(calibrationDimensionInputs).forEach(([key, input]) => {input.value = window.MR_CALIBRATION.dimensions[key];});
-    try {
-        const selectedId = localStorage.getItem('interactive_map_selected_calibration');
-        const selected = readCalibrationHistory().find(item => item.id === selectedId);
-        const calibration = selected || JSON.parse(localStorage.getItem('interactive_map_default_calibration') || 'null');
-        if (calibration?.dimensions) {
-            Object.entries(calibrationDimensionInputs).forEach(([key, input]) => {
-                if (calibration.dimensions[key] !== undefined) input.value = calibration.dimensions[key];
-            });
+    const counts=window.MR_TABLE.grid(window.MR_CALIBRATION.dimensions);
+    Object.entries(calibrationDimensionInputs).forEach(([key, input]) => {input.value = window.MR_CALIBRATION.dimensions[key] ?? counts[key];});
+    function readDimensions() {
+        const dimensions={...window.MR_CALIBRATION.dimensions,...Object.fromEntries(Object.entries(calibrationDimensionInputs).map(([key,input])=>[key,key==='layoutMode'?input.value:Number(input.value)]))};
+        const note=document.getElementById('ctrl-table-measurement-note');
+        if(Object.entries(dimensions).some(([key,value])=>key!=='layoutMode' && (!Number.isFinite(value)||value<=0)) || !Number.isInteger(dimensions.columns) || !Number.isInteger(dimensions.rows)) {
+            note.textContent='Enter positive dimensions and whole-number rows and columns.';return null;
         }
-    } catch (error) {
-        console.warn('Could not load saved calibration dimensions');
+        const squareRatio=(dimensions.tableWidth/dimensions.columns)/(dimensions.tableHeight/dimensions.rows);
+        note.textContent=Math.abs(squareRatio-1)>.01 ? 'These dimensions produce rectangular tiles. Geographic scale stays uniform, so fitting may leave margins.' : '';
+        if(dimensions.layoutMode==='projector' && (dimensions.tableWidth>dimensions.screenWidth || dimensions.tableHeight>dimensions.screenHeight))note.textContent+=' The projected image is smaller than the table; some of the footprint will be off-screen.';
+        return dimensions;
     }
-
+    for(const input of Object.values(calibrationDimensionInputs))input.addEventListener('change',readDimensions);
+    for(const [id,action] of [['ctrl-fit-table','fit_table'],['ctrl-flip-table','flip_table']])document.getElementById(id).addEventListener('click',()=>{
+        const dimensions=readDimensions();if(dimensions)channel.postMessage({type:MSG_TYPES.CALIBRATE_ACTION,action,dimensions});
+    });
     refreshSavedCalibrationSelect();
 
     document.getElementById('ctrl-save-calibration').addEventListener('click', () => {
@@ -195,23 +214,25 @@ function renderManualCalibration(dashboardTitle, legendTitle, dashboardContent, 
             calibrationNameInput.focus();
             return;
         }
+        const dimensions=readDimensions();if(!dimensions)return;
         channel.postMessage({
             type: MSG_TYPES.CALIBRATE_ACTION,
             action: 'save_calibration',
             name,
             author: calibrationAuthorInput.value.trim(),
-            dimensions: Object.fromEntries(Object.entries(calibrationDimensionInputs).map(([key, input]) => [key, Number(input.value)]))
+            dimensions
         });
     });
 
     document.getElementById('ctrl-overwrite-calibration').addEventListener('click', () => {
         const name = calibrationNameInput.value.trim() || 'Default Calibration';
+        const dimensions=readDimensions();if(!dimensions)return;
         channel.postMessage({
             type: MSG_TYPES.CALIBRATE_ACTION,
             action: 'overwrite_default_calibration',
             name,
             author: calibrationAuthorInput.value.trim(),
-            dimensions: Object.fromEntries(Object.entries(calibrationDimensionInputs).map(([key, input]) => [key, Number(input.value)]))
+            dimensions
         });
     });
 
@@ -219,12 +240,11 @@ function renderManualCalibration(dashboardTitle, legendTitle, dashboardContent, 
         if (!savedCalibrationSelect.value) return;
         const calibration = readCalibrationHistory().find(item => item.id === savedCalibrationSelect.value);
         if (calibration) {
-            localStorage.setItem('interactive_map_selected_calibration', calibration.id);
-            if (calibration.dimensions) {
-                Object.entries(calibrationDimensionInputs).forEach(([key, input]) => {
-                    if (calibration.dimensions[key] !== undefined) input.value = calibration.dimensions[key];
-                });
-            }
+            localStorage.setItem((window.APP_CONFIG?.location?.id ? 'interactive_map_selected_calibration:' + window.APP_CONFIG.location.id : 'interactive_map_selected_calibration'), calibration.id);
+            window.MR_CALIBRATION.current=calibration;
+            window.MR_CALIBRATION.applyDimensions(calibration.dimensions,!calibration.dimensions?.layoutMode);
+            const dimensions=window.MR_CALIBRATION.dimensions,counts=window.MR_TABLE.grid(dimensions);
+            Object.entries(calibrationDimensionInputs).forEach(([key,input])=>{input.value=dimensions[key] ?? counts[key];});
             channel.postMessage({ type: MSG_TYPES.CALIBRATE_ACTION, action: 'load_calibration', calibration });
         }
     });

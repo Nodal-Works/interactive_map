@@ -67,7 +67,7 @@ class StormwaterFlowAnimation {
     this.particleTrailColor = 'rgba(0, 150, 255, 0.3)';
     
     // Audio setup
-    this.rainAudio = new Audio(window.mrAsset('media/sound/rain.mp3'));
+    this.rainAudio = (window.mrMuseumAudio || (url=>new Audio(url)))(window.mrAsset('media/sound/rain.mp3'));
     this.rainAudio.loop = true;
     
     // Bind methods
@@ -100,6 +100,7 @@ class StormwaterFlowAnimation {
       // Get raster data
       const rasters = await image.readRasters();
       const elevationData = rasters[0]; // First band = terrain with barriers
+      const waterData = rasters[2];
       const buildingData = rasters[1]; // Explicit mask; high terrain is not a building
       if (!buildingData) throw new Error('Regenerate stormwater_dem.tif with the current processing script');
       const nodata = image.getGDALNoData();
@@ -124,7 +125,7 @@ class StormwaterFlowAnimation {
           this.buildingMask[row][col] = buildingData[idx] > 0 ? 1 : 0;
           // Same sea-level fallback as lindholmen; buildings are never water.
           this.waterMask[row][col] = Number.isFinite(this.dem[row][col]) &&
-            elevation <= 0 && !this.buildingMask[row][col] ? 1 : 0;
+            (waterData ? waterData[idx] > 0 : elevation <= 0) && !this.buildingMask[row][col] ? 1 : 0;
         }
       }
       
@@ -527,13 +528,16 @@ class StormwaterFlowAnimation {
   
   async start() {
     if (this.isActive) return;
+    const generation=this.startGeneration=(this.startGeneration || 0)+1;
     
     // Load and compute data if not already done
     if (!this.flowData) {
-      const loaded = await this.loadData();
+      this.loadPromise ||= this.loadData().then(loaded=>{if(!loaded)this.loadPromise=null;return loaded;});
+      const loaded = await this.loadPromise;
       if (!loaded) return;
     }
     
+    if(generation!==this.startGeneration)return;
     // Create pre-rendered glow sprite for performance
     this.createGlowSprite();
     
@@ -542,10 +546,20 @@ class StormwaterFlowAnimation {
     
     // Broadcast state to controller
     const channel = new BroadcastChannel('map_controller_channel');
-    channel.postMessage({ type: 'animation_state', animationId: 'stormwater-btn', isActive: true });
+    channel.postMessage({ type: 'animation_state', animationId: 'stormwater-btn', isActive: true });channel.close();
     
     this.handleResize();
-    
+    if(typeof OffscreenCanvas!=='undefined' && typeof createImageBitmap==='function'){
+      this.renderWorker=new Worker('animations/stormwater-render-worker.js');this.renderReady=false;this.renderBusy=false;
+      this.renderWorker.onmessage=({data})=>{
+        if(!this.isActive || generation!==this.startGeneration){data.bitmap?.close();return;}
+        if(data.type==='error'){window.MR_LAYERS?.fail('stormwater-btn','Runoff drawing failed: '+data.message);return;}
+        if(data.type==='ready')this.renderReady=true;
+        if(data.type==='frame'){this.renderBusy=false;this.renderBuffer=data.values;this.ctx.clearRect(0,0,this.canvas.width,this.canvas.height);this.ctx.drawImage(data.bitmap,0,0);data.bitmap.close();window.MR_FRAMES?.recordRender?.('stormwater');}
+      };
+      this.renderWorker.onerror=()=>window.MR_LAYERS?.fail('stormwater-btn','Runoff drawing worker could not start.');
+      this.renderWorker.postMessage({type:'init',width:this.canvas.width,height:this.canvas.height,settings:{glowSpriteSize:this.glowSpriteSize,particleLifetime:this.particleLifetime,glowIntensity:this.glowIntensity,poolingGlowIntensity:this.poolingGlowIntensity}});
+    }
     // Play rain sound
     this.rainAudio.play().catch(e => console.warn("Audio play failed:", e));
     
@@ -554,6 +568,7 @@ class StormwaterFlowAnimation {
     
     // Add resize listener
     window.addEventListener('resize', this.handleResize);
+    if(window.APP_CONFIG?.raster?.corners)this.map.on('moveend',this.handleResize);
     
     // Start animation loop
     this.animate();
@@ -569,6 +584,11 @@ class StormwaterFlowAnimation {
     
     const width = this.canvas.width;
     const height = this.canvas.height;
+    if(window.APP_CONFIG?.raster?.corners && window.MR_GEO){
+      const rect=this.canvas.getBoundingClientRect(),mr=this.map.getContainer().getBoundingClientRect();
+      this.geoTransform=window.MR_GEO.affine(window.APP_CONFIG.raster.corners,p=>this.map.project(p),{left:rect.left-mr.left,top:rect.top-mr.top});
+    }
+    const screen=(x,y)=>this.geoTransform?this.geoTransform.forward(y,1-x):{x:x*width,y:y*height};
     
     // Calculate max accumulation for color scaling
     const accValues = this.flowData.flow_lines.map(line => line.accumulation);
@@ -577,18 +597,18 @@ class StormwaterFlowAnimation {
     
     // Scale flow lines from normalized (0-1) to pixel coordinates
     this.flowData.flow_lines_screen = this.flowData.flow_lines.map(line => ({
-      from_x: line.from_x_norm * width,
-      from_y: line.from_y_norm * height,
-      to_x: line.to_x_norm * width,
-      to_y: line.to_y_norm * height,
+      from_x: screen(line.from_x_norm,line.from_y_norm).x,
+      from_y: screen(line.from_x_norm,line.from_y_norm).y,
+      to_x: screen(line.to_x_norm,line.to_y_norm).x,
+      to_y: screen(line.to_x_norm,line.to_y_norm).y,
       accumulation: line.accumulation,
       direction: line.direction
     }));
     
     // Scale start points from normalized (0-1) to pixel coordinates
     this.flowData.start_points_screen = this.flowData.start_points.map(point => ({
-      x: point.position_norm[0] * width,
-      y: point.position_norm[1] * height,
+      x: screen(point.position_norm[0],point.position_norm[1]).x,
+      y: screen(point.position_norm[0],point.position_norm[1]).y,
       weight: point.weight
     }));
     
@@ -665,6 +685,10 @@ class StormwaterFlowAnimation {
   }
   
   stop() {
+    this.renderWorker?.terminate();this.renderWorker=null;this.renderBuffer=null;this.renderReady=false;this.renderBusy=false;
+    this.startGeneration=(this.startGeneration || 0)+1;
+    this.fixedAccumulator=0;
+    window.MR_FRAMES?.times.delete('stormwater');
     if (!this.isActive) return;
     
     this.isActive = false;
@@ -672,18 +696,19 @@ class StormwaterFlowAnimation {
     
     // Broadcast state to controller
     const channel = new BroadcastChannel('map_controller_channel');
-    channel.postMessage({ type: 'animation_state', animationId: 'stormwater-btn', isActive: false });
+    channel.postMessage({ type: 'animation_state', animationId: 'stormwater-btn', isActive: false });channel.close();
     
     // Stop rain sound
     this.rainAudio.pause();
     this.rainAudio.currentTime = 0;
     
     if (this.animationFrame) {
-      cancelAnimationFrame(this.animationFrame);
+      (window.MR_FRAMES ? window.MR_FRAMES.cancel.bind(window.MR_FRAMES) : cancelAnimationFrame)(this.animationFrame);
       this.animationFrame = null;
     }
     
     window.removeEventListener('resize', this.handleResize);
+    this.map.off?.('moveend',this.handleResize);
     
     this.ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
     this.particles = [];
@@ -727,8 +752,10 @@ class StormwaterFlowAnimation {
     // inside a building and discard rainfall near walls or in narrow passages.
     const rowPosition = row + 0.5 + (Math.random() - 0.5) * 0.9;
     const colPosition = col + 0.5 + (Math.random() - 0.5) * 0.9;
-    const x = (1 - rowPosition / this.demHeight) * this.canvas.width;
-    const y = colPosition / this.demWidth * this.canvas.height;
+    const point = this.geoTransform ? this.geoTransform.forward(colPosition/this.demWidth,rowPosition/this.demHeight) :
+      {x:(1-rowPosition/this.demHeight)*this.canvas.width,y:colPosition/this.demWidth*this.canvas.height};
+    const {x,y}=point;
+
     const accumulation = this.flowAcc[row][col];
 
     return {
@@ -754,6 +781,7 @@ class StormwaterFlowAnimation {
   
   // Inverse of generateFlowData's existing rotated campus layout.
   screenToCell(x, y) {
+    if(this.geoTransform){const p=this.geoTransform.inverse(x,y);return {row:Math.floor(p.y*this.demHeight),col:Math.floor(p.x*this.demWidth)};}
     return { row: Math.floor((1 - x / this.canvas.width) * this.demHeight),
       col: Math.floor(y / this.canvas.height * this.demWidth) };
   }
@@ -766,7 +794,9 @@ class StormwaterFlowAnimation {
 
   // Check the whole movement, including noise, so particles cannot jump a narrow wall.
   crossesBarrier(x, y, nextX, nextY) {
-    const from = this.screenToCell(x, y);
+    const from = this.screenToCell(x, y),to=this.screenToCell(nextX,nextY);
+    // A straight segment whose endpoints share one cell cannot cross a cell boundary.
+    if(from.row===to.row && from.col===to.col)return this.isBlockedCell(from);
     const steps = Math.max(1, Math.ceil(Math.max(
       Math.abs(nextX - x) * this.demHeight / this.canvas.width,
       Math.abs(nextY - y) * this.demWidth / this.canvas.height) * 2));
@@ -796,8 +826,8 @@ class StormwaterFlowAnimation {
     const offsets = {128: [-1, 1], 1: [0, 1], 2: [1, 1], 4: [1, 0],
       8: [1, -1], 16: [0, -1], 32: [-1, -1], 64: [-1, 0]};
     const [dr, dc] = offsets[this.flowDir[cell.row][cell.col]];
-    const dx = -dr * this.canvas.width / this.demHeight;
-    const dy = dc * this.canvas.height / this.demWidth;
+    const dx = this.geoTransform ? dc*this.geoTransform.u.x/this.demWidth+dr*this.geoTransform.v.x/this.demHeight : -dr*this.canvas.width/this.demHeight;
+    const dy = this.geoTransform ? dc*this.geoTransform.u.y/this.demWidth+dr*this.geoTransform.v.y/this.demHeight : dc*this.canvas.height/this.demWidth;
     const mag = Math.hypot(dx, dy);
     const accumulation = this.flowAcc[cell.row][cell.col];
 
@@ -958,12 +988,24 @@ class StormwaterFlowAnimation {
    * Draw particles
    */
   drawParticles() {
+    if(this.renderWorker && this.renderReady && !this.debugFlowLines){
+      if(!this.renderBusy){
+        const count=this.particles.length*23,values=this.renderBuffer?.length===count?this.renderBuffer:new Float32Array(count);
+        this.renderBuffer=null;
+        for(let i=0;i<this.particles.length;i++){
+          const p=this.particles[i],n=i*23;values[n]=p.x;values[n+1]=p.y;values[n+2]=p.age;values[n+3]=p.size;values[n+4]=p.poolingIntensity;values[n+5]=p.isPooling?1:0;values[n+6]=p.trail.length;
+          for(let j=0;j<p.trail.length;j++){values[n+7+j*2]=p.trail[j].x;values[n+8+j*2]=p.trail[j].y;}
+        }
+        this.renderBusy=true;this.renderWorker.postMessage({type:'frame',values,width:this.canvas.width,height:this.canvas.height,scale:window.mrTableScale?.()??1},[values.buffer]);
+      }
+      return;
+    }
     this.ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
     
     // Debug: Draw flow direction arrows
     if (this.debugFlowLines && this.flowData?.flow_lines_screen) {
       this.ctx.strokeStyle = 'rgba(255, 0, 0, 0.3)';
-      this.ctx.lineWidth = 1;
+      this.ctx.lineWidth = window.mrTableScale?.() ?? 1;
       
       for (let i = 0; i < this.flowData.flow_lines_screen.length; i += 50) {
         const line = this.flowData.flow_lines_screen[i];
@@ -996,7 +1038,7 @@ class StormwaterFlowAnimation {
         } else {
           this.ctx.strokeStyle = `rgba(80, 170, 255, ${alpha * 0.4})`;
         }
-        this.ctx.lineWidth = p.size * 0.8;
+        this.ctx.lineWidth = p.size * 0.8 * (window.mrTableScale?.() ?? 1);
         this.ctx.stroke();
       }
     }
@@ -1022,7 +1064,7 @@ class StormwaterFlowAnimation {
         this.ctx.globalAlpha = alpha * effectiveGlow;
         
         // Draw scaled sprite at particle position
-        const drawSize = spriteSize * scale * poolScale;
+        const drawSize = spriteSize * scale * poolScale * (window.mrTableScale?.() ?? 1);
         const halfDraw = drawSize / 2;
         
         // Choose sprite based on pooling intensity
@@ -1066,16 +1108,18 @@ class StormwaterFlowAnimation {
   /**
    * Main animation loop
    */
-  animate() {
+  animate(now = performance.now()) {
     if (!this.isActive) return;
     
-    this.updateParticles();
+    this.fixedAccumulator = (this.fixedAccumulator || 0) + (window.MR_FRAMES ? window.MR_FRAMES.delta('stormwater', now) : 1/60);
+    while(this.fixedAccumulator >= 1/60 - 1e-9) { this.updateParticles(); this.fixedAccumulator -= 1/60; }
     this.drawParticles();
     
-    this.animationFrame = requestAnimationFrame(this.animate);
+    this.animationFrame = (window.MR_FRAMES ? window.MR_FRAMES.request.bind(window.MR_FRAMES, 'stormwater') : requestAnimationFrame)(this.animate);
   }
 }
 
+if(!globalThis.MR_RENDER_WORKER){
 // Initialize animation when DOM is ready
 let stormwaterFlowAnimation = null;
 
@@ -1093,6 +1137,7 @@ function initStormwaterFlow() {
       clearInterval(checkMap);
       
       stormwaterFlowAnimation = new StormwaterFlowAnimation(window.map, canvas);
+      window.MR_LAYERS?.register('stormwater-btn',{getEnabled:()=>stormwaterFlowAnimation.isActive,enable:()=>stormwaterFlowAnimation.start(),disable:()=>stormwaterFlowAnimation.stop()});
       
       // Set up button handler
       const btn = document.getElementById('stormwater-btn');
@@ -1113,4 +1158,6 @@ if (document.readyState === 'loading') {
   document.addEventListener('DOMContentLoaded', initStormwaterFlow);
 } else {
   initStormwaterFlow();
+}
+
 }

@@ -1,0 +1,322 @@
+[
+  {
+    "name": "01-default",
+    "seconds": 25.2,
+    "samples": 2298,
+    "rafHz": 91.3,
+    "p50ms": 8.4,
+    "p95ms": 18.1,
+    "p99ms": 25.5,
+    "over33ms": 5,
+    "longTasks": 1,
+    "longestTaskMs": 67,
+    "mapRenders": 0,
+    "viewport": [
+      1280,
+      720
+    ],
+    "dpr": 2,
+    "active": [],
+    "canvases": [
+      {
+        "id": "",
+        "width": 2560,
+        "height": 1440
+      },
+      {
+        "id": "street-life-canvas",
+        "width": 960,
+        "height": 720
+      },
+      {
+        "id": "trafik-canvas",
+        "width": 960,
+        "height": 720
+      }
+    ],
+    "note": "RAF cadence, not GPU FPS; 3s warm-up. Reload for independent sample."
+  },
+  {
+    "name": "02-wind",
+    "seconds": 24.1,
+    "samples": 2772,
+    "rafHz": 115.1,
+    "p50ms": 8.3,
+    "p95ms": 10.3,
+    "p99ms": 17.6,
+    "over33ms": 0,
+    "longTasks": 0,
+    "longestTaskMs": 0,
+    "mapRenders": 0,
+    "viewport": [
+      1280,
+      720
+    ],
+    "dpr": 2,
+    "active": [],
+    "canvases": [
+      {
+        "id": "",
+        "width": 2560,
+        "height": 1440
+      },
+      {
+        "id": "cfd-simulation-canvas",
+        "width": 960,
+        "height": 720
+      }
+    ],
+    "note": "RAF cadence, not GPU FPS; 3s warm-up. Reload for independent sample."
+  },
+  {
+    "name": "03-stormwater",
+    "seconds": 29.1,
+    "samples": 2691,
+    "rafHz": 92.3,
+    "p50ms": 8.4,
+    "p95ms": 16.9,
+    "p99ms": 18,
+    "over33ms": 0,
+    "longTasks": 0,
+    "longestTaskMs": 0,
+    "mapRenders": 0,
+    "viewport": [
+      1280,
+      720
+    ],
+    "dpr": 2,
+    "active": [
+      "stormwater-btn"
+    ],
+    "canvases": [
+      {
+        "id": "",
+        "width": 2560,
+        "height": 1440
+      },
+      {
+        "id": "stormwater-canvas",
+        "width": 960,
+        "height": 720
+      }
+    ],
+    "note": "RAF cadence, not GPU FPS; 3s warm-up. Reload for independent sample."
+  },
+  {
+    "name": "04-sun-static",
+    "seconds": 19.1,
+    "samples": 2291,
+    "rafHz": 119.9,
+    "p50ms": 8.3,
+    "p95ms": 9.7,
+    "p99ms": 10.2,
+    "over33ms": 0,
+    "longTasks": 0,
+    "longestTaskMs": 0,
+    "mapRenders": 0,
+    "viewport": [
+      1280,
+      720
+    ],
+    "dpr": 2,
+    "active": [
+      "sun-study-btn"
+    ],
+    "canvases": [
+      {
+        "id": "",
+        "width": 2560,
+        "height": 1440
+      },
+      {
+        "id": "sun-study-canvas",
+        "width": 1160,
+        "height": 720
+      },
+      {
+        "id": "sun-study-overlay",
+        "width": 2320,
+        "height": 1440
+      }
+    ],
+    "note": "RAF cadence, not GPU FPS; 3s warm-up. Reload for independent sample."
+  },
+  {
+    "name": "07-slideshow",
+    "seconds": 25.1,
+    "samples": 3011,
+    "rafHz": 120,
+    "p50ms": 8.3,
+    "p95ms": 10.1,
+    "p99ms": 10.3,
+    "over33ms": 0,
+    "longTasks": 0,
+    "longestTaskMs": 0,
+    "mapRenders": 0,
+    "viewport": [
+      1280,
+      720
+    ],
+    "dpr": 2,
+    "active": [
+      "slideshow-btn"
+    ],
+    "canvases": [
+      {
+        "id": "",
+        "width": 2560,
+        "height": 1440
+      }
+    ],
+    "note": "RAF cadence, not GPU FPS; 3s warm-up. Reload for independent sample."
+  },
+  {
+    "name": "11-default-repeat-720p",
+    "seconds": 35.7,
+    "samples": 2720,
+    "rafHz": 77.1,
+    "p50ms": 9.2,
+    "p95ms": 25.2,
+    "p99ms": 33.3,
+    "over33ms": 24,
+    "longTasks": 1,
+    "longestTaskMs": 80,
+    "mapRenders": 0,
+    "viewport": [
+      1280,
+      720
+    ],
+    "dpr": 2,
+    "active": [],
+    "canvases": [
+      {
+        "id": "",
+        "width": 2560,
+        "height": 1440
+      },
+      {
+        "id": "street-life-canvas",
+        "width": 960,
+        "height": 720
+      },
+      {
+        "id": "trafik-canvas",
+        "width": 960,
+        "height": 720
+      }
+    ],
+    "note": "RAF cadence, not GPU FPS; 3s warm-up. Reload for independent sample. Viewport override requested 1920x1080 but actual viewport remained 1280x720."
+  },
+  {
+    "name": "12-wind-repeat-720p",
+    "seconds": 32.2,
+    "samples": 3692,
+    "rafHz": 114.8,
+    "p50ms": 8.3,
+    "p95ms": 10.4,
+    "p99ms": 17.8,
+    "over33ms": 0,
+    "longTasks": 0,
+    "longestTaskMs": 0,
+    "mapRenders": 0,
+    "viewport": [
+      1280,
+      720
+    ],
+    "dpr": 2,
+    "active": [
+      "cfd-simulation-btn"
+    ],
+    "canvases": [
+      {
+        "id": "",
+        "width": 2560,
+        "height": 1440
+      },
+      {
+        "id": "cfd-simulation-canvas",
+        "width": 960,
+        "height": 720
+      }
+    ],
+    "note": "RAF cadence, not GPU FPS; 3s warm-up. Reload for independent sample."
+  },
+  {
+    "name": "13-sun-animation-attempt",
+    "seconds": 6,
+    "samples": 723,
+    "rafHz": 120,
+    "p50ms": 8.3,
+    "p95ms": 9.4,
+    "p99ms": 10,
+    "over33ms": 0,
+    "longTasks": 0,
+    "longestTaskMs": 0,
+    "mapRenders": 0,
+    "viewport": [
+      1280,
+      720
+    ],
+    "dpr": 2,
+    "active": [
+      "sun-study-btn"
+    ],
+    "canvases": [
+      {
+        "id": "",
+        "width": 2560,
+        "height": 1440
+      },
+      {
+        "id": "sun-study-canvas",
+        "width": 1160,
+        "height": 720
+      },
+      {
+        "id": "sun-study-overlay",
+        "width": 2320,
+        "height": 1440
+      }
+    ],
+    "note": "RAF cadence, not GPU FPS; 3s warm-up. Reload for independent sample."
+  },
+  {
+    "name": "14-sun-animated-trees",
+    "seconds": 11,
+    "samples": 1325,
+    "rafHz": 120,
+    "p50ms": 8.3,
+    "p95ms": 9.7,
+    "p99ms": 10.2,
+    "over33ms": 0,
+    "longTasks": 0,
+    "longestTaskMs": 0,
+    "mapRenders": 0,
+    "viewport": [
+      1280,
+      720
+    ],
+    "dpr": 2,
+    "active": [
+      "sun-study-btn"
+    ],
+    "canvases": [
+      {
+        "id": "",
+        "width": 2560,
+        "height": 1440
+      },
+      {
+        "id": "sun-study-canvas",
+        "width": 1160,
+        "height": 720
+      },
+      {
+        "id": "sun-study-overlay",
+        "width": 2320,
+        "height": 1440
+      }
+    ],
+    "note": "RAF cadence, not GPU FPS; 3s warm-up. Reload for independent sample."
+  }
+]

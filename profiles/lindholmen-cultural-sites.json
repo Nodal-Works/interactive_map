@@ -1,0 +1,86 @@
+[
+  {
+    "name": "Karlatornet",
+    "lat": 57.70993,
+    "lng": 11.93914,
+    "category": "landmark",
+    "weight": 1.4
+  },
+  {
+    "name": "Backa Teater",
+    "lat": 57.70591,
+    "lng": 11.93595,
+    "category": "theatre",
+    "weight": 1.2
+  },
+  {
+    "name": "Lindholmens Manor",
+    "lat": 57.70822,
+    "lng": 11.93213,
+    "category": "heritage",
+    "weight": 1.0
+  },
+  {
+    "name": "Kuggen (Chalmers)",
+    "lat": 57.70671,
+    "lng": 11.93882,
+    "category": "education",
+    "weight": 1.1
+  },
+  {
+    "name": "Gothenburg Film Studios",
+    "lat": 57.70952,
+    "lng": 11.93289,
+    "category": "studio",
+    "weight": 1.3
+  },
+  {
+    "name": "Skatberget",
+    "lat": 57.70339,
+    "lng": 11.93264,
+    "category": "nature",
+    "weight": 0.8
+  },
+  {
+    "name": "Dry Dock",
+    "lat": 57.7039,
+    "lng": 11.93124,
+    "category": "heritage",
+    "weight": 0.9
+  },
+  {
+    "name": "Aftonstj\u00e4rnan",
+    "lat": 57.70702,
+    "lng": 11.93274,
+    "category": "community",
+    "weight": 0.9
+  },
+  {
+    "name": "The Dome (temporary)",
+    "lat": 57.70697,
+    "lng": 11.93802,
+    "category": "art",
+    "weight": 0.7
+  },
+  {
+    "name": "Propelleromr\u00e5det",
+    "lat": 57.70988,
+    "lng": 11.93328,
+    "category": "heritage",
+    "weight": 0.8
+  },
+  {
+    "name": "Lundby Mekaniska Verkstad",
+    "lat": 57.70918,
+    "lng": 11.93659,
+    "category": "heritage",
+    "weight": 0.7
+  },
+  {
+    "name": "Adolfs Hill",
+    "lat": 57.70875,
+    "lng": 11.93169,
+    "category": "nature",
+    "weight": 0.7
+  }
+]

@@ -143,9 +143,6 @@ function setAnimationState(targetId, isActive, follow = true) {
         }
     } else {
         activeAnimations = activeAnimations.filter(id => id !== targetId);
-        if (targetId === 'sun-study-btn') {
-            setSunStudyLayout(false);
-        }
         // Reset campus demo legend when it's deactivated
         if (targetId === 'campus-demo-btn') {
             resetCampusDemoLegend();
@@ -160,7 +157,8 @@ function setAnimationState(targetId, isActive, follow = true) {
     syncAnimationButtonStates();
     const toggle = document.querySelector(`[data-layer-switch="${targetId}"]`);
     if (toggle) toggle.checked = isActive;
-    if (follow && newlyActive && !new URLSearchParams(location.search).has('sessionController')) openHostLayer(targetId);
+    const calibrating=document.querySelector('[data-target="calibrate-btn"][aria-current="true"]');
+    // Panel focus belongs to the visitor, never to asynchronous layer updates.
 }
 
 function syncAnimationButtonStates() {
@@ -196,8 +194,18 @@ function syncAnimationButtonStates() {
 // Since BroadcastChannel doesn't have a direct "connected" event for peers, 
 // we'll assume connected if we can send, but we can implement a ping/pong if needed.
 // For now, we'll just show it as active.
-statusIndicator.classList.add('connected');
-statusText.textContent = 'Connected';
+statusIndicator.classList.remove('connected');
+statusText.textContent = 'Connecting';
+let hostHeartbeatAt = 0;
+const heartbeatChannel = new BroadcastChannel('mr_session_admin');
+heartbeatChannel.addEventListener('message', ({data}) => {
+    if(data?.type !== 'admin-state')return;
+    hostHeartbeatAt = Date.now(); statusIndicator.classList.add('connected'); statusText.textContent='Connected';
+});
+setInterval(() => {
+    heartbeatChannel.postMessage({type:'admin-request'});
+    if(Date.now()-hostHeartbeatAt>7000){statusIndicator.classList.remove('connected');statusText.textContent='Display disconnected';}
+},2000);
 
 // Function to show welcome screen
 function showWelcome() {
@@ -223,8 +231,8 @@ function openHostLayer(targetId) {
     document.querySelectorAll('.control-btn[data-target]').forEach(button=>button.setAttribute('aria-current',String(button.dataset.target===targetId)));
     if (location.hash === '#session') { history.replaceState(null, '', location.pathname + location.search); window.dispatchEvent(new Event('hashchange')); }
     stopTour();
-    updateMetadata(targetId);
     updateDashboard(targetId);
+    if(targetId!=='sun-study-btn')updateMetadata(targetId);
 }
 
 // Handle button clicks
@@ -263,9 +271,8 @@ document.querySelectorAll('.control-btn[data-target]').forEach(btn => {
             btn.classList.add('selected');
         }
         
-        // Always update metadata and dashboard when a button is clicked
-        updateMetadata(targetId);
-        updateDashboard(targetId);
+        // Keep function-panel focus explicit so live layer updates cannot replace calibration.
+        openHostLayer(targetId);
 
         // Request immediate status update for dynamic layers
         if (targetId === 'bird-sounds-btn') {
@@ -396,8 +403,8 @@ function updateThermalDashboard() {
         dashboardContent.innerHTML = `
             <div id="coolpaths-dashboard" class="coolpaths-dashboard">
                 <div class="coolpaths-heading">
-                    <div><span class="coolpaths-eyebrow">GOTHENBURG STUDY</span>
-                        <strong id="coolpaths-date">15 July 2026</strong></div>
+                    <div><span class="coolpaths-eyebrow">THERMAL STUDY</span>
+                        <strong id="coolpaths-date">Prepared location study</strong></div>
                     <span id="coolpaths-state" class="coolpaths-state">Waiting for map</span>
                 </div>
                 <div class="coolpaths-controls">
@@ -489,7 +496,7 @@ function updateThermalDashboard() {
     const route = state.route || (state.tour?.open && state.tour.step === 5 ? state.demoRoute : null);
     const short = route?.shortest?.properties;
     const cool = route?.coolest?.properties;
-    document.getElementById('coolpaths-date').textContent = state.studyDate || '15 July 2026';
+    document.getElementById('coolpaths-date').textContent = state.studyDate || 'Prepared location study';
     document.getElementById('coolpaths-state').textContent = state.ready ? 'PET data ready' :
         (state.phase === 'connecting' ? 'Connecting…' : state.active ? 'Data unavailable' : 'Layer off');
     document.getElementById('coolpaths-state').dataset.ready = String(!!state.ready);
@@ -532,7 +539,7 @@ function updateDashboard(targetId) {
     }
 
     // Check if already in sun study mode to avoid duplicate setup
-    if (targetId === 'sun-study-btn' && mainPanel && mainPanel.classList.contains('sun-study-mode')) {
+    if (targetId === 'sun-study-btn' && mainPanel?.classList.contains('sun-study-mode') && document.getElementById('sun-time')) {
         return;
     }
 
@@ -1494,14 +1501,14 @@ function updateDashboard(targetId) {
                     <div class="info-box" style="margin-bottom: 1rem; border-left-color: #00ffff;">
                         <div class="info-title">Physical Digital Twin</div>
                         <p class="info-text">
-                            This grid projection aligns perfectly with the <strong>physical 3D printed tiles</strong> on the table. 
+                            Use this grid to align the projection with the <strong>physical 3D printed tiles</strong> on the table.
                             It serves as a calibration layer to ensure the digital projection matches the physical model boundaries.
                         </p>
                     </div>
                     <div class="info-box" style="border-left-color: #00ffff;">
                         <div class="info-title">Grid Structure</div>
                         <p class="info-text">
-                            The table is divided into a <strong>5x3 grid</strong> of 20x20cm tiles. 
+                            The table is divided into a <strong>${window.MR_TABLE.grid(window.MR_CALIBRATION?.dimensions || window.APP_CONFIG.table).columns} × ${window.MR_TABLE.grid(window.MR_CALIBRATION?.dimensions || window.APP_CONFIG.table).rows} grid</strong>, covering ${(window.MR_CALIBRATION?.dimensions || window.APP_CONFIG.table).tableWidth} × ${(window.MR_CALIBRATION?.dimensions || window.APP_CONFIG.table).tableHeight} cm.
                             Each cell represents a modular section of the city model, allowing for swappable districts.
                         </p>
                     </div>
@@ -1852,8 +1859,15 @@ channel.onmessage = (event) => {
             alert('Failed to copy to clipboard. Check console for data.');
             console.log(calibrationText);
         });
+    } else if (data.type === 'calibration_state') {
+        if(window.MR_CALIBRATION){
+            window.MR_CALIBRATION.current=data.calibration;
+            window.MR_CALIBRATION.applyDimensions(data.calibration.dimensions);
+        }
     } else if (data.type === 'calibration_saved') {
-        localStorage.setItem('interactive_map_selected_calibration', data.calibration.id);
+        window.MR_CALIBRATION.current=data.calibration;
+        window.MR_CALIBRATION.applyDimensions(data.calibration.dimensions);
+        localStorage.setItem((window.APP_CONFIG?.location?.id ? 'interactive_map_selected_calibration:' + window.APP_CONFIG.location.id : 'interactive_map_selected_calibration'), data.calibration.id);
         refreshSavedCalibrationSelect();
         const calibrateButton = document.querySelector('.control-btn[data-target="calibrate-btn"]');
         if (calibrateButton && calibrateButton.classList.contains('selected')) {

@@ -1,5 +1,7 @@
 # ACE MR Studio – Interactive Map
 
+> **Universeum branch:** See the [Universeum README](README-universeum.md) for the exact EPSG:3007 extent, current screenshots, complete layer/feature list, setup commands and availability limits. The general guide below also describes campus-specific data and extensions.
+
 An interactive mixed-reality urban visualisation platform built for the ACE MR Studio at Chalmers University of Technology. The application provides multiple data visualisation layers for urban planning, environmental analysis, and stakeholder engagement.
 
 ![Demo](./media/demo.gif)

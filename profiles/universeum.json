@@ -1,0 +1,40 @@
+{
+  "id": "universeum",
+  "title": "Universeum",
+  "sourceCrs": "EPSG:3007",
+  "sourceBounds": [
+    146087,
+    6395990,
+    150018.2,
+    6401231.6
+  ],
+  "resolution": 2,
+  "studyDate": null,
+  "layers": [
+    "cfd-simulation-btn",
+    "stormwater-btn",
+    "sun-study-btn",
+    "isovist-btn",
+    "street-view-btn",
+    "epc-btn",
+    "trafik-btn",
+    "bird-sounds-btn",
+    "slideshow-btn",
+    "grid-animation-btn",
+    "canvas-btn"
+  ],
+  "meshMode": "display",
+  "table": {
+    "tableWidth": 320,
+    "tableHeight": 240,
+    "tileSize": 40,
+    "sidebarWidth": 7.5,
+    "columns": 8,
+    "rows": 6,
+    "layoutMode": "preview",
+    "fitToTable": true
+  },
+  "presentation": {
+    "symbolSizing": "geographic"
+  }
+}

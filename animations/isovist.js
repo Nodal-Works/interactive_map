@@ -3,6 +3,20 @@
 // Version: 1.4 - with Street View camera trail
 
 (function() {
+  const map = window.MR_RENDER?.map || window.map;
+  let activationRevision=0, geometryWorker=null, geometryReady=false, calculationId=0, calculationBusy=false, latestCalculation=null;
+  function requestCalculation(){
+    if(!geometryReady || !viewerPosition)return;
+    latestCalculation={type:'calculate',id:++calculationId,position:viewerPosition,cursor:cursorPosition,options:window.isovistSession.getState()};
+    if(!calculationBusy){calculationBusy=true;geometryWorker.postMessage(latestCalculation);latestCalculation=null;}
+  }
+  function acceptCalculation(result){
+    viewerPosition=result.origin;
+    for(const [id,features] of [['isovist-polygon',[result.mainPolygon]],['isovist-gradient',result.bands],['isovist-viewed-buildings',result.viewedBuildings],['isovist-trees',result.viewedTrees]])map.getSource(id)?.setData({type:'FeatureCollection',features});
+    map.getSource('isovist-viewer')?.setData({type:'FeatureCollection',features:[{type:'Feature',geometry:{type:'Point',coordinates:viewerPosition},properties:{}}]});
+    broadcastIsovistStats(result.stats);
+  }
+
   if (typeof window.map === 'undefined') {
     console.warn('Isovist: Map not ready yet, will initialize when available');
   }
@@ -137,11 +151,11 @@
       
       // Create nature audio (pick a random bird sound to start)
       currentNatureSoundIndex = Math.floor(Math.random() * natureSounds.length);
-      natureAudio = new Audio(natureSounds[currentNatureSoundIndex]);
+      natureAudio = (window.mrMuseumAudio || (url=>new Audio(url)))(natureSounds[currentNatureSoundIndex]);
       natureAudio.loop = true;
       
       // Create city audio
-      cityAudio = new Audio(citySounds[0]);
+      cityAudio = (window.mrMuseumAudio || (url=>new Audio(url)))(citySounds[0]);
       cityAudio.loop = true;
       
       // Create gain nodes for volume control
@@ -149,13 +163,13 @@
       natureGainNode = ambientAudioContext.createGain();
       natureGainNode.gain.value = 0;
       natureSource.connect(natureGainNode);
-      natureGainNode.connect(ambientAudioContext.destination);
+      natureGainNode.connect(window.MR_AUDIO?.destination(ambientAudioContext) || ambientAudioContext.destination);
       
       const citySource = ambientAudioContext.createMediaElementSource(cityAudio);
       cityGainNode = ambientAudioContext.createGain();
       cityGainNode.gain.value = 0;
       citySource.connect(cityGainNode);
-      cityGainNode.connect(ambientAudioContext.destination);
+      cityGainNode.connect(window.MR_AUDIO?.destination(ambientAudioContext) || ambientAudioContext.destination);
       
       // Handle nature audio ending to switch to next bird sound
       natureAudio.addEventListener('ended', switchNatureSound);
@@ -217,7 +231,7 @@
   
   function stopAmbientAudio() {
     if (volumeAnimationFrame) {
-      cancelAnimationFrame(volumeAnimationFrame);
+      (window.MR_FRAMES ? window.MR_FRAMES.cancel.bind(window.MR_FRAMES) : cancelAnimationFrame)(volumeAnimationFrame);
       volumeAnimationFrame = null;
     }
     
@@ -281,7 +295,7 @@
       cityGainNode.gain.setValueAtTime(newCity, ambientAudioContext.currentTime);
     }
     
-    volumeAnimationFrame = requestAnimationFrame(animateVolumes);
+    volumeAnimationFrame = (window.MR_FRAMES ? window.MR_FRAMES.request.bind(window.MR_FRAMES,'isovist-audio') : requestAnimationFrame)(animateVolumes);
   }
   
   // Unlock audio on user interaction (browser autoplay policy)
@@ -365,9 +379,10 @@
     if (!btn) return;
 
     btn.addEventListener('click', toggleIsovist);
+    window.MR_LAYERS?.register('isovist-btn',{getEnabled:()=>isovistActive,enable:async()=>{if(!isovistActive)await toggleIsovist();},disable:()=>{if(isovistActive)toggleIsovist();},isReady:()=>geometryReady});
   }
 
-  function toggleIsovist() {
+  async function toggleIsovist() {
     isovistActive = !isovistActive;
     const btn = document.getElementById('isovist-btn');
 
@@ -375,7 +390,7 @@
       btn.classList.add('toggled-off');
       btn.style.background = '#0078d4';
       btn.style.color = '#fff';
-      activateIsovist();
+      await activateIsovist();
       const fovMsg = USE_HUMAN_FOV ? ` (${HUMAN_FOV}° FOV)` : ' (360° view)';
       const followMsg = FOLLOW_CURSOR ? ' - Viewer follows cursor!' : '';
       showToast(`Click map to place viewer. Move cursor to look around${fovMsg}${followMsg}`);
@@ -388,15 +403,18 @@
     }
   }
 
-  function activateIsovist() {
+  async function activateIsovist() {
+    const revision=++activationRevision;
+    await window.MR_RENDER?.ready;
+    if(!isovistActive || revision!==activationRevision)return;
     // Broadcast state to controller
     isovistChannel.postMessage({ type: 'animation_state', animationId: 'isovist-btn', isActive: true });
     
     // Load building obstacles from loaded GeoJSON
-    loadBuildingObstacles();
+    const buildingsTask=loadBuildingObstacles();
     
     // Load tree obstacles
-    loadTreeObstacles();
+    const treesTask=loadTreeObstacles();
     
     // Initialize ambient soundscape
     if (ambientSoundEnabled) {
@@ -667,27 +685,8 @@
         }
       });
 
-      // All tree canopy circles (faded background)
-      map.addLayer({
-        id: 'isovist-all-trees-fill',
-        type: 'fill',
-        source: 'isovist-all-trees',
-        paint: {
-          'fill-color': '#90EE90',  // Light green
-          'fill-opacity': 0.05
-        }
-      });
-
-      map.addLayer({
-        id: 'isovist-all-trees-outline',
-        type: 'line',
-        source: 'isovist-all-trees',
-        paint: {
-          'line-color': '#228B22',
-          'line-width': 0.5,
-          'line-opacity': 0.05
-        }
-      });
+      // Point circles preserve canopy metres without triangulating 31,000 polygons.
+      map.addLayer({id:'isovist-all-trees-fill',type:'circle',source:'isovist-all-trees',paint:{'circle-color':'#90EE90','circle-opacity':.08,'circle-stroke-color':'#228B22','circle-stroke-width':.5,'circle-stroke-opacity':.12,'circle-radius':['interpolate',['exponential',2],['zoom'],0,['get','radiusAtZoom0'],22,['*',['get','radiusAtZoom0'],4194304]]}});
     }
 
     // Add source and layer for highlighted (viewed) trees
@@ -760,15 +759,31 @@
 
     // Start outline animation
     animateOutline();
+    await Promise.all([buildingsTask,treesTask]);
+    if(!isovistActive || revision!==activationRevision)return;
+    geometryWorker=new Worker('animations/isovist-worker.js');
+    geometryWorker.onmessage=({data})=>{
+      if(!isovistActive || revision!==activationRevision)return;
+      if(data.type==='error'){window.MR_LAYERS?.fail('isovist-btn','Visibility calculation failed: '+data.message);return;}
+      if(data.type==='ready'){geometryReady=true;updateVisualization();return;}
+      calculationBusy=false;
+      if(data.id===calculationId)acceptCalculation(data.result);
+      if(latestCalculation){calculationBusy=true;geometryWorker.postMessage(latestCalculation);latestCalculation=null;}
+    };
+    geometryWorker.onerror=()=>{window.MR_LAYERS?.fail('isovist-btn','Visibility worker could not start. Reload to retry.');};
+    geometryWorker.postMessage({type:'init',obstacles,trees:treeObstacles});
+    if(!viewerPosition){const center=map.getCenter();viewerPosition=[center.lng,center.lat];}
   }
 
   function deactivateIsovist() {
+    activationRevision++;geometryWorker?.terminate();geometryWorker=null;geometryReady=false;calculationBusy=false;latestCalculation=null;calculationId++;
+    if(updateRequestId){(window.MR_FRAMES ? window.MR_FRAMES.cancel.bind(window.MR_FRAMES) : cancelAnimationFrame)(updateRequestId);updateRequestId=null;}
     // Broadcast state to controller
     isovistChannel.postMessage({ type: 'animation_state', animationId: 'isovist-btn', isActive: false });
     
     // Stop animation
     if (animationFrameId) {
-      cancelAnimationFrame(animationFrameId);
+      (window.MR_FRAMES ? window.MR_FRAMES.cancel.bind(window.MR_FRAMES) : cancelAnimationFrame)(animationFrameId);
       animationFrameId = null;
     }
     
@@ -846,14 +861,6 @@
     // Clear tree obstacles
     treeObstacles = [];
 
-    // Remove building footprints overlay
-    if (map.getLayer('user-fill')) {
-      map.removeLayer('user-fill');
-    }
-    if (map.getSource('usergeo')) {
-      map.removeSource('usergeo');
-    }
-
     map.getCanvas().style.cursor = '';
   }
 
@@ -863,7 +870,7 @@
     // Throttle to ~20fps to reduce GPU paint property updates
     outlineFrameCount++;
     if (outlineFrameCount % 3 !== 0) {
-      animationFrameId = requestAnimationFrame(animateOutline);
+      animationFrameId = (window.MR_FRAMES ? window.MR_FRAMES.request.bind(window.MR_FRAMES,'isovist-outline') : requestAnimationFrame)(animateOutline);
       return;
     }
     
@@ -890,10 +897,10 @@
       // It's set once during layer initialization
     }
     
-    animationFrameId = requestAnimationFrame(animateOutline);
+    animationFrameId = (window.MR_FRAMES ? window.MR_FRAMES.request.bind(window.MR_FRAMES,'isovist-outline') : requestAnimationFrame)(animateOutline);
   }
 
-  function loadBuildingObstacles() {
+  async function loadBuildingObstacles() {
     obstacles = [];
 
     // Check for user-loaded GeoJSON with building data
@@ -912,7 +919,7 @@
     if (obstacles.length === 0) {
       // Try to load default building footprints from media folder
       showToast('Loading building footprints...', 3000);
-      loadDefaultBuildings();
+      await loadDefaultBuildings();
     }
   }
 
@@ -921,16 +928,17 @@
     
     geojson.features.forEach(feature => {
       if (feature.geometry.type === 'Polygon') {
-        addObstacle(feature.geometry.coordinates[0], feature.properties);
+        addObstacle(feature.geometry.coordinates, feature.properties);
       } else if (feature.geometry.type === 'MultiPolygon') {
         feature.geometry.coordinates.forEach(polygon => {
-          addObstacle(polygon[0], feature.properties);
+          addObstacle(polygon, feature.properties);
         });
       }
     });
   }
 
-  function addObstacle(ring, properties = {}) {
+  function addObstacle(rings, properties = {}) {
+    const ring = rings[0];
     if (!ring || ring.length < 3) return;
     
     // Calculate bbox
@@ -943,7 +951,7 @@
     }
     
     obstacles.push({
-      points: ring,
+      points: ring, rings,
       properties: properties,
       bbox: { minLng, minLat, maxLng, maxLat }
     });
@@ -1022,6 +1030,7 @@
   }
 
   async function loadTreeObstacles() {
+    const revision=activationRevision;
     try {
       const response = await fetch(window.mrAsset('media/trees.geojson'));
       if (!response.ok) {
@@ -1031,7 +1040,7 @@
       
       const geojson = await response.json();
       
-      if (!isovistActive) return;
+      if (!isovistActive || revision!==activationRevision) return;
       
       // Process tree points into circular obstacles
       treeObstacles = [];
@@ -1049,19 +1058,20 @@
           
           // Calculate radius based on height with random variation
           const randomVariation = (seededRandom(idx) - 0.5) * 2 * TREE_RADIUS_VARIATION;
-          const radius = TREE_BASE_RADIUS + (height * TREE_HEIGHT_FACTOR) + randomVariation;
+          const radius = Number(feature.properties.crown_radius) > 0 ? Number(feature.properties.crown_radius) : TREE_BASE_RADIUS + (height * TREE_HEIGHT_FACTOR) + randomVariation;
           
           // Calculate bbox for spatial filtering
-          const radiusDeg = radius / 111000; // rough meters to degrees
+          const radiusDeg = radius / 110540;
+          const radiusLng=radius/(111320*Math.cos(coords[1]*DEG2RAD)); // rough meters to degrees
           
           treeObstacles.push({
             center: coords,
             radius: Math.max(1, radius), // minimum 1 meter radius
             properties: feature.properties,
             bbox: {
-              minLng: coords[0] - radiusDeg,
+              minLng: coords[0] - radiusLng,
               minLat: coords[1] - radiusDeg,
-              maxLng: coords[0] + radiusDeg,
+              maxLng: coords[0] + radiusLng,
               maxLat: coords[1] + radiusDeg
             }
           });
@@ -1073,27 +1083,8 @@
       
       // Update the all-trees layer to show all tree canopies
       if (map.getSource('isovist-all-trees')) {
-        const allTreeFeatures = treeObstacles.map(tree => {
-          // Create a circle polygon approximation (24 points)
-          const circlePoints = [];
-          const numPoints = 24;
-          for (let i = 0; i <= numPoints; i++) {
-            const angle = (i / numPoints) * 360;
-            circlePoints.push(destination(tree.center, tree.radius, angle));
-          }
-          return {
-            type: 'Feature',
-            geometry: {
-              type: 'Polygon',
-              coordinates: [circlePoints]
-            },
-            properties: {
-              ...tree.properties,
-              radius: tree.radius
-            }
-          };
-        });
-        
+        const allTreeFeatures = treeObstacles.map(tree=>({type:'Feature',geometry:{type:'Point',coordinates:tree.center},properties:{radiusAtZoom0:tree.radius*512/(40075016.68557849*Math.cos(tree.center[1]*DEG2RAD))/(window.mrTableScale?.()||1)}}));
+
         map.getSource('isovist-all-trees').setData({
           type: 'FeatureCollection',
           features: allTreeFeatures
@@ -1106,6 +1097,7 @@
   }
 
   async function loadDefaultBuildings() {
+    const revision=activationRevision;
     try {
       const response = await fetch(window.mrAsset('media/building-footprints.geojson'));
       if (!response.ok) {
@@ -1114,24 +1106,7 @@
       
       const geojson = await response.json();
       
-      if (!isovistActive) return;
-      
-      // Add to map as user geo source
-      if (map.getSource('usergeo')) {
-        map.getSource('usergeo').setData(geojson);
-      } else {
-        // Create the source if it doesn't exist
-        map.addSource('usergeo', { type: 'geojson', data: geojson });
-        
-        // Add layers for visualization with no stroke and no points
-        map.addLayer({ 
-          id: 'user-fill', 
-          type: 'fill', 
-          source: 'usergeo', 
-          paint: { 'fill-color':'#3388ff','fill-opacity':0.2 } 
-        });
-      }
-      
+      if(!isovistActive || revision!==activationRevision)return;
       // Process obstacles
       processGeoJSON(geojson);
       
@@ -1190,7 +1165,7 @@
 
   function updateVisualization() {
     if (updateRequestId) return;
-    updateRequestId = requestAnimationFrame(() => {
+    updateRequestId = (window.MR_FRAMES ? window.MR_FRAMES.request.bind(window.MR_FRAMES,'isovist-input') : requestAnimationFrame)(() => {
       performUpdate();
       updateRequestId = null;
     });
@@ -1207,7 +1182,7 @@
   };
 
   function performUpdate() {
-    if (!viewerPosition) return;
+    if (!isovistActive || !viewerPosition || !map.getSource('isovist-viewer')) return;
     
     // Fetch Street View actual camera position (throttled internally)
     fetchStreetViewMetadata(viewerPosition);
@@ -1283,435 +1258,10 @@
 
     map.getSource('isovist-viewer').setData(viewerFeatures);
 
-    // Calculate and update isovist polygon
-    if (obstacles.length > 0) {
-      const result = calculateIsovistFeatures(viewerPosition, cursorPosition);
-      
-      map.getSource('isovist-polygon').setData({
-        type: 'FeatureCollection',
-        features: [result.mainPolygon]
-      });
-      
-      map.getSource('isovist-gradient').setData({
-        type: 'FeatureCollection',
-        features: result.bands
-      });
-
-      // Update highlighted (viewed) buildings
-      if (map.getSource('isovist-viewed-buildings')) {
-        map.getSource('isovist-viewed-buildings').setData({
-          type: 'FeatureCollection',
-          features: result.viewedBuildings
-        });
-      }
-      
-      // Update highlighted (viewed) trees
-      if (map.getSource('isovist-trees')) {
-        map.getSource('isovist-trees').setData({
-          type: 'FeatureCollection',
-          features: result.viewedTrees || []
-        });
-      }
-    }
+    requestCalculation();
   }
 
-  function calculateIsovistFeatures(origin, lookDirection) {
-    // Ray casting algorithm to compute visibility polygon
-    const rays = [];
-    const viewedObstacleIndices = new Set(); // Track which buildings are viewed
-    const viewedTreeIndices = new Set(); // Track which trees are viewed
-    
-    // Determine the viewing angle range
-    let startAngle, endAngle, angleStep;
-    
-    if (USE_HUMAN_FOV && lookDirection) {
-      // Calculate the direction the viewer is looking
-      const viewBearing = calculateBearing(origin, lookDirection);
-      const halfFOV = (HUMAN_FOV / 2) * Math.PI / 180;
-      const viewAngle = viewBearing * Math.PI / 180;
-      
-      // Define the cone of vision
-      startAngle = viewAngle - halfFOV;
-      endAngle = viewAngle + halfFOV;
-      angleStep = (HUMAN_FOV * Math.PI / 180) / RAY_COUNT;
-      
-      // Add the origin point to create a cone shape
-      rays.push({ angle: startAngle, dist: 0 });
-    } else {
-      // Full 360° view
-      startAngle = 0;
-      endAngle = 2 * Math.PI;
-      angleStep = (2 * Math.PI) / RAY_COUNT;
-    }
-
-    // Optimization: Filter obstacles by distance (bbox check)
-    // 200m is roughly 0.002 degrees. Using 0.003 as safe margin.
-    const range = 0.003; 
-    const viewBbox = {
-        minLng: origin[0] - range,
-        minLat: origin[1] - range,
-        maxLng: origin[0] + range,
-        maxLat: origin[1] + range
-    };
-
-    const activeObstacles = [];
-    const activeObstacleIndices = [];
-    for (let i = 0; i < obstacles.length; i++) {
-        const obs = obstacles[i];
-        if (!(obs.bbox.minLng > viewBbox.maxLng || 
-              obs.bbox.maxLng < viewBbox.minLng || 
-              obs.bbox.minLat > viewBbox.maxLat || 
-              obs.bbox.maxLat < viewBbox.minLat)) {
-            activeObstacles.push(obs);
-            activeObstacleIndices.push(i);
-        }
-    }
-    
-    // Filter active trees by distance (bbox check)
-    const activeTrees = [];
-    const activeTreeIndices = [];
-    if (INCLUDE_TREES) {
-        for (let i = 0; i < treeObstacles.length; i++) {
-            const tree = treeObstacles[i];
-            if (!(tree.bbox.minLng > viewBbox.maxLng || 
-                  tree.bbox.maxLng < viewBbox.minLng || 
-                  tree.bbox.minLat > viewBbox.maxLat || 
-                  tree.bbox.maxLat < viewBbox.minLat)) {
-                activeTrees.push(tree);
-                activeTreeIndices.push(i);
-            }
-        }
-    }
-
-    // Cast rays within the field of view
-    const numRays = Math.ceil((endAngle - startAngle) / angleStep);
-    for (let i = 0; i <= numRays; i++) {
-      const angle = startAngle + (i * angleStep);
-      const rayEnd = destination(origin, MAX_VIEW_DISTANCE, (angle * 180) / Math.PI);
-
-      // Find closest intersection with any building
-      let minDistance = MAX_VIEW_DISTANCE;
-      let hitObstacleIdx = -1;
-      let hitTreeIdx = -1;
-
-      activeObstacles.forEach((obstacle, localIdx) => {
-        const coords = obstacle.points;
-
-        // Check intersection with each edge of the building polygon
-        for (let j = 0; j < coords.length - 1; j++) {
-          const edge = [coords[j], coords[j + 1]];
-          const intersection = lineIntersection(origin, rayEnd, edge[0], edge[1]);
-
-          if (intersection) {
-            const dist = distance(origin, intersection);
-            if (dist < minDistance) {
-              minDistance = dist;
-              hitObstacleIdx = activeObstacleIndices[localIdx];
-              hitTreeIdx = -1; // Building takes precedence
-            }
-          }
-        }
-      });
-      
-      // Check intersection with tree circles
-      activeTrees.forEach((tree, localIdx) => {
-        const intersections = rayCircleIntersection(origin, rayEnd, tree.center, tree.radius);
-        if (intersections.length > 0) {
-          // Use the closest intersection point
-          const dist = distance(origin, intersections[0]);
-          if (dist < minDistance) {
-            minDistance = dist;
-            hitTreeIdx = activeTreeIndices[localIdx];
-            hitObstacleIdx = -1; // Tree is closer
-          }
-        }
-      });
-
-      // Track the building that was hit
-      if (hitObstacleIdx >= 0) {
-        viewedObstacleIndices.add(hitObstacleIdx);
-      }
-      
-      // Track the tree that was hit
-      if (hitTreeIdx >= 0) {
-        viewedTreeIndices.add(hitTreeIdx);
-      }
-
-      rays.push({ angle: angle, dist: minDistance, obstacleIndex: hitObstacleIdx, treeIndex: hitTreeIdx });
-    }
-    
-    // Generate polygons
-    const mainPolygonPoints = [];
-    const bands = [];
-    const numBands = 3;
-    
-    // 1. Main Polygon
-    rays.forEach(ray => {
-        if (ray.dist > 0) { // Skip origin point if present
-            mainPolygonPoints.push(destination(origin, ray.dist, (ray.angle * 180) / Math.PI));
-        }
-    });
-    
-    // Close the polygon
-    if (USE_HUMAN_FOV && lookDirection) {
-        mainPolygonPoints.push(origin);
-        // Ensure start is origin too for closed polygon
-        mainPolygonPoints.unshift(origin);
-    } else {
-        mainPolygonPoints.push(mainPolygonPoints[0]);
-    }
-
-    const mainPolygon = {
-      type: 'Feature',
-      geometry: {
-        type: 'Polygon',
-        coordinates: [mainPolygonPoints]
-      },
-      properties: {}
-    };
-
-    // 2. Gradient Bands (Stacked)
-    for (let b = 0; b < numBands; b++) {
-        const limit = (MAX_VIEW_DISTANCE / numBands) * (b + 1);
-        const bandPoints = [];
-        
-        rays.forEach(ray => {
-            if (ray.dist > 0) {
-                const d = Math.min(ray.dist, limit);
-                bandPoints.push(destination(origin, d, (ray.angle * 180) / Math.PI));
-            }
-        });
-
-        if (USE_HUMAN_FOV && lookDirection) {
-            bandPoints.push(origin);
-            bandPoints.unshift(origin);
-        } else {
-            bandPoints.push(bandPoints[0]);
-        }
-
-        bands.push({
-            type: 'Feature',
-            geometry: {
-                type: 'Polygon',
-                coordinates: [bandPoints]
-            },
-            properties: { ring: b }
-        });
-    }
-
-    // 3. Convert viewed obstacle indices to GeoJSON features with original properties
-    const viewedBuildings = Array.from(viewedObstacleIndices).map(idx => {
-      const obs = obstacles[idx];
-      return {
-        type: 'Feature',
-        geometry: {
-          type: 'Polygon',
-          coordinates: [obs.points]
-        },
-        properties: obs.properties || {}
-      };
-    });
-    
-    // 3b. Convert viewed tree indices to GeoJSON circle polygons
-    const viewedTrees = Array.from(viewedTreeIndices).map(idx => {
-      const tree = treeObstacles[idx];
-      // Create a circle polygon approximation (12 points)
-      const circlePoints = [];
-      const numPoints = 12;
-      for (let i = 0; i <= numPoints; i++) {
-        const angle = (i / numPoints) * 360;
-        circlePoints.push(destination(tree.center, tree.radius, angle));
-      }
-      return {
-        type: 'Feature',
-        geometry: {
-          type: 'Polygon',
-          coordinates: [circlePoints]
-        },
-        properties: {
-          ...tree.properties,
-          radius: tree.radius,
-          type: 'tree'
-        }
-      };
-    });
-
-    // 4. Calculate statistics for the controller chart
-    const stats = {
-      totalRays: numRays,
-      openRays: 0,
-      treeRays: 0,
-      buildingTypeRays: {},
-      buildingTypeCounts: {}
-    };
-    
-    // Count rays that hit max distance (open area) vs buildings/trees by type
-    rays.forEach(ray => {
-      if (ray.dist >= MAX_VIEW_DISTANCE * 0.99) {
-        stats.openRays++;
-      } else if (ray.treeIndex !== undefined && ray.treeIndex >= 0) {
-        // Ray hit a tree
-        stats.treeRays++;
-      } else if (ray.obstacleIndex !== undefined && ray.obstacleIndex >= 0) {
-        // Get the building type for this ray's obstacle
-        const obs = obstacles[ray.obstacleIndex];
-        const buildingType = obs?.properties?.objekttyp || 'Unknown';
-        stats.buildingTypeRays[buildingType] = (stats.buildingTypeRays[buildingType] || 0) + 1;
-      }
-    });
-    
-    // Count buildings by type (for info only)
-    viewedBuildings.forEach(building => {
-      const buildingType = building.properties.objekttyp || 'Unknown';
-      stats.buildingTypeCounts[buildingType] = (stats.buildingTypeCounts[buildingType] || 0) + 1;
-    });
-    
-    // Calculate visible area percentage (simplified as ratio of rays hitting max distance)
-    stats.openAreaPercent = ((stats.openRays / numRays) * 100).toFixed(1);
-    stats.totalBuildings = viewedBuildings.length;
-    
-    // Add tree stats
-    stats.totalTrees = viewedTrees.length;
-    stats.treesEnabled = INCLUDE_TREES;
-    
-    // Add green view factor (GVF) - ratio of tree rays to total rays
-    stats.greenViewFactor = numRays > 0 ? (stats.treeRays / numRays) : 0;
-    stats.greenViewFactorPercent = (stats.greenViewFactor * 100).toFixed(1);
-    stats.ambientSoundEnabled = ambientSoundEnabled;
-    
-    // Broadcast stats to controller
-    broadcastIsovistStats(stats);
-
-    return { mainPolygon, bands, viewedBuildings, viewedTrees };
-  }
-  
-  // Ray-circle intersection helper
-  function rayCircleIntersection(rayStart, rayEnd, circleCenter, radiusMeters) {
-    // Convert to approximate local coordinates (meters)
-    const toLocal = (point) => {
-      const latMid = (rayStart[1] + circleCenter[1]) / 2;
-      const metersPerDegLng = 111320 * Math.cos(latMid * Math.PI / 180);
-      const metersPerDegLat = 110540;
-      return [
-        (point[0] - rayStart[0]) * metersPerDegLng,
-        (point[1] - rayStart[1]) * metersPerDegLat
-      ];
-    };
-    
-    const fromLocal = (point) => {
-      const latMid = (rayStart[1] + circleCenter[1]) / 2;
-      const metersPerDegLng = 111320 * Math.cos(latMid * Math.PI / 180);
-      const metersPerDegLat = 110540;
-      return [
-        point[0] / metersPerDegLng + rayStart[0],
-        point[1] / metersPerDegLat + rayStart[1]
-      ];
-    };
-    
-    const p1 = toLocal(rayStart); // [0, 0]
-    const p2 = toLocal(rayEnd);
-    const c = toLocal(circleCenter);
-    const r = radiusMeters;
-    
-    // Direction vector
-    const dx = p2[0] - p1[0];
-    const dy = p2[1] - p1[1];
-    
-    // Quadratic coefficients
-    const a = dx * dx + dy * dy;
-    const b = 2 * (dx * (p1[0] - c[0]) + dy * (p1[1] - c[1]));
-    const cc = (p1[0] - c[0]) ** 2 + (p1[1] - c[1]) ** 2 - r * r;
-    
-    const discriminant = b * b - 4 * a * cc;
-    
-    if (discriminant < 0) return [];
-    
-    const intersections = [];
-    const sqrtDisc = Math.sqrt(discriminant);
-    
-    const t1 = (-b - sqrtDisc) / (2 * a);
-    const t2 = (-b + sqrtDisc) / (2 * a);
-    
-    // Check if intersections are on the ray segment (t between 0 and 1)
-    if (t1 >= 0 && t1 <= 1) {
-      const ix = p1[0] + t1 * dx;
-      const iy = p1[1] + t1 * dy;
-      intersections.push(fromLocal([ix, iy]));
-    }
-    if (t2 >= 0 && t2 <= 1 && Math.abs(t2 - t1) > 0.001) {
-      const ix = p1[0] + t2 * dx;
-      const iy = p1[1] + t2 * dy;
-      intersections.push(fromLocal([ix, iy]));
-    }
-    
-    // Sort by distance from ray start
-    intersections.sort((a, b) => distance(rayStart, a) - distance(rayStart, b));
-    
-    return intersections;
-  }
-
-  // Collision detection and position validation
-  function getValidPosition(position) {
-    // Check if position is inside any building
-    const insideBuilding = isPointInsideAnyBuilding(position);
-    
-    if (!insideBuilding) {
-      return position;
-    }
-    
-    // If inside a building, find the nearest valid position outside
-    return findNearestValidPosition(position);
-  }
-
-  function isPointInsideAnyBuilding(point) {
-    for (const obstacle of obstacles) {
-      if (isPointInPolygon(point, obstacle.points)) {
-        return true;
-      }
-    }
-    return false;
-  }
-
-  function isPointInPolygon(point, polygon) {
-    // Ray casting algorithm for point-in-polygon test
-    const x = point[0], y = point[1];
-    let inside = false;
-    
-    for (let i = 0, j = polygon.length - 1; i < polygon.length; j = i++) {
-      const xi = polygon[i][0], yi = polygon[i][1];
-      const xj = polygon[j][0], yj = polygon[j][1];
-      
-      const intersect = ((yi > y) !== (yj > y))
-        && (x < (xj - xi) * (y - yi) / (yj - yi) + xi);
-      
-      if (intersect) inside = !inside;
-    }
-    
-    return inside;
-  }
-
-  function findNearestValidPosition(position) {
-    // Search in a spiral pattern for the nearest valid position
-    const searchRadius = 5; // meters
-    const searchSteps = 16; // number of directions to check
-    
-    for (let radius = searchRadius; radius <= MAX_VIEW_DISTANCE; radius += searchRadius) {
-      for (let i = 0; i < searchSteps; i++) {
-        const angle = (i / searchSteps) * 360;
-        const testPos = destination(position, radius, angle);
-        
-        if (!isPointInsideAnyBuilding(testPos)) {
-          return testPos;
-        }
-      }
-    }
-    
-    // If no valid position found, return original (shouldn't happen)
-    console.warn('Could not find valid position outside buildings');
-    return position;
-  }
-
-  // Geometric helper functions
+  function getValidPosition(position) { return position; }
   function calculateBearing(from, to) {
     const dLon = to[0] - from[0];
     const y = Math.sin(dLon * Math.PI / 180) * Math.cos(to[1] * Math.PI / 180);
@@ -1749,7 +1299,7 @@
     const x4 = p4[0], y4 = p4[1];
 
     const denom = (x1 - x2) * (y3 - y4) - (y1 - y2) * (x3 - x4);
-    if (Math.abs(denom) < 1e-10) return null; // Parallel lines
+    if (Math.abs(denom) < 1e-18) return null; // Parallel lines
 
     const t = ((x1 - x3) * (y3 - y4) - (y1 - y3) * (x3 - x4)) / denom;
     const u = -((x1 - x2) * (y1 - y3) - (y1 - y2) * (x1 - x3)) / denom;
@@ -1764,23 +1314,6 @@
     return null;
   }
 
-  // Initialize when map is ready
-  if (window.map && window.map.loaded()) {
-    initIsovist();
-  } else if (window.map) {
-    window.map.on('load', initIsovist);
-  } else {
-    // Wait for map to be defined
-    const checkMap = setInterval(() => {
-      if (window.map) {
-        clearInterval(checkMap);
-        if (window.map.loaded()) {
-          initIsovist();
-        } else {
-          window.map.on('load', initIsovist);
-        }
-      }
-    }, 100);
-  }
+  initIsovist();
 
 })();

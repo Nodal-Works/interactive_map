@@ -1,23 +1,44 @@
 // MapLibre GL JS implementation for interactive_map
 // Native bearing/rotation support and raster basemap switching
 
-// Physical sizing uses the selected calibration's dimensions.
-window.computeOverlayPixelSize = function() {
-  const d = window.MR_CALIBRATION.dimensions;
-  const px = window.innerWidth / d.screenWidth;
-  return {w: Math.round(d.tableWidth * px), h: Math.round(d.tableHeight * px)};
+// One rectangle shared by the map, canvases, grid and phone gestures.
+window.getTableLayout = function() {
+  const container=document.getElementById('map');
+  const rect=container.getBoundingClientRect();
+  return window.MR_TABLE.rectangle(window.MR_CALIBRATION.dimensions,
+    {width:innerWidth,height:innerHeight},rect);
 };
+window.computeOverlayPixelSize = function() {
+  const {w,h}=window.getTableLayout(); return {w,h};
+};
+window.updateTablePresentation();
+function clipTableLayers() {
+  const active=window.MR_CALIBRATION.dimensions.layoutMode !== 'legacy';
+  const t=window.getTableLayout();
+  for (const el of document.querySelectorAll('#map, #sun-study-canvas, #sun-study-overlay, #stormwater-canvas, #cfd-simulation-canvas, #street-life-canvas, #trafik-canvas, #slideshow-canvas, #grid-animation-canvas, #bird-sounds-canvas, #street-animation-canvas, .mr-map-overlay.desktop')) {
+    const r=el.getBoundingClientRect();
+    if (!r.width || !r.height) continue;
+    el.style.clipPath=active ? `inset(${Math.max(0,t.top-r.top)}px ${Math.max(0,r.right-t.left-t.w)}px ${Math.max(0,r.bottom-t.top-t.h)}px ${Math.max(0,t.left-r.left)}px)` : '';
+  }
+}
+window.clipTableLayers=clipTableLayers;
+function showOverlay() {
+  const t=window.getTableLayout(),el=document.getElementById('table-overlay');
+  if(el) Object.assign(el.style,{left:`${t.left}px`,top:`${t.top}px`,transform:'none',width:`${t.w}px`,height:`${t.h}px`});
+}
 
 // Handle Start Overlay and Audio Context
 document.addEventListener('DOMContentLoaded', () => {
   const overlay = document.getElementById('start-overlay');
   if (overlay) {
-    overlay.addEventListener('click', () => {
+    overlay.addEventListener('click', (event) => {
+      event.stopPropagation();
       // Resume any existing audio contexts or create a dummy one to unlock
       const AudioContext = window.AudioContext || window.webkitAudioContext;
       const ctx = new AudioContext();
       ctx.resume().then(() => {
         console.log('AudioContext unlocked');
+        if(window.APP_CONFIG.presentation?.intro) window.mrPlayIntroduction();
         overlay.style.opacity = '0';
         setTimeout(() => overlay.remove(), 500);
       });
@@ -56,6 +77,7 @@ try {
 
 // Create the map with loaded (or default) calibration
 const map = new maplibregl.Map({
+  pixelRatio: window.APP_CONFIG.location ? 1 : (window.devicePixelRatio || 1),
   container: 'map',
   style: {
     version: 8,
@@ -68,7 +90,43 @@ const map = new maplibregl.Map({
   bearing: initialBearing,
   pitch: 0
 });
+const refreshTableMapScale=window.installTableMapScale(map);
 
+// Saved manual cameras take precedence; automatic presets fit the actual table.
+let autoTableFit=!!window.MR_CALIBRATION.current.fitToTable;
+let tableFlip=!!window.MR_CALIBRATION.current.tableFlip;
+let fittingTable=false;
+function fitTableCamera() {
+  fittingTable=true;
+  try {
+    const rect=map.getContainer().getBoundingClientRect();
+    const camera=window.MR_TABLE.fit(window.APP_CONFIG.area.corners,window.getTableLayout(),rect,tableFlip);
+    map.jumpTo(camera);
+    tableCenter=[camera.center.lng,camera.center.lat];
+    initialZoom=camera.zoom; initialBearing=camera.bearing;
+  } finally { fittingTable=false; }
+  clipTableLayers();
+}
+if (autoTableFit) fitTableCamera();
+else if (window.MR_CALIBRATION.current.fitBounds) {
+  const [w,s,e,n] = window.MR_CALIBRATION.current.fitBounds;
+  map.fitBounds([[w,s],[e,n]], {padding:40, duration:0, bearing:0});
+  const center = map.getCenter();
+  tableCenter = [center.lng, center.lat];
+  initialZoom = map.getZoom();
+}
+map.on('movestart',event=>{if(event.originalEvent && !fittingTable)autoTableFit=false;});
+map.on('resize',()=>{if(autoTableFit)fitTableCamera();requestAnimationFrame(clipTableLayers);});
+map.on('load',()=>requestAnimationFrame(clipTableLayers));
+
+let introTimer, introClick;
+window.mrSkipIntroduction = () => { clearTimeout(introTimer); if(introClick)map.off("click",introClick);introClick=null; map.stop();map.jumpTo({center:tableCenter,zoom:initialZoom,bearing:initialBearing,pitch:0}); };
+window.mrPlayIntroduction = () => {
+  window.mrSkipIntroduction();
+  map.jumpTo({center:tableCenter,zoom:initialZoom-2,bearing:initialBearing,pitch:0});
+  introClick=()=>{introClick=null;introTimer=setTimeout(()=>map.flyTo({center:tableCenter,zoom:initialZoom,bearing:initialBearing,pitch:0,duration:6500,essential:true}),900);};
+  map.once('click',introClick);
+};
 const EPC_CLASS_COLORS = {
   A: '#16803c',
   B: '#4f9f3e',
@@ -256,7 +314,7 @@ basemaps.black = {
   attribution: ''
 };
 
-const defaultBasemap = mapboxToken ? 'mapboxDark' : 'cartoDark';
+const defaultBasemap = mapboxToken ? 'mapboxDark' : window.APP_CONFIG.location ? 'osm' : 'cartoDark';
 
 // When map loads, add raster sources and layers
 map.on('load', () => {
@@ -282,7 +340,7 @@ map.on('load', () => {
     }
   });
 
-  loadEpcBuildings();
+  if(!window.APP_CONFIG.disabledLayers.includes('epc-btn'))loadEpcBuildings();
 
   // Add table polygon and markers as a GeoJSON source
   const tableCorners = window.APP_CONFIG.area.corners;
@@ -482,7 +540,12 @@ updateFsButton();
 
 // Resize overlay on window resize
 window.addEventListener('resize', () => {
+  window.updateTablePresentation();
+  refreshTableMapScale();
   if (tableOverlay && tableOverlay.style.display !== 'none') showOverlay();
+  map.resize();
+  if(autoTableFit)fitTableCamera();
+  requestAnimationFrame(clipTableLayers);
 });
 
 // Basemap switcher
@@ -547,6 +610,7 @@ controllerChannel.onmessage = (event) => {
 
     if (data.type === 'control_action') {
         const targetId = data.target;
+        if(window.APP_CONFIG.disabledLayers.includes(targetId))return;
         const btn = document.getElementById(targetId);
         
         // Handle calibration mode toggle
@@ -563,13 +627,15 @@ controllerChannel.onmessage = (event) => {
             // Show toast to confirm action from controller
             showToast(`Remote command: ${targetId}`);
         }
+    } else if (data.type === 'intro_control') {
+        if(data.action==='play')window.mrPlayIntroduction();else window.mrSkipIntroduction();
     } else if (data.type === 'reset_view') {
-        map.flyTo({
-            center: tableCenter,
-            zoom: initialZoom,
-            bearing: initialBearing,
-            pitch: 0
-        });
+        const current=window.MR_CALIBRATION.current;
+        autoTableFit=!!current.fitToTable;tableFlip=!!current.tableFlip;
+        if(autoTableFit)fitTableCamera();
+        else if(current.fitBounds){
+          const [w,s,e,n]=current.fitBounds;map.fitBounds([[w,s],[e,n]],{padding:40,duration:0,bearing:0});
+        } else map.flyTo({center:current.center,zoom:current.zoom,bearing:current.bearing,pitch:0});
         // Also restart street life animation when resetting to default view
         if (window.streetLifeAnimation) {
             setTimeout(() => {
@@ -578,20 +644,27 @@ controllerChannel.onmessage = (event) => {
         }
     } else if (data.type === 'calibrate_action') {
         const action = data.action;
+        const broadcastCalibration=()=>controllerChannel.postMessage({type:'calibration_state',calibration:{...window.MR_CALIBRATION.current,dimensions:{...window.MR_CALIBRATION.dimensions},fitToTable:autoTableFit,tableFlip}});
+        if (['zoom_in','zoom_out','pan_up','pan_down','pan_left','pan_right','rotate_left','rotate_right','reset_rotation'].includes(action)) autoTableFit=false;
+        if(action==='fit_table' || action==='flip_table'){
+          autoTableFit=true;
+          if(action==='flip_table')tableFlip=!tableFlip;
+          if(data.dimensions)window.MR_CALIBRATION.applyDimensions(data.dimensions);
+          fitTableCamera();
+          showOverlay();
+          broadcastCalibration();
+          return;
+        }
         
         if (action === 'show_overlay') {
-            const { sw, sh, tw, th } = data.params;
-            const px = window.innerWidth / parseFloat(sw);
-            const w = Math.round(parseFloat(tw) * px);
-            const h = Math.round(parseFloat(th) * px);
-            
-            const tableOverlay = document.getElementById('table-overlay');
-            if (tableOverlay) {
-                tableOverlay.style.width = w + 'px';
-                tableOverlay.style.height = h + 'px';
-                tableOverlay.style.display = 'block';
+            if(data.dimensions)window.MR_CALIBRATION.applyDimensions(data.dimensions);
+            else {
+              const {sw,sh,tw,th}=data.params;
+              window.MR_CALIBRATION.applyDimensions({...window.MR_CALIBRATION.dimensions,screenWidth:+sw,screenHeight:+sh,tableWidth:+tw,tableHeight:+th});
             }
-            
+            showOverlay();
+            document.getElementById('table-overlay').style.display='block';
+            broadcastCalibration();
         } else if (action === 'hide_overlay') {
             const tableOverlay = document.getElementById('table-overlay');
             if (tableOverlay) tableOverlay.style.display = 'none';
@@ -604,7 +677,10 @@ controllerChannel.onmessage = (event) => {
             const calibration = {
                 center: { lng: center.lng, lat: center.lat },
                 zoom: zoom,
-                bearing: bearing
+                bearing: bearing,
+                dimensions: {...window.MR_CALIBRATION.dimensions},
+                fitToTable: autoTableFit,
+                tableFlip
             };
             
             const calibrationText = `Map Calibration:
@@ -631,17 +707,20 @@ ${JSON.stringify(calibration, null, 2)}`;
                 center: { lng: center.lng, lat: center.lat },
                 zoom: map.getZoom(),
                 bearing: map.getBearing(),
-                dimensions: data.dimensions || null
+                dimensions: data.dimensions || {...window.MR_CALIBRATION.dimensions},
+                fitToTable: autoTableFit,
+                tableFlip
               };
 
               try {
-                const saved = JSON.parse(localStorage.getItem('interactive_map_calibrations') || '[]');
+                const saved = JSON.parse(localStorage.getItem((window.APP_CONFIG?.location?.id ? 'interactive_map_calibrations:' + window.APP_CONFIG.location.id : 'interactive_map_calibrations')) || '[]');
                 saved.unshift(calibration);
-                localStorage.setItem('interactive_map_calibrations', JSON.stringify(saved));
-                localStorage.setItem('interactive_map_selected_calibration', calibration.id);
+                localStorage.setItem((window.APP_CONFIG?.location?.id ? 'interactive_map_calibrations:' + window.APP_CONFIG.location.id : 'interactive_map_calibrations'), JSON.stringify(saved));
+                localStorage.setItem((window.APP_CONFIG?.location?.id ? 'interactive_map_selected_calibration:' + window.APP_CONFIG.location.id : 'interactive_map_selected_calibration'), calibration.id);
+                window.MR_CALIBRATION.current=calibration;
                 window.MR_CALIBRATION.applyDimensions(calibration.dimensions);
                 if (action === 'overwrite_default_calibration') {
-                  localStorage.setItem('interactive_map_default_calibration', JSON.stringify(calibration));
+                  localStorage.setItem((window.APP_CONFIG?.location?.id ? 'interactive_map_default_calibration:' + window.APP_CONFIG.location.id : 'interactive_map_default_calibration'), JSON.stringify(calibration));
                   tableCenter = [calibration.center.lng, calibration.center.lat];
                   initialZoom = calibration.zoom;
                   initialBearing = calibration.bearing;
@@ -658,13 +737,20 @@ ${JSON.stringify(calibration, null, 2)}`;
             } else if (action === 'load_calibration') {
               const calibration = data.calibration;
               if (!calibration?.center) return;
-              localStorage.setItem('interactive_map_selected_calibration', calibration.id || 'original');
-              window.MR_CALIBRATION.applyDimensions(calibration.dimensions);
-              map.jumpTo({
+              localStorage.setItem((window.APP_CONFIG?.location?.id ? 'interactive_map_selected_calibration:' + window.APP_CONFIG.location.id : 'interactive_map_selected_calibration'), calibration.id || 'original');
+              window.MR_CALIBRATION.current=calibration;
+              autoTableFit=!!calibration.fitToTable;tableFlip=!!calibration.tableFlip;
+              window.MR_CALIBRATION.applyDimensions(calibration.dimensions, !calibration.dimensions?.layoutMode && calibration.id!=='original');
+              if(autoTableFit)fitTableCamera();
+              else if(calibration.fitBounds){
+                const [w,s,e,n]=calibration.fitBounds;map.fitBounds([[w,s],[e,n]],{padding:40,duration:0,bearing:0});
+              } else map.jumpTo({
                 center: [calibration.center.lng, calibration.center.lat],
                 zoom: calibration.zoom,
                 bearing: calibration.bearing
               });
+              const restoredCenter=map.getCenter();tableCenter=[restoredCenter.lng,restoredCenter.lat];initialZoom=map.getZoom();initialBearing=map.getBearing();
+              broadcastCalibration();
               showToast(`Calibration restored: ${calibration.name || 'Saved calibration'}`);
             
         } else if (action === 'zoom_in') {

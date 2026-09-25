@@ -6,7 +6,7 @@
     <title>Interactive Map — dtcc-table</title>
     <!-- Load Leaflet CSS from CDN (no SRI attribute to avoid integrity mismatch blocks) -->
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
-    <link rel="stylesheet" href="style.css?v=20260922-tour-fixed-view" />
+    <link rel="stylesheet" href="style.css?v=20260925-table-scale" />
     <!-- Import map for Three.js ES modules -->
     <script type="importmap">
     {
@@ -32,7 +32,10 @@
     </script>
       <script src="app-config.js"></script>
     <script src="app-config-runtime.js"></script>
-    <script src="calibration-config.js"></script>
+    <script src="georeference.js"></script>
+    <script src="table-layout.js?v=20260925-physical-scale"></script>
+    <script src="table-presentation.js?v=20260925-physical-scale"></script>
+    <script src="calibration-config.js?v=20260925-physical-scale"></script>
 </head>
   <body>
     <!-- Left sidebar -->
@@ -228,7 +231,7 @@
     <div id="table-overlay" aria-hidden="true"></div>
 
     <!-- Controller Link -->
-    <div style="position: fixed; bottom: 10px; right: 70px; z-index: 2000;">
+    <div id="controller-link" style="position: fixed; bottom: 10px; right: 70px; z-index: 2000;">
         <a href="controller.html" target="_blank" style="color: #333; background: rgba(255,255,255,0.8); padding: 5px 10px; text-decoration: none; border-radius: 4px; font-size: 12px; font-family: sans-serif;">Open Controller</a>
     </div>
 
@@ -239,22 +242,25 @@
     <script src="https://unpkg.com/geotiff@2.1.0/dist-browser/geotiff.js"></script>
     <script src="session/runtime.js"></script>
     <script src="session/js/services.js"></script>
-    <script src="main.js?v=20260922-ecom-presentation"></script>
-    <script src="animations/grid-animation.js"></script>
-    <script src="animations/street-glow-animation.js"></script>
+    <script src="museum-runtime.js"></script>
+    <script src="main.js?v=20260925-physical-scale"></script>
+    <script src="museum-render.js"></script>
+    <script src="animations/grid-animation.js?v=20260925-physical-scale"></script>
+    <script src="animations/street-glow-animation.js?v=20260925-physical-scale"></script>
     <script src="animations/isovist.js"></script>
     <script src="animations/street_view.js"></script>
+    <script src="animations/cultural-gravity.js"></script>
     <script src="animations/fcc-demo.js"></script>
     <script src="animations/cfd-core.js"></script>
-    <script src="animations/cfd-visuals.js"></script>
+    <script src="animations/cfd-visuals.js?v=20260925-physical-scale"></script>
     <script src="animations/cfd-simulation.js"></script>
-    <script src="animations/stormwater-flow.js"></script>
+    <script src="animations/stormwater-flow.js?v=20260925-physical-scale"></script>
     <script src="animations/slideshow-raster.js"></script>
     <script src="animations/slideshow.js"></script>
-    <script src="animations/bird-sounds.js"></script>
-    <script src="animations/street-life.js?v=20260925-session-6"></script>
+    <script src="animations/bird-sounds.js?v=20260925-physical-scale"></script>
+    <script src="animations/street-life.js?v=20260925-physical-scale"></script>
     <script src="animations/ferry-wake.js"></script>
-    <script src="animations/trafik.js"></script>
+    <script src="animations/trafik.js?v=20260925-physical-scale"></script>
     <script src="animations/campus-demo.js"></script>
     <script src="ecom-palette.js"></script>
     <script src="animations/ecom-energy.js?v=20260925-session-6"></script>
@@ -269,11 +275,12 @@
     <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
     <script src="session/js/config.js"></script>
     <script src="session/js/shared.js?v=20260925-session-6"></script>
-    <script src="session/js/map.js"></script>
+    <script src="session/js/map.js?v=20260925-physical-scale"></script>
     <script src="session/js/adapter.js?v=20260925-session-6"></script>
     <script src="session/js/phone-state.js"></script>
     <script src="session/js/host.js?v=20260925-session-6"></script>
     <script src="session/js/desktop.js?v=20260925-session-6"></script>
+    <script src="museum-presentation.js"></script>
     
     <!-- Auto-fullscreen when launched from launcher -->
     <script>
@@ -320,6 +327,13 @@
             }, 10000);
         }
     })();
+    </script>
+    <script>
+      if (new URLSearchParams(location.search).get('audit') === '1') {
+        const diagnostic = document.createElement('script');
+        diagnostic.src = 'museum-audit.js';
+        document.body.appendChild(diagnostic);
+      }
     </script>
   </body>
 </html>

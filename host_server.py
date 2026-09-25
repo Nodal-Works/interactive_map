@@ -12,6 +12,7 @@ import urllib.request
 import urllib.error
 from urllib.parse import parse_qs, urlencode
 from scripts.services import configuration
+from studio import locations as locations, api as location_api
 from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import unquote, urlsplit
@@ -59,6 +60,10 @@ class HostHandler(SimpleHTTPRequestHandler):
         return self.headers.get('Host') in permitted and self.headers.get('Origin', f'http://{permitted[0]}') in tuple('http://' + x for x in permitted)
 
     def _proxy(self, service, path):
+        from studio.runtime import selected_services
+        if locations.active() and service not in selected_services():
+            self._json_error(403, 'Service unavailable for this location')
+            return
         if not self._local() or not allowed_service(service, path, self.command):
             self._json_error(403, 'Service operation not allowed')
             return
@@ -102,6 +107,56 @@ class HostHandler(SimpleHTTPRequestHandler):
         if not self._local():
             self._json_error(403, 'Local access only')
             return
+        if path.startswith('/location-assets/'):
+            parts = path.split('/', 3)
+            try:
+                key, relative = parts[2], parts[3]
+                manifest = locations.load(key)
+                if relative not in manifest['assets']:
+                    raise ValueError('Not an exported asset')
+                file = locations.safe_path(locations.directory(key), relative)
+                self._reply(file.read_bytes(), self.guess_type(str(file)))
+            except (OSError, ValueError, IndexError):
+                self._json_error(404, 'Location asset unavailable')
+            return
+        if path.startswith('/api/locations/download/'):
+            try:
+                key = locations.identifier(path.rsplit('/', 1)[1])
+                self._reply((locations.HOME / 'exports' / (key + '.zip')).read_bytes(), 'application/zip')
+            except (OSError, ValueError):
+                self._json_error(404, 'Export unavailable')
+            return
+        if path.startswith('/api/locations'):
+            self._location_request('GET')
+            return
+        if path == '/trafik-config.json' and locations.active():
+            from studio.providers import credentials
+            private = credentials()
+            output = {'bbox':locations.active()['bounds']}
+            if private.get('mapbox', {}).get('key'): output['mapboxToken'] = private['mapbox']['key']
+            output.update(private.get('trafik', {}))
+            if private.get('streetview', {}).get('key'): output['streetViewApiKey'] = private['streetview']['key']
+            self._reply(output)
+            return
+        if path in ('/', '/index.html', '/controller.html') and locations.active():
+            config = locations.frontend_config(locations.active())
+            html = (ROOT / ('controller.html' if path == '/controller.html' else 'index.html')).read_text()
+            project_scripts = {
+                'campus-demo-btn': ('animations/campus-demo.js', 'controller/campus-demo-legend.js'),
+                'fcc-demo-btn': ('animations/fcc-demo.js', 'controller/fcc-demo-dashboard.js'),
+                'ecom-energy-btn': ('animations/ecom-energy.js', 'animations/ecom-kpi-bars.js', 'animations/ecom-sound.js', 'animations/ecom-vehicles.js', 'controller/ecom-controls.js', 'controller/ecom-dashboard.js'),
+                'cultural-gravity-btn': ('animations/cultural-gravity.js',),
+            }
+            for layer, scripts in project_scripts.items():
+                if layer in config['disabledLayers']:
+                    for script in scripts:
+                        html = re.sub(r'<script src="' + re.escape(script) + r'(?:\?[^"<>]*)?"></script>', '', html)
+            self._reply(html.encode(), 'text/html; charset=utf-8')
+            return
+        if path == '/app-config.js'  and locations.active():
+            config = locations.frontend_config(locations.active())
+            self._reply(('window.APP_CONFIG = ' + json.dumps(config) + ';').encode(), 'text/javascript')
+            return
         if path == '/api/health':
             self._reply({'service': 'mr-studio', 'protocol': 1})
             return
@@ -125,7 +180,8 @@ class HostHandler(SimpleHTTPRequestHandler):
                 lat, lng, heading = (float(query.get(k, ['0'])[0]) for k in ('lat', 'lng', 'heading'))
                 if not (-90 <= lat <= 90 and -180 <= lng <= 180 and 0 <= heading <= 360):
                     raise ValueError('Invalid location')
-                key = json.loads((ROOT / 'trafik-config.json').read_text())['streetViewApiKey']
+                from studio.providers import credentials
+                key = credentials().get('streetview', {}).get('key') or json.loads((ROOT / 'trafik-config.json').read_text())['streetViewApiKey']
                 params = urlencode({'size': '640x350', 'location': f'{lat},{lng}', 'heading': heading,
                                     'pitch': 0, 'fov': 100, 'key': key, 'return_error_code': 'true'})
                 with urllib.request.urlopen('https://maps.googleapis.com/maps/api/streetview?' + params, timeout=20) as response:
@@ -133,7 +189,7 @@ class HostHandler(SimpleHTTPRequestHandler):
             except (OSError, ValueError, KeyError):
                 self._json_error(503, 'Street View is unavailable')
             return
-        if any(part.startswith('.') for part in Path(path).parts) or path.startswith(('/Dashboard/', '/coolpaths/', '/scripts/')) or path in ('/services.local.json', '/host_server.py'):
+        if any(part.startswith('.') for part in Path(path).parts) or path.startswith(('/Dashboard/', '/coolpaths/', '/scripts/')) or (path.startswith('/studio/') and not path.endswith(('/wizard.js','/wizard.css'))) or path in ('/services.local.json', '/host_server.py'):
             self._json_error(404, 'Not found')
             return
         if path.startswith("/sessions"):
@@ -170,6 +226,9 @@ class HostHandler(SimpleHTTPRequestHandler):
         if self._path().startswith('/api/services/'):
             parts = self.path.split('/', 4)
             self._proxy(parts[3], '/' + parts[4] if len(parts) > 4 else '/')
+            return
+        if self._path().startswith('/api/locations'):
+            self._location_request('POST')
             return
         endpoint = self._path()
         if endpoint not in ("/api/session", "/api/session/end"):
@@ -246,6 +305,20 @@ class HostHandler(SimpleHTTPRequestHandler):
         self.send_response(204)
         self.send_header("Cache-Control", "no-store")
         self.end_headers()
+
+    def _location_request(self, method):
+        try:
+            data = None
+            if method == 'POST':
+                if self.headers.get_content_type() != 'application/json':
+                    raise ValueError('Expected JSON')
+                size = int(self.headers.get('Content-Length', 0))
+                if not 0 < size <= 1024 * 1024:
+                    raise ValueError('Invalid request size')
+                data = json.loads(self.rfile.read(size))
+            self._reply(location_api.dispatch(method, self.path, data))
+        except (ValueError, KeyError, TypeError, OSError) as error:
+            self._json_error(400, str(error))
 
     @staticmethod
     def _write_document(path, document):

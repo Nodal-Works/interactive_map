@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import os
 from pathlib import Path
 from typing import Annotated
 
@@ -75,8 +76,8 @@ def status():
     try:
         manifest, _ = current_study()
     except HTTPException as exc:
-        return {"ready": False, "message": exc.detail, "study_date": STUDY_DATE.isoformat()}
-    return {"ready": True, **manifest}
+        return {"location_id": os.environ.get("MR_LOCATION_ID"), "ready": False, "message": exc.detail, "study_date": STUDY_DATE.isoformat()}
+    return {**manifest, "ready": True, "location_id": os.environ.get("MR_LOCATION_ID")}
 
 
 @app.get("/api/coolpaths/raster/{hour}.png")

@@ -1,0 +1,139 @@
+[
+  {
+    "id": "cfd-simulation-btn",
+    "name": "Wind",
+    "group": "Environment",
+    "icon": "\u224b",
+    "tool": "obstacle",
+    "assets": [
+      "media/building-footprints.geojson",
+      "media/trees.geojson"
+    ]
+  },
+  {
+    "id": "stormwater-btn",
+    "name": "Stormwater",
+    "group": "Environment",
+    "icon": "\u2602",
+    "assets": [
+      "media/stormwater_dem.tif"
+    ]
+  },
+  {
+    "id": "sun-study-btn",
+    "name": "Sun Study",
+    "group": "Environment",
+    "icon": "\u2600",
+    "assets": [
+      "media/mesh.stl"
+    ]
+  },
+  {
+    "id": "thermal-comfort-btn",
+    "name": "Comfort \u00b7 CoolPaths",
+    "group": "Environment",
+    "icon": "\ud83c\udf21",
+    "tool": "route",
+    "service": "coolpaths",
+    "assets": [
+      "studies/manifest.json"
+    ]
+  },
+  {
+    "id": "isovist-btn",
+    "name": "Visibility \u00b7 Isovist",
+    "group": "Explore",
+    "icon": "\u25c9",
+    "tool": "viewer",
+    "assets": [
+      "media/building-footprints.geojson",
+      "media/trees.geojson"
+    ]
+  },
+  {
+    "id": "street-view-btn",
+    "name": "Street View",
+    "group": "Explore",
+    "icon": "\ud83d\udccd",
+    "tool": "location",
+    "source": "streetview"
+  },
+  {
+    "id": "epc-btn",
+    "name": "Building energy \u00b7 EPC",
+    "group": "Energy",
+    "icon": "\u25a5",
+    "tool": "location",
+    "assets": [
+      "media/building-footprints-epc.geojson"
+    ]
+  },
+  {
+    "id": "trafik-btn",
+    "name": "Transit",
+    "group": "Explore",
+    "icon": "\ud83d\ude8b",
+    "source": "trafik"
+  },
+  {
+    "id": "bird-sounds-btn",
+    "name": "Bird sounds",
+    "group": "Explore",
+    "icon": "\u266b"
+  },
+  {
+    "id": "slideshow-btn",
+    "name": "Slideshow",
+    "group": "Present",
+    "icon": "\u25a7",
+    "assets": [
+      "media/slideshow/slideshow-config.json"
+    ]
+  },
+  {
+    "id": "grid-animation-btn",
+    "name": "Table grid",
+    "group": "Present",
+    "icon": "\u25a6"
+  },
+  {
+    "id": "canvas-btn",
+    "name": "Canvas",
+    "group": "Collaborate",
+    "icon": "\u270e",
+    "tool": "pen"
+  },
+  {
+    "id": "campus-demo-btn",
+    "name": "Campus vision",
+    "group": "Present",
+    "icon": "\u2302",
+    "project": true
+  },
+  {
+    "id": "fcc-demo-btn",
+    "name": "FCC walkthrough",
+    "group": "Present",
+    "icon": "\u25b7",
+    "project": true
+  },
+  {
+    "id": "ecom-energy-btn",
+    "name": "Energy community",
+    "group": "Energy",
+    "icon": "\u03df",
+    "tool": "location",
+    "service": "ecom",
+    "project": true
+  },
+  {
+    "id": "cultural-gravity-btn",
+    "name": "Cultural Gravity",
+    "group": "Explore",
+    "icon": "\u25ce",
+    "assets": [
+      "media/cultural-sites.json"
+    ],
+    "project": true
+  }
+]

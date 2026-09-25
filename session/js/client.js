@@ -106,7 +106,10 @@
     const me=person();$('profile-button').textContent=me?.avatar||'☺';
     $('connection').textContent=state.endedAt?'Session ended':connection?.open?`${me?.name||'Connected'} · ${me?.slot?'Controller '+me.slot:'Spectator'}${state.paused?' · paused':''}`:'Reconnecting…';
     $('choose-slot').textContent=me?.slot?'Controller '+me.slot+' · profile & slots':'Choose a controller slot';
-    $('layer-enabled').checked=!!state.layers[layer.id];$('layer-enabled').disabled=!canEdit();
+    const lifecycle=state.layerStatus?.[layer.id];
+    $('layer-enabled').checked=lifecycle ? lifecycle.requested : !!state.layers[layer.id];
+    $('layer-enabled').setAttribute('aria-busy',String(lifecycle?.status==='loading'));
+    if(controls.lifecycleStatus)controls.lifecycleStatus.textContent=lifecycle?.error || (lifecycle?.status==='loading'?'Loading on the table…':'');$('layer-enabled').disabled=!canEdit();
     for(const el of document.querySelectorAll('[data-layer]')){
       const active=!!state.layers[el.dataset.layer];el.classList.toggle('active',active);const input=el.querySelector('input');input.checked=active;input.disabled=!canEdit();
     }
@@ -123,6 +126,8 @@
     if(state.paused)notice('The host has paused remote editing. You can still explore.');
     else if($('notice').textContent==='The host has paused remote editing. You can still explore.')notice('');
   }
+  function renderCatalog(){
+  $('layer-list').replaceChildren();
   for(const group of [...new Set(MR.LAYERS.map(l=>l.group))]){
     const title=document.createElement('h2');title.textContent=group;const grid=document.createElement('div');grid.className='app-grid';
     for(const item of MR.LAYERS.filter(l=>l.group===group)){
@@ -132,6 +137,8 @@
     }
     $('layer-list').append(title,grid);
   }
+  }
+  renderCatalog();
   $('apps').onclick=()=>{exitExpandedMap();unloadDashboard();document.body.classList.remove('map-open');$('workspace').hidden=true;$('drawer').hidden=false;if(mapView)mapView.cancel();send({type:'focus',layer:layer.id,tab:'controls'});};
   $('controls-tab').onclick=()=>selectTab('controls');$('map-tab').onclick=()=>selectTab('map');$('start-drawing').onclick=()=>selectTab('map');
   $('layer-enabled').onchange=e=>send({type:'layer',layer:layer.id,enabled:e.target.checked});
@@ -176,6 +183,11 @@
   });
   function receive(message){
     if(message.type==='state'||message.type==='welcome'){
+      if (message.catalog && JSON.stringify(MR.LAYERS)!==JSON.stringify(message.catalog)) {
+        MR.LAYERS.splice(0,MR.LAYERS.length,...message.catalog);
+        layer=MR.LAYERS.find(x=>x.id===layer?.id)||MR.LAYERS[0];renderCatalog();
+      }
+      if(message.location)document.title=message.location.title+' · Controls';
       state={...message,objects:state?.sessionId===message.sessionId?state.objects||[]:[]};sessionReady=true;render();
     }
     if(message.type==='identity'){identity.id=message.personId;render();}

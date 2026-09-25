@@ -86,7 +86,7 @@ class SunStudy {
     this.timezone = window.APP_CONFIG.area.sunLocation.timezone; // CET = UTC+1 (standard time; DST not modelled)
     
     // Map bearing for alignment
-    this.mapBearing = window.MR_CALIBRATION.current.bearing;
+    this.mapBearing = window.map?.getBearing() ?? window.MR_CALIBRATION.current.bearing;
     
     // Time settings
     // Default to June 21st (Summer Solstice)
@@ -103,14 +103,15 @@ class SunStudy {
     
     // Manual adjustment offsets
     this.offsetX = 0;      // X position offset
-    this.offsetZ = 0;      // Z position offset (Y on screen in top-down)
+    this.offsetZ = window.APP_CONFIG.model?.offsetZ || 0;      // Z position offset (Y on screen in top-down)
     this.rotationOffset = 0; // Additional rotation in degrees
-    this.scaleMultiplier = 0.89; // Scale multiplier
+    this.scaleMultiplier = window.APP_CONFIG.model?.scaleMultiplier ?? (window.APP_CONFIG.model?.alignment==='geographic' ? 1 : 0.89); // Scale multiplier
     
     this.controlPanel = null;
     this.dependenciesLoaded = false;
     
     this.initUI();
+    window.MR_LAYERS?.register('sun-study-btn',{getEnabled:()=>this.isActive,enable:async()=>{if(!this.isActive)await this.toggle();},disable:()=>{this.isActive=false;this.hide();document.getElementById('sun-study-btn')?.classList.remove('active');}});
     
     // Listen for remote control messages
     this.channel = new BroadcastChannel('map_controller_channel');
@@ -148,6 +149,131 @@ class SunStudy {
     }
     
     window.addEventListener('resize', () => this.onResize());
+    let alignmentFrame=null;
+    window.map?.on('move',()=>{
+      if(this.isActive && alignmentFrame===null)alignmentFrame=(window.MR_FRAMES ? window.MR_FRAMES.request.bind(window.MR_FRAMES, 'sun-alignment') : requestAnimationFrame)(()=>{
+        alignmentFrame=null;this.fitCameraToModel();this.updateSunPosition();
+      });
+    });
+    // Hidden debug panel toggled with Shift+D
+    this._debugPanelVisible = false;
+    window.addEventListener('keydown', (e) => {
+      if (e.shiftKey && e.key === 'D' && this.isActive) {
+        this._debugPanelVisible = !this._debugPanelVisible;
+        if (this._debugPanel) {
+          this._debugPanel.style.display = this._debugPanelVisible ? 'block' : 'none';
+        } else if (this._debugPanelVisible) {
+          this.createDebugPanel();
+        }
+        this._setModelOpacity(this._debugPanelVisible ? 0.1 : 1.0);
+        this._toggleDebugFootprints(this._debugPanelVisible);
+      }
+    });
+  }
+
+
+  _toggleDebugFootprints(show) {
+    const map = window.map;
+    if (!map) return;
+
+    if (show) {
+      if (!map.getSource('debug-footprints')) {
+        const url = window.mrAsset('media/building-footprints.geojson');
+        map.addSource('debug-footprints', { type: 'geojson', data: url });
+        map.addLayer({
+          id: 'debug-footprints-fill',
+          type: 'fill',
+          source: 'debug-footprints',
+          paint: { 'fill-color': '#ff00ff', 'fill-opacity': 0.35 }
+        });
+        map.addLayer({
+          id: 'debug-footprints-line',
+          type: 'line',
+          source: 'debug-footprints',
+          paint: { 'line-color': '#ff00ff', 'line-width': 2, 'line-opacity': 0.9 }
+        });
+      } else {
+        map.setLayoutProperty('debug-footprints-fill', 'visibility', 'visible');
+        map.setLayoutProperty('debug-footprints-line', 'visibility', 'visible');
+      }
+    } else {
+      if (map.getLayer('debug-footprints-fill')) {
+        map.setLayoutProperty('debug-footprints-fill', 'visibility', 'none');
+        map.setLayoutProperty('debug-footprints-line', 'visibility', 'none');
+      }
+    }
+  }
+
+  _setModelOpacity(opacity) {
+    if (this.standardMaterial) {
+      this.standardMaterial.opacity = opacity;
+      this.standardMaterial.transparent = true;
+      this.standardMaterial.needsUpdate = true;
+    }
+    if (this.meshTrees) {
+      this.meshTrees.traverse((child) => {
+        if (child.isMesh && child.material) {
+          child.material.opacity = opacity;
+          child.material.transparent = true;
+          child.material.needsUpdate = true;
+        }
+      });
+    }
+    this.shadowMapsDirty = true;
+    this.needsRender = true;
+  }
+
+  createDebugPanel() {
+    const panel = document.createElement('div');
+    panel.id = 'sun-study-debug-panel';
+    panel.style.cssText = `
+      position: fixed; top: 10px; right: 10px; z-index: 10000;
+      background: rgba(0,0,0,0.85); color: #fff; padding: 16px;
+      border-radius: 8px; font-family: monospace; font-size: 13px;
+      min-width: 280px; pointer-events: auto;
+    `;
+    panel.innerHTML = `
+      <div style="margin-bottom:8px;font-weight:bold;font-size:14px;">3D Model Debug
+        <span id="debug-close" style="float:right;cursor:pointer;opacity:0.6;">✕</span>
+      </div>
+      <label>Offset X: <span id="dbg-ox-val">${this.offsetX}</span></label><br>
+      <input id="dbg-ox" type="range" min="-200" max="200" step="1" value="${this.offsetX}" style="width:100%"><br>
+      <label>Offset Z (Y on screen): <span id="dbg-oz-val">${this.offsetZ}</span></label><br>
+      <input id="dbg-oz" type="range" min="-200" max="200" step="1" value="${this.offsetZ}" style="width:100%"><br>
+      <label>Scale Multiplier: <span id="dbg-sc-val">${this.scaleMultiplier}</span></label><br>
+      <input id="dbg-sc" type="range" min="0.1" max="3" step="0.01" value="${this.scaleMultiplier}" style="width:100%"><br>
+      <label>Rotation Offset (°): <span id="dbg-ro-val">${this.rotationOffset}</span></label><br>
+      <input id="dbg-ro" type="range" min="-180" max="180" step="1" value="${this.rotationOffset}" style="width:100%"><br>
+      <div id="dbg-output" style="margin-top:10px;padding:8px;background:rgba(255,255,255,0.1);border-radius:4px;font-size:11px;white-space:pre;"></div>
+    `;
+    document.body.appendChild(panel);
+    this._debugPanel = panel;
+
+    const update = () => {
+      this.offsetX = parseFloat(document.getElementById('dbg-ox').value);
+      this.offsetZ = parseFloat(document.getElementById('dbg-oz').value);
+      this.scaleMultiplier = parseFloat(document.getElementById('dbg-sc').value);
+      this.rotationOffset = parseFloat(document.getElementById('dbg-ro').value);
+      document.getElementById('dbg-ox-val').textContent = this.offsetX;
+      document.getElementById('dbg-oz-val').textContent = this.offsetZ;
+      document.getElementById('dbg-sc-val').textContent = this.scaleMultiplier;
+      document.getElementById('dbg-ro-val').textContent = this.rotationOffset;
+      this.applyManualAdjustments();
+      this.fitCameraToModel();
+      document.getElementById('dbg-output').textContent =
+        `offsetX: ${this.offsetX}\noffsetZ: ${this.offsetZ}\nscaleMultiplier: ${this.scaleMultiplier}\nrotationOffset: ${this.rotationOffset}`;
+    };
+
+    ['dbg-ox','dbg-oz','dbg-sc','dbg-ro'].forEach(id => {
+      document.getElementById(id).addEventListener('input', update);
+    });
+    document.getElementById('debug-close').addEventListener('click', () => {
+      this._debugPanelVisible = false;
+      panel.style.display = 'none';
+      this._setModelOpacity(1.0);
+      this._toggleDebugFootprints(false);
+    });
+    update();
   }
 
   handleRemoteControl(data) {
@@ -683,7 +809,7 @@ class SunStudy {
     if (!this.overlayCanvas) return;
     const w = window.innerWidth - 120;
     const h = window.innerHeight;
-    const dpr = window.devicePixelRatio || 1;
+    const dpr = window.APP_CONFIG.location ? 1 : (window.devicePixelRatio || 1);
     this.overlayCanvas.width = w * dpr;
     this.overlayCanvas.height = h * dpr;
     this.overlayCtx.setTransform(dpr, 0, 0, dpr, 0, 0);
@@ -694,8 +820,8 @@ class SunStudy {
     if (!this.overlayDirty) return; // Skip if nothing changed
     this.overlayDirty = false;
     
-    const w = this.overlayCanvas.width / (window.devicePixelRatio || 1);
-    const h = this.overlayCanvas.height / (window.devicePixelRatio || 1);
+    const w = this.overlayCanvas.width / (window.APP_CONFIG.location ? 1 : (window.devicePixelRatio || 1));
+    const h = this.overlayCanvas.height / (window.APP_CONFIG.location ? 1 : (window.devicePixelRatio || 1));
     this.overlayCtx.clearRect(0, 0, w, h);
     this.blitCompassRose(this.overlayCtx, w, h);
     this.drawSunPath(this.overlayCtx, w, h);
@@ -705,14 +831,14 @@ class SunStudy {
   // Only re-renders when canvas dimensions change (resize).
   blitCompassRose(ctx, w, h) {
     const size = 45;
-    const canvasKey = `${w}|${h}`;
+    const canvasKey = `${w}|${h}|${this.mapBearing}`;
     
     if (!this._compassCanvas || this._compassSize !== canvasKey) {
       // Create/recreate offscreen canvas for compass
       const pad = 4; // padding around compass
       const dim = (size + 25 + pad) * 2;
       this._compassCanvas = document.createElement('canvas');
-      const dpr = window.devicePixelRatio || 1;
+      const dpr = window.APP_CONFIG.location ? 1 : (window.devicePixelRatio || 1);
       this._compassCanvas.width = dim * dpr;
       this._compassCanvas.height = dim * dpr;
       const offCtx = this._compassCanvas.getContext('2d');
@@ -726,9 +852,10 @@ class SunStudy {
     }
     
     // Blit cached compass to the correct position
-    const cx = w - size - 25;
-    const cy = h - size - 25;
-    const dim = this._compassCanvas.width / (window.devicePixelRatio || 1);
+    const table=window.getTableLayout?.(), rect=this.overlayCanvas.getBoundingClientRect();
+    const cx = table ? table.left+table.w-rect.left-size-25 : w-size-25;
+    const cy = table ? table.top+table.h-rect.top-size-25 : h-size-25;
+    const dim = this._compassCanvas.width / (window.APP_CONFIG.location ? 1 : (window.devicePixelRatio || 1));
     ctx.drawImage(this._compassCanvas, cx - dim / 2, cy - dim / 2, dim, dim);
   }
   
@@ -1318,7 +1445,7 @@ class SunStudy {
     const altRad = Math.max(0.05, altitude * Math.PI / 180);
     
     const distH = distance * Math.cos(altRad);
-    const azimuthRad = azimuth * Math.PI / 180;
+    const azimuthRad = (azimuth - (window.APP_CONFIG.model?.alignment==='geographic' ? this.mapBearing : 0)) * Math.PI / 180;
     
     // Smooth horizon fade (like SunLight.js reference): instead of binary
     // on/off at altitude=0, fade intensity from 2° down to 0°.
@@ -1470,7 +1597,7 @@ class SunStudy {
 
         
         // Initial setup
-        this.baseRotation = -Math.PI/2; 
+        this.baseRotation = window.APP_CONFIG.model?.legacyRotation ?? -Math.PI/2;
         this.meshBuildings.rotation.y = this.baseRotation;
         
         // Apply initial position offset
@@ -1638,6 +1765,7 @@ class SunStudy {
         
         this.scene.add(this.meshTrees);
         
+        this.fitCameraToModel();
         this.treesLoaded = true;
         this.treesVisible = true;
         this.shadowMapsDirty = true;
@@ -1676,11 +1804,30 @@ class SunStudy {
   }
   
   fitCameraToModel() {
+    window.clipTableLayers?.();
+    const bearing=window.map?.getBearing() ?? this.mapBearing;
+    if(bearing!==this.mapBearing){this.mapBearing=bearing;this.overlayDirty=true;}
     if (!this.mesh || !this.modelSize) return;
     
     const canvasWidth = window.innerWidth - 120;
     const canvasHeight = window.innerHeight;
     
+    if(window.APP_CONFIG.model?.alignment==='geographic' && window.APP_CONFIG.raster?.corners && window.MR_GEO && window.map){
+      const bounds=window.APP_CONFIG.model.boundsSweref, rect=this.renderer.domElement.getBoundingClientRect();
+      const mapRect=window.map.getContainer().getBoundingClientRect();
+      const transform=window.MR_GEO.affine(window.APP_CONFIG.raster.corners,p=>window.map.project(p),{left:rect.left-mapRect.left,top:rect.top-mapRect.top});
+      const metres=bounds[2]-bounds[0], scale=Math.hypot(transform.u.x,transform.u.y)/metres;
+      const center=transform.forward((this.buildingsCenter.x-bounds[0])/metres,(bounds[3]+this.buildingsCenter.z)/(bounds[3]-bounds[1]));
+      this.baseScale=scale;this.baseRotation=-Math.atan2(transform.u.y,transform.u.x);
+      this.camera.up.set(0,0,-1);this.camera.lookAt(0,0,0);
+      for(const mesh of [this.mesh,this.meshTrees])if(mesh){
+        mesh.scale.setScalar(scale*this.scaleMultiplier);mesh.rotation.y=this.baseRotation+this.rotationOffset*Math.PI/180;
+        mesh.position.x=center.x-canvasWidth/2+this.offsetX;mesh.position.z=center.y-canvasHeight/2+this.offsetZ;
+      }
+      this.camera.left=-canvasWidth/2;this.camera.right=canvasWidth/2;this.camera.top=canvasHeight/2;this.camera.bottom=-canvasHeight/2;
+      this.camera.updateProjectionMatrix();this.optimalShadowSize=Math.max(canvasWidth,canvasHeight);
+      this.shadowMapsDirty=true;this.needsRender=true;this.updateSunPosition();return;
+    }
     // Fit model to canvas with padding
     const padding = 0.8;
     const maxDim = Math.max(this.modelSize.x, this.modelSize.z);
@@ -1755,13 +1902,14 @@ class SunStudy {
     this._compassSize = 0; // Invalidate compass cache on resize
   }
   
-  animate() {
+  animate(now = performance.now()) {
     if (!this.isActive) return;
     
-    this.animationId = requestAnimationFrame(() => this.animate());
+    this.animationId = (window.MR_FRAMES ? window.MR_FRAMES.request.bind(window.MR_FRAMES, 'sun') : requestAnimationFrame)(time => this.animate(time));
     
     if (this.isAnimating) {
-      this.timeOfDay += this.animationSpeed * 0.016;
+      const dt = window.MR_FRAMES ? window.MR_FRAMES.delta('sun', now) : .016;
+      this.timeOfDay = (this.timeOfDay + this.animationSpeed * dt) % 24;
       if (this.timeOfDay >= 24) this.timeOfDay = 0;
       this.updateTimeDisplay();
       this.updateSunPosition();
@@ -1810,8 +1958,10 @@ class SunStudy {
   
   async show() {
     if (!this.dependenciesLoaded) {
-      await this.initThreeJS();
+      this.loadingPromise ||= this.initThreeJS().catch(error=>{this.loadingPromise=null;throw error;});
+      await this.loadingPromise;
     }
+    if (!this.isActive) return;
     
     this.canvas.style.display = 'block';
     if (this.overlayCanvas) this.overlayCanvas.style.display = 'block';
@@ -1819,7 +1969,9 @@ class SunStudy {
     this.needsRender = true;
     this.overlayDirty = true;
     
-    setTimeout(() => {
+    clearTimeout(this.showTimer);
+    this.showTimer=setTimeout(() => {
+      if(!this.isActive)return;
       this.onResize();
       this.animate();
     }, 50);
@@ -2036,13 +2188,15 @@ class SunStudy {
   // ==================== END MEMORY PROFILING ====================
   
   hide() {
+    clearTimeout(this.showTimer);
+    this.lastAnimationTime=null; window.MR_FRAMES?.times.delete('sun');
     this.canvas.style.display = 'none';
     if (this.overlayCanvas) this.overlayCanvas.style.display = 'none';
     // this.controlPanel.style.display = 'none'; // Panel moved to controller
     this.isAnimating = false;
     
     if (this.animationId) {
-      cancelAnimationFrame(this.animationId);
+      (window.MR_FRAMES ? window.MR_FRAMES.cancel.bind(window.MR_FRAMES) : cancelAnimationFrame)(this.animationId);
       this.animationId = null;
     }
     

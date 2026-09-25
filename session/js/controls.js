@@ -1,6 +1,7 @@
 (function(){
   'use strict';
   const definitions={
+    'cultural-gravity-btn':{type:'cultural_gravity_control',actions:[['Next stage','next'],['Stop','stop']]},
     'cfd-simulation-btn':{state:'cfd',type:'cfd_control',fields:[
       ['wind-speed','Wind speed','range','windSpeed','set_wind_speed',1,20,.5,5,' m/s'],
       ['wind-direction','Wind direction','range','angle','set_wind_direction',0,360,15,0,'°'],
@@ -47,6 +48,7 @@
     open(layer){
       this.definition=definitions[layer.id]||{};this.layer=layer.id;this.inputs=[];this.element.replaceChildren();
       const lead=document.createElement('p');lead.className='control-note';lead.textContent=layer.tool?'Use Map to place your input. See the result on the table.':'See and hear the result on the table.';this.element.append(lead);
+      this.lifecycleStatus=document.createElement('p');this.lifecycleStatus.setAttribute('role','status');this.element.append(this.lifecycleStatus);
       if(this.layer==='slideshow-btn'){this.slideStatus=document.createElement('p');this.slideStatus.setAttribute('role','status');this.element.append(this.slideStatus);}
       const advanced=document.createElement('details'),summary=document.createElement('summary');summary.textContent='More settings';advanced.append(summary);
       for(const field of this.definition.fields||[]){

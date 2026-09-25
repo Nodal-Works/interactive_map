@@ -227,8 +227,9 @@ async function lifecycleTests() {
   h.button.click();
   const fallback=makeAppHarness();fallback.button.click();fallback.resolveRequests();await flush();
   fallback.workers[0].onerror({preventDefault(){}});fallback.runTimers();await flush();
-  assert.equal(fallback.latest().resolution,100,'Fallback keeps atomic steps small');
-  assert.match(fallback.latest().phase,/compatibility mode/);
+  assert.equal(fallback.latest().resolution,150,'Fixed quality must not be silently lowered');
+  assert.equal(fallback.latest().active,false);
+  assert.match(fallback.latest().phase,/worker is required/);
   fallback.runTimers();fallback.button.click();
   console.log('PASS lifecycle: asynchronous cancellation, caching, worker generations, controls, idempotent trees, resize, calibration, failure/restart');
 }

@@ -10,8 +10,8 @@
   // Explicit inputs only: new desktop broadcasts cannot silently add result
   // geometry, images, time series or solver diagnostics to the phone payload.
   function project(state,focus){
-    const result={type:'state',sessionId:state.sessionId,paused:state.paused,endedAt:state.endedAt,
-      layers:state.layers,slots:state.slots,table:pick(state.table,['corners','bearing','revision']),
+    const result={type:'state',location:state.location,catalog:state.catalog,sessionId:state.sessionId,paused:state.paused,endedAt:state.endedAt,
+      layers:state.layers,layerStatus:state.layerStatus || {},slots:state.slots,table:pick(state.table,['corners','bearing','revision']),
       participants:state.participants.map(p=>pick(p,['id','name','avatar','color','online','slot'])),messages:[]};
     const entry=settings[focus?.layer];
     if(entry){const[name,keys]=entry;result[name]=pick(state[name],keys.split(' '));

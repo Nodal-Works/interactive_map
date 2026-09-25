@@ -4,6 +4,7 @@
 
 // Street View + SAM Segmentation Integration
 (function() {
+  const viewMap=window.MR_RENDER?.map || window.map;
   const channel = new BroadcastChannel('map_controller_channel');
   
   // State
@@ -252,18 +253,6 @@
     
     console.log('Street View activating...');
     
-    // Hide street life animation canvas
-    const streetLifeCanvas = document.getElementById('street-life-canvas');
-    if (streetLifeCanvas) {
-      streetLifeCanvas.style.display = 'none';
-    }
-    
-    // Hide trafik (tram/bus) canvas
-    const trafikCanvas = document.getElementById('trafik-canvas');
-    if (trafikCanvas) {
-      trafikCanvas.style.display = 'none';
-    }
-    
     // Broadcast state
     channel.postMessage({ 
       type: 'animation_state', 
@@ -293,18 +282,6 @@
     streetViewActive = false;
     
     console.log('Street View deactivating...');
-    
-    // Show street life animation canvas again
-    const streetLifeCanvas = document.getElementById('street-life-canvas');
-    if (streetLifeCanvas) {
-      streetLifeCanvas.style.display = 'block';
-    }
-    
-    // Show trafik (tram/bus) canvas again
-    const trafikCanvas = document.getElementById('trafik-canvas');
-    if (trafikCanvas) {
-      trafikCanvas.style.display = 'block';
-    }
     
     // Broadcast state
     channel.postMessage({ 
@@ -343,8 +320,8 @@
     // which would conflict with MapLibre. The coverage isn't available as public tiles.
     
     // Add source for viewer point and direction (user's requested position)
-    if (!window.map.getSource('streetview-viewer')) {
-      window.map.addSource('streetview-viewer', {
+    if (!viewMap.getSource('streetview-viewer')) {
+      viewMap.addSource('streetview-viewer', {
         type: 'geojson',
         data: {
           type: 'FeatureCollection',
@@ -353,7 +330,7 @@
       });
       
       // Direction line layer (rendered first, below point)
-      window.map.addLayer({
+      viewMap.addLayer({
         id: 'streetview-direction',
         type: 'line',
         source: 'streetview-viewer',
@@ -369,7 +346,7 @@
       });
       
       // Field of view cone (semi-transparent)
-      window.map.addLayer({
+      viewMap.addLayer({
         id: 'streetview-fov',
         type: 'fill',
         source: 'streetview-viewer',
@@ -380,7 +357,7 @@
         }
       });
       
-      window.map.addLayer({
+      viewMap.addLayer({
         id: 'streetview-fov-outline',
         type: 'line',
         source: 'streetview-viewer',
@@ -394,7 +371,7 @@
       });
       
       // Viewer point outer glow (user's requested position)
-      window.map.addLayer({
+      viewMap.addLayer({
         id: 'streetview-viewer-glow',
         type: 'circle',
         source: 'streetview-viewer',
@@ -408,7 +385,7 @@
       });
       
       // Viewer point layer (user's requested position - blue)
-      window.map.addLayer({
+      viewMap.addLayer({
         id: 'streetview-viewer-point',
         type: 'circle',
         source: 'streetview-viewer',
@@ -422,7 +399,7 @@
       });
       
       // Historical camera positions (fading green trail)
-      window.map.addLayer({
+      viewMap.addLayer({
         id: 'streetview-camera-history',
         type: 'circle',
         source: 'streetview-viewer',
@@ -438,7 +415,7 @@
       });
       
       // Actual camera position glow (green - brightest)
-      window.map.addLayer({
+      viewMap.addLayer({
         id: 'streetview-camera-glow',
         type: 'circle',
         source: 'streetview-viewer',
@@ -452,7 +429,7 @@
       });
       
       // Actual camera position point (green - brightest, on top)
-      window.map.addLayer({
+      viewMap.addLayer({
         id: 'streetview-camera-point',
         type: 'circle',
         source: 'streetview-viewer',
@@ -474,8 +451,8 @@
     if (!window.map) return;
     
     // Clear viewer data
-    if (window.map.getSource('streetview-viewer')) {
-      window.map.getSource('streetview-viewer').setData({
+    if (viewMap.getSource('streetview-viewer')) {
+      viewMap.getSource('streetview-viewer').setData({
         type: 'FeatureCollection',
         features: []
       });
@@ -568,8 +545,8 @@
     }
     
     // Update source
-    if (window.map.getSource('streetview-viewer')) {
-      window.map.getSource('streetview-viewer').setData({
+    if (viewMap.getSource('streetview-viewer')) {
+      viewMap.getSource('streetview-viewer').setData({
         type: 'FeatureCollection',
         features: features
       });
@@ -777,6 +754,7 @@
     }
     console.log('Initializing Street View button');
     buttonInitialized = true;
+    window.MR_LAYERS?.register('street-view-btn',{getEnabled:()=>streetViewActive,enable:async(current)=>{await window.MR_RENDER?.ready;if(current && !current())return;if(!streetViewActive)activateStreetView();},disable:()=>{if(streetViewActive)deactivateStreetView();}});
     btn.addEventListener('click', () => {
       console.log('Street View button clicked, active:', streetViewActive);
       if (streetViewActive) {

@@ -237,9 +237,7 @@ function parseStreetPaths(geojson) {
 // Project coordinates to canvas
 function projectToStreetLifeCanvas(lng, lat) {
   const point = map.project([lng, lat]);
-  const mapContainer = document.getElementById('map');
-  const mapRect = mapContainer.getBoundingClientRect();
-  const canvasRect = streetLifeCanvas.getBoundingClientRect();
+  const {mapRect,canvasRect}=streetLifeRects || {mapRect:map.getContainer().getBoundingClientRect(),canvasRect:streetLifeCanvas.getBoundingClientRect()};
   
   return {
     x: point.x - (canvasRect.left - mapRect.left),
@@ -463,8 +461,23 @@ function scheduleEmergencySpawn() {
   }, delay);
 }
 
+// Real-world sizes with small screen-space minimums for overview readability.
+const geographicSymbols=window.APP_CONFIG.presentation?.symbolSizing==='geographic';
+let symbolPixelsPerMetre=1;
+function drawGeographicVehicle(ctx,pos,angle,color,type,direction=1) {
+  const dimensions={car:[4.5,1.8,3],taxi:[4.5,1.8,3],bus:[12,2.5,5],bicycle:[1.8,.6,2]};
+  const [length,width,minimum]=dimensions[type] || dimensions.car;
+  const size=window.MR_TABLE.symbol(length,width,minimum*(window.mrTableScale?.() ?? 1),symbolPixelsPerMetre);
+  ctx.save();ctx.translate(pos.x,pos.y);ctx.rotate(direction===1?angle+Math.PI:angle);
+  ctx.fillStyle=color;ctx.fillRect(-size.length/2,-size.width/2,size.length,size.width);
+  // A short halo follows the same scale as the body, rather than a fixed 25–60 px beam.
+  ctx.globalAlpha=.22;ctx.fillRect(-size.length,-size.width/3,size.length/2,size.width*2/3);
+  ctx.restore();
+}
+
 // Draw emergency vehicle with flashing lights and spinning beam
 function drawEmergencyVehicle(ctx, pos, angle, vehicle) {
+  if(geographicSymbols)return drawGeographicVehicle(ctx,pos,angle,Math.floor(vehicle.flashPhase)%2?'#0055ff':'#ff0000','car',vehicle.direction);
   ctx.save();
   ctx.translate(pos.x, pos.y);
   
@@ -631,7 +644,7 @@ function updateStreetLifeEntities() {
   while (taxiCount < CONFIG.maxTaxis) { spawnTaxi(); taxiCount++; }
   while (busCount < CONFIG.maxBuses) { spawnBus(); busCount++; }
   while (bicycleCount < CONFIG.maxBicycles) { spawnBicycle(); bicycleCount++; }
-  while (pedestrians.length < CONFIG.maxPedestrians) spawnPedestrian();
+  for (let attempts = pedestrians.length; attempts < CONFIG.maxPedestrians; attempts++) spawnPedestrian();
   
   // Update emergency vehicle
   if (emergencyVehicle) {
@@ -994,7 +1007,10 @@ function renderStaticLayer(width, height) {
 }
 
 // Main draw function — optimized for lower-end GPUs
+let streetLifeRects=null;
 function drawStreetLife() {
+  streetLifeRects={mapRect:map.getContainer().getBoundingClientRect(),canvasRect:streetLifeCanvas.getBoundingClientRect()};
+  if(geographicSymbols)symbolPixelsPerMetre=window.MR_TABLE.pixelsPerMetre(map.getZoom(),map.getCenter().lat);
   const width = streetLifeCanvas.width;
   const height = streetLifeCanvas.height;
   
@@ -1025,7 +1041,9 @@ function drawStreetLife() {
     
     const screenAngle = -point.angle + mapBearing;
     
-    if (v.type === 'car') {
+    if(geographicSymbols){
+      drawGeographicVehicle(streetLifeCtx,pos,screenAngle,v.colors.body || v.colors.frame,v.type,v.direction);
+    } else if (v.type === 'car') {
       drawFastLight(streetLifeCtx, pos, screenAngle, v.colors.body, 25, 8, v.direction);
     } else if (v.type === 'taxi') {
       drawFastLight(streetLifeCtx, pos, screenAngle, v.colors.body, 25, 8, v.direction);
@@ -1057,7 +1075,7 @@ function drawStreetLife() {
     const point = getPointAlongPath(p.path, p.progress);
     if (!point) return;
     
-    const offsetMag = Math.sin(p.wobblePhase) * 1.5;
+    const offsetMag = Math.sin(p.wobblePhase) * (geographicSymbols?Math.max(.2*(window.mrTableScale?.() ?? 1),.2*symbolPixelsPerMetre):1.5);
     const perpAngle = -point.angle + mapBearing + Math.PI / 2;
     const offsetX = Math.cos(perpAngle) * offsetMag;
     const offsetY = Math.sin(perpAngle) * offsetMag;
@@ -1071,13 +1089,14 @@ function drawStreetLife() {
   
   // One beginPath + fill per color group instead of per pedestrian
   const PI2 = Math.PI * 2;
+  const pedestrianRadius=geographicSymbols?Math.max(1.5*(window.mrTableScale?.() ?? 1),.6*symbolPixelsPerMetre)/2:1.5;
   for (const color in pedsByColor) {
     const coords = pedsByColor[color];
     streetLifeCtx.fillStyle = color;
     streetLifeCtx.beginPath();
     for (let i = 0; i < coords.length; i += 2) {
-      streetLifeCtx.moveTo(coords[i] + 1.5, coords[i + 1]);
-      streetLifeCtx.arc(coords[i], coords[i + 1], 1.5, 0, PI2);
+      streetLifeCtx.moveTo(coords[i] + pedestrianRadius, coords[i + 1]);
+      streetLifeCtx.arc(coords[i], coords[i + 1], pedestrianRadius, 0, PI2);
     }
     streetLifeCtx.fill();
   }
@@ -1119,7 +1138,7 @@ function generateStreetlights() {
 
 // Draw static streetlights efficiently
 function drawStreetlights(ctx, width, height) {
-  const radius = CONFIG.streetlightRadius;
+  const radius = geographicSymbols?Math.max(2*(window.mrTableScale?.() ?? 1),8*symbolPixelsPerMetre):CONFIG.streetlightRadius;
   
   streetlights.forEach(light => {
     const pos = projectToStreetLifeCanvas(light.lng, light.lat);
@@ -1213,8 +1232,8 @@ function drawBuildings(ctx, width, height) {
   
   ctx.save();
   ctx.globalCompositeOperation = 'lighter';
-  ctx.lineWidth = CONFIG.buildingGlowWidth;
-  ctx.setLineDash([CONFIG.buildingDashLength, CONFIG.buildingGapLength]);
+  ctx.lineWidth = geographicSymbols?Math.max(.5*(window.mrTableScale?.() ?? 1),.3*symbolPixelsPerMetre):CONFIG.buildingGlowWidth;
+  ctx.setLineDash(geographicSymbols?[Math.max((window.mrTableScale?.() ?? 1),3*symbolPixelsPerMetre),Math.max((window.mrTableScale?.() ?? 1),5*symbolPixelsPerMetre)]:[CONFIG.buildingDashLength, CONFIG.buildingGapLength]);
   ctx.lineCap = 'round';
   
   buildings.forEach((building, index) => {
@@ -1314,13 +1333,15 @@ function isOnScreen(pos, w, h) {
 }
 
 // Animation loop
-function animateStreetLife() {
+let streetLifeAccumulator = 0, streetLifeGeneration = 0;
+function animateStreetLife(now = performance.now()) {
   if (!isStreetLifeAnimating) return;
   
-  updateStreetLifeEntities();
+  streetLifeAccumulator += window.MR_FRAMES ? window.MR_FRAMES.delta('streetlife',now) : 1/60;
+  while(streetLifeAccumulator >= 1/60 - 1e-9) { updateStreetLifeEntities(); streetLifeAccumulator -= 1/60; }
   drawStreetLife();
   
-  streetLifeAnimationFrame = requestAnimationFrame(animateStreetLife);
+  streetLifeAnimationFrame = (window.MR_FRAMES ? window.MR_FRAMES.request.bind(window.MR_FRAMES, 'streetlife') : requestAnimationFrame)(animateStreetLife);
 }
 
 // Spawn timer
@@ -1375,7 +1396,7 @@ function fadeInCitySound() {
   
   // Create audio if it doesn't exist
   if (!cityAmbientAudio) {
-    cityAmbientAudio = new Audio(window.mrAsset('media/sound/city.mp3'));
+    cityAmbientAudio = (window.mrMuseumAudio || (url=>new Audio(url)))(window.mrAsset('media/sound/city.mp3'));
     cityAmbientAudio.loop = true;
     cityAmbientAudio.volume = 0;
   }
@@ -1441,7 +1462,9 @@ function fadeOutCitySound() {
 function startStreetLifeAnimation() {
   if (isStreetLifeAnimating) return;
   
+  const revision = ++streetLifeGeneration;
   loadStreetLifeData().then(() => {
+    if(revision !== streetLifeGeneration)return;
     if (isAnyVisualizationActive() || isStreetLifeAnimating) return;
     if (streetPaths.length === 0) {
       console.warn('Street Life: No paths available for animation');
@@ -1477,10 +1500,7 @@ function startStreetLifeAnimation() {
     
     animateStreetLife();
     
-    // Start Västtrafik live transit overlay
-    if (window.trafikAnimation) {
-      window.trafikAnimation.start();
-    }
+
     
     console.log('Street Life animation started');
   });
@@ -1488,6 +1508,7 @@ function startStreetLifeAnimation() {
 
 // Stop animation
 function stopStreetLifeAnimation() {
+  streetLifeGeneration++;streetLifeAccumulator=0;window.MR_FRAMES?.times.delete('streetlife');
   isStreetLifeAnimating = false;
   window.dispatchEvent(new Event('mr-street-life'));
   streetLifeCanvas.style.display = 'none';
@@ -1497,7 +1518,7 @@ function stopStreetLifeAnimation() {
   fadeOutCitySound();
   
   if (streetLifeAnimationFrame) {
-    cancelAnimationFrame(streetLifeAnimationFrame);
+    (window.MR_FRAMES ? window.MR_FRAMES.cancel.bind(window.MR_FRAMES) : cancelAnimationFrame)(streetLifeAnimationFrame);
     streetLifeAnimationFrame = null;
   }
   
@@ -1510,16 +1531,17 @@ function stopStreetLifeAnimation() {
     emergencySpawnTimer = null;
   }
   
-  // Stop Västtrafik live transit overlay
-  if (window.trafikAnimation) {
-    window.trafikAnimation.stop();
-  }
+
   
   console.log('Street Life animation stopped');
 }
 
 // Check if any visualization is active
 function isAnyVisualizationActive() {
+  if(window.MR_LAYERS) {
+    const states=window.MR_LAYERS.getState();
+    if(Object.entries(states).some(([id,state])=>id!=='trafik-btn' && (state.requested || state.active)))return true;
+  }
   if (window.MR_ADAPTER?.active['canvas-btn']) return true;
   // Check for active/toggled-on/toggled-off buttons
   const activeButtons = [
@@ -1538,6 +1560,7 @@ function isAnyVisualizationActive() {
   ];
   
   for (const id of activeButtons) {
+    if(window.MR_LAYERS?.has(id))continue;
     const btn = document.getElementById(id);
     if (btn && (btn.classList.contains('active') || btn.classList.contains('toggled-on') || btn.classList.contains('toggled-off'))) {
       return true;
@@ -1576,6 +1599,7 @@ function updateStreetLifeVisibility() {
   }
 }
 
+window.addEventListener('mr-layer-state', updateStreetLifeVisibility);
 // Listen for button clicks to manage visibility - using MutationObserver for reliable detection
 function setupVisibilityObserver() {
   const buttons = document.querySelectorAll('.icon-btn');

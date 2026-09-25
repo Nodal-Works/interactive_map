@@ -25,6 +25,7 @@ function setSunStudyLayout(isActive) {
         return;
     }
 
+    if(!isActive && !mainPanel.classList.contains('sun-study-mode'))return;
     if (isActive) {
         mainPanel.classList.add('sun-study-mode');
         legendSection.classList.add('sun-study-hidden');

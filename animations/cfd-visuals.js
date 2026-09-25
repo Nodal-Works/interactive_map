@@ -240,9 +240,15 @@
       // Three nested strokes give a soft halo without per-edge blur filters.
       const layers = palette === 'monochrome' ? [[16,.28,'230,230,230'],[7,.6,'245,245,245'],[2,1,'255,255,255']] :
         [[16,.28,'255,159,67'],[7,.6,'255,194,105'],[2,1,'255,245,219']];
+      // Reuse identical geometry for all three halo strokes; colours and widths stay unchanged.
+      const paths=typeof Path2D==='undefined'?null:this.buckets.map(bucket=>{
+        if(!bucket.length)return null;const path=new Path2D();let lastX,lastY;
+        for(let j=0;j<bucket.length;j+=4){if(bucket[j]!==lastX || bucket[j+1]!==lastY)path.moveTo(bucket[j],bucket[j+1]);path.lineTo(bucket[j+2],bucket[j+3]);lastX=bucket[j+2];lastY=bucket[j+3];}return path;
+      });
       for (const [width, opacity, color] of layers) for (let i = 0; i < this.buckets.length; i++) {
         const bucket = this.buckets[i]; if (!bucket.length) continue;
-        ctx.lineWidth = width; ctx.strokeStyle = `rgba(${color},${opacity * (i + .5) / 16})`;
+        ctx.lineWidth = width * (globalThis.mrTableScale?.() ?? 1); ctx.strokeStyle = `rgba(${color},${opacity * (i + .5) / 16})`;
+        if(paths){ctx.stroke(paths[i]);continue;}
         ctx.beginPath();
         let lastX, lastY;
         for (let j = 0; j < bucket.length; j += 4) {
@@ -299,8 +305,8 @@
         const white = i >= 256, alpha = white ? (i - 256 + .5) / 32 : (Math.floor(i / 32) + .5) / 8;
         ctx.strokeStyle = white ? `rgba(255,255,255,${alpha * (particles ? 1 : .88)})` :
           `rgba(${this.colors[i % 32].join(',')},${alpha * (particles ? .9 : .48)})`;
-        ctx.lineWidth = particles ? (white ? .75 + alpha * .8 : .85) :
-          (white ? .8 + alpha * 1.25 : 1.1);
+        ctx.lineWidth = (particles ? (white ? .75 + alpha * .8 : .85) :
+          (white ? .8 + alpha * 1.25 : 1.1)) * (globalThis.mrTableScale?.() ?? 1);
         ctx.beginPath();
         let lastX, lastY;
         for (let j = 0; j < bucket.length; j += 4) {

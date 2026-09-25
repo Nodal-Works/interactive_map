@@ -206,8 +206,8 @@ function drawStreetGlow(time) {
     // Set styles once per type (not per segment!)
     const pulse = Math.sin(elapsed * 0.003 + typeIndex) * 0.4 + 0.6;
     streetCtx.strokeStyle = colorBase + (baseGlow * pulse * 0.8 * fadeIn) + ')';
-    streetCtx.lineWidth = 2.5;
-    streetCtx.shadowBlur = 12;
+    streetCtx.lineWidth = 2.5 * (window.mrTableScale?.() ?? 1);
+    streetCtx.shadowBlur = 12 * (window.mrTableScale?.() ?? 1);
     streetCtx.shadowColor = colorBase + (pulse * 0.9 * fadeIn) + ')';
     streetCtx.lineCap = 'round';
     
@@ -230,6 +230,8 @@ function drawStreetGlow(time) {
   streetCtx.shadowBlur = 0;
   
   // Draw legend showing current types
+  streetCtx.save();
+  streetCtx.scale(window.mrTableScale?.() ?? 1, window.mrTableScale?.() ?? 1);
   streetCtx.font = '12px system-ui';
   streetCtx.textAlign = 'left';
   let yOffset = 20;
@@ -241,6 +243,7 @@ function drawStreetGlow(time) {
     streetCtx.fillText(type, 45, yOffset);
     yOffset += 18;
   });
+  streetCtx.restore();
 }
 
 function animateStreets() {

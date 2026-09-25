@@ -1,6 +1,7 @@
 // ===== Slideshow Animation System =====
 // Display image/video/gif/geojson media with transitions and metadata
 
+const slideshowMap = window.MR_RENDER?.map || window.map;
 const slideshowCanvas = document.getElementById('slideshow-canvas');
 const slideshowCtx = slideshowCanvas ? slideshowCanvas.getContext('2d') : null;
 const slideshowBtn = document.getElementById('slideshow-btn');
@@ -23,7 +24,7 @@ let transitionAnimationFrame = null;
 let slideStatus = 'idle', slideError = null;
 let reveal = null, revealTimer = null;
 let slideJob = null, startRevision = 0;
-const rasterSlides = new window.MR_RASTER_SLIDES.RasterSlides(map);
+const rasterSlides = new window.MR_RASTER_SLIDES.RasterSlides(slideshowMap);
 
 // Media cache
 const mediaCache = new Map();
@@ -275,13 +276,13 @@ function animateTransition(oldMedia, newMedia, transitionType, duration = 500, o
       applyTransition(oldMedia, newMedia, transitionProgress, transitionType, oldRotation, newRotation, oldFitMode, newFitMode);
       
       if (transitionProgress < 1) {
-        transitionAnimationFrame = requestAnimationFrame(animate);
+        transitionAnimationFrame = (window.MR_FRAMES ? window.MR_FRAMES.request.bind(window.MR_FRAMES, 'slides') : requestAnimationFrame)(animate);
       } else {
         resolve();
       }
     }
     
-    transitionAnimationFrame = requestAnimationFrame(animate);
+    transitionAnimationFrame = (window.MR_FRAMES ? window.MR_FRAMES.request.bind(window.MR_FRAMES, 'slides') : requestAnimationFrame)(animate);
   });
 }
 
@@ -352,33 +353,33 @@ function paintReveal(progress = 1) {
     ['slideshow-line','LineString','line-opacity',style.strokeOpacity ?? .8],
     ['slideshow-polygon-outline','Polygon','line-opacity',1],
     ['slideshow-point','Point','circle-opacity',1]]) {
-    if(map.getLayer(id)){map.setFilter(id,['all',['==',['geometry-type'],geometry],filter]);map.setPaintProperty(id,property,opacity(alpha));}
+    if(slideshowMap.getLayer(id)){slideshowMap.setFilter(id,['all',['==',['geometry-type'],geometry],filter]);slideshowMap.setPaintProperty(id,property,opacity(alpha));}
   }
 }
 function stopGeoJSONAnimation() {
   clearTimeout(revealTimer);revealTimer=null;
   if(reveal)reveal.automatic=false;
   geojsonAnimationActive=false;
-  if(geojsonAnimationFrame)cancelAnimationFrame(geojsonAnimationFrame);
+  if(geojsonAnimationFrame)(window.MR_FRAMES ? window.MR_FRAMES.cancel.bind(window.MR_FRAMES) : cancelAnimationFrame)(geojsonAnimationFrame);
   geojsonAnimationFrame=null;
-  if(map.getLayer('slideshow-glow'))map.removeLayer('slideshow-glow');
+  if(slideshowMap.getLayer('slideshow-glow'))slideshowMap.removeLayer('slideshow-glow');
 }
 function animateReveal() {
   if(!reveal || reveal.index<0)return;
   const state=reveal,started=performance.now(),value=state.values[state.index];
-  map.addLayer({id:'slideshow-glow',type:'line',source:'slideshow-geojson',
+  slideshowMap.addLayer({id:'slideshow-glow',type:'line',source:'slideshow-geojson',
     filter:['==',['get',state.style.colorProperty],value],
     paint:{'line-color':state.style.colorMap[value],'line-width':0,'line-blur':3,'line-opacity':0}});
   const frame=now=>{
-    if(reveal!==state || !isSlideShowActive || !map.getLayer('slideshow-glow'))return;
+    if(reveal!==state || !isSlideShowActive || !slideshowMap.getLayer('slideshow-glow'))return;
     const progress=Math.max(0,Math.min(1,(now-started)/800)),glow=Math.sin(progress*Math.PI);
     paintReveal(Math.min(1,progress*2));
-    map.setPaintProperty('slideshow-glow','line-width',glow*6);
-    map.setPaintProperty('slideshow-glow','line-opacity',glow*.8);
-    if(progress<1)geojsonAnimationFrame=requestAnimationFrame(frame);
-    else {map.removeLayer('slideshow-glow');geojsonAnimationFrame=null;}
+    slideshowMap.setPaintProperty('slideshow-glow','line-width',glow*6);
+    slideshowMap.setPaintProperty('slideshow-glow','line-opacity',glow*.8);
+    if(progress<1)geojsonAnimationFrame=(window.MR_FRAMES ? window.MR_FRAMES.request.bind(window.MR_FRAMES, 'slides') : requestAnimationFrame)(frame);
+    else {slideshowMap.removeLayer('slideshow-glow');geojsonAnimationFrame=null;}
   };
-  geojsonAnimationFrame=requestAnimationFrame(frame);
+  geojsonAnimationFrame=(window.MR_FRAMES ? window.MR_FRAMES.request.bind(window.MR_FRAMES, 'slides') : requestAnimationFrame)(frame);
 }
 function categoryControl(action) {
   if(!isSlideShowActive || slideStatus!=='ready' || !reveal)return;
@@ -409,11 +410,11 @@ function removeGeoJSONLayers() {
   stopGeoJSONAnimation();
   reveal=null;
   
-  if (map.getSource('slideshow-geojson')) {
+  if (slideshowMap.getSource('slideshow-geojson')) {
     ['slideshow-fill', 'slideshow-line', 'slideshow-polygon-outline', 'slideshow-point', 'slideshow-glow'].forEach(id => {
-      if (map.getLayer(id)) map.removeLayer(id);
+      if (slideshowMap.getLayer(id)) slideshowMap.removeLayer(id);
     });
-    map.removeSource('slideshow-geojson');
+    slideshowMap.removeSource('slideshow-geojson');
   }
 }
 
@@ -423,15 +424,15 @@ async function displayGeoJSON(geojson, slide) {
   stopGeoJSONAnimation();
   
   // Remove previous slideshow GeoJSON layers
-  if (map.getSource('slideshow-geojson')) {
+  if (slideshowMap.getSource('slideshow-geojson')) {
     ['slideshow-fill', 'slideshow-line', 'slideshow-polygon-outline', 'slideshow-point', 'slideshow-glow'].forEach(id => {
-      if (map.getLayer(id)) map.removeLayer(id);
+      if (slideshowMap.getLayer(id)) slideshowMap.removeLayer(id);
     });
-    map.removeSource('slideshow-geojson');
+    slideshowMap.removeSource('slideshow-geojson');
   }
   
   // Add new GeoJSON layer
-  map.addSource('slideshow-geojson', { type: 'geojson', data: geojson });
+  slideshowMap.addSource('slideshow-geojson', { type: 'geojson', data: geojson });
   
   // Get style from metadata or use defaults
   const style = slide.metadata?.style || {};
@@ -469,7 +470,7 @@ async function displayGeoJSON(geojson, slide) {
   }
   
   // Add fill layer for polygons (initially invisible for animation)
-  map.addLayer({
+  slideshowMap.addLayer({
     id: 'slideshow-fill',
     type: 'fill',
     source: 'slideshow-geojson',
@@ -481,7 +482,7 @@ async function displayGeoJSON(geojson, slide) {
   });
   
   // Add line layer for LineString geometries (e.g., streets)
-  map.addLayer({
+  slideshowMap.addLayer({
     id: 'slideshow-line',
     type: 'line',
     source: 'slideshow-geojson',
@@ -494,7 +495,7 @@ async function displayGeoJSON(geojson, slide) {
   });
   
   // Add line layer for polygon outlines
-  map.addLayer({
+  slideshowMap.addLayer({
     id: 'slideshow-polygon-outline',
     type: 'line',
     source: 'slideshow-geojson',
@@ -507,7 +508,7 @@ async function displayGeoJSON(geojson, slide) {
   });
   
   // Add circle layer for points
-  map.addLayer({
+  slideshowMap.addLayer({
     id: 'slideshow-point',
     type: 'circle',
     source: 'slideshow-geojson',
@@ -525,9 +526,9 @@ async function displayGeoJSON(geojson, slide) {
     paintReveal();
   } else {
     reveal=null;
-    map.setPaintProperty('slideshow-fill','fill-opacity',fillOpacity);
-    map.setPaintProperty('slideshow-line','line-opacity',style.strokeOpacity ?? .8);
-    map.setPaintProperty('slideshow-polygon-outline','line-opacity',1);
+    slideshowMap.setPaintProperty('slideshow-fill','fill-opacity',fillOpacity);
+    slideshowMap.setPaintProperty('slideshow-line','line-opacity',style.strokeOpacity ?? .8);
+    slideshowMap.setPaintProperty('slideshow-polygon-outline','line-opacity',1);
   }
 }
 
@@ -578,7 +579,7 @@ async function displaySlide(index) {
         if(slide.type==='video') {media.currentTime=0;await awaitSlide(media.play(),job.signal);}
         await awaitSlide(animateTransition(oldMedia,media,slide.transition || 'fade',500,oldRotation,currentMediaRotation,oldFit,currentMediaFitMode),job.signal);
         if(slide.type==='video') {
-          const draw=()=>{if(job.signal.aborted || media.paused || media.ended)return;drawMediaOnCanvas(media,currentMediaFitMode,currentMediaRotation);requestAnimationFrame(draw);};draw();
+          const draw=()=>{if(job.signal.aborted || media.paused || media.ended)return;drawMediaOnCanvas(media,currentMediaFitMode,currentMediaRotation);(window.MR_FRAMES ? window.MR_FRAMES.request.bind(window.MR_FRAMES, 'slides') : requestAnimationFrame)(draw);};draw();
         }
       }
     }
@@ -623,14 +624,15 @@ function stopSlideshow() {
   broadcastSlideshowState(null);
 }
 slideshowBtn?.addEventListener('click',startSlideshow);
+window.MR_LAYERS?.register('slideshow-btn',{getEnabled:()=>isSlideShowActive,enable:async(current)=>{await window.MR_RENDER?.ready;if(current && !current())return;if(!isSlideShowActive)await startSlideshow();},disable:stopSlideshow,isReady:()=>slideStatus==='ready',getError:()=>slideError});
 window.addEventListener('resize',()=>{
   if(!isSlideShowActive)return;
   resizeSlideshowCanvas();
   if(currentMediaElement)drawMediaOnCanvas(currentMediaElement,currentMediaFitMode,currentMediaRotation);
 });
-map.on('style.load',()=>{
+slideshowMap.on('style.load',()=>{
   const slide=slideshowConfig?.slides[currentSlideIndex];
-  if(isSlideShowActive && ['wms','arcgis'].includes(slide?.type) && !map.getSource(rasterSlides.active))displaySlide(currentSlideIndex);
+  if(isSlideShowActive && ['wms','arcgis'].includes(slide?.type) && !slideshowMap.getSource(rasterSlides.active))displaySlide(currentSlideIndex);
 });
 document.addEventListener('keydown',event=>{
   if(!isSlideShowActive || event.repeat || event.target?.closest?.('input,textarea,select,[contenteditable="true"]'))return;

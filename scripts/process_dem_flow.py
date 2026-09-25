@@ -171,6 +171,7 @@ def main():
     parser.add_argument('--dem', type=Path, default=root / 'media/clipped_dem.geotiff.tif')
     parser.add_argument('--buildings', type=Path, default=root / 'media/building-footprints.geojson')
     parser.add_argument('--output', type=Path, default=root / 'media')
+    parser.add_argument('--water', type=Path, help='WGS84 water polygons, including inland lakes')
     parser.add_argument('--browser-only', action='store_true', help='Only write the browser GeoTIFF')
     args = parser.parse_args()
 
@@ -189,11 +190,15 @@ def main():
     processed_dem = dem.copy()
     processed_dem[buildings] = float(np.nanmax(dem)) + 10.0
     args.output.mkdir(parents=True, exist_ok=True)
-    profile.update(crs=crs, dtype='float32', count=2, nodata=np.nan, compress='deflate')
+    water = rasterize_buildings(json.loads(args.water.read_text()), dem.shape, transform, crs).astype(bool) if args.water else (np.isfinite(dem) & (dem <= 0))
+    water &= ~buildings.astype(bool)
+    profile.update(crs=crs, dtype='float32', count=3, nodata=np.nan, compress='deflate')
     browser_path = args.output / 'stormwater_dem.tif'
     with rasterio.open(browser_path, 'w', **profile) as dst:
         dst.write(processed_dem, 1)
         dst.write(buildings.astype(np.float32), 2)
+        dst.write(water.astype(np.float32), 3)
+        dst.set_band_description(3, "Water mask (1 = water, including inland lakes)")
         dst.set_band_description(1, 'Terrain with building barriers')
         dst.set_band_description(2, 'Building mask (1 = building, 0 = terrain)')
     print(f'Saved {browser_path}: {np.count_nonzero(buildings)} building cells')

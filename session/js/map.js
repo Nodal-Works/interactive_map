@@ -136,6 +136,7 @@
     render() {
       if(!this.svg)return;
       this.svg.replaceChildren();
+      const scale=this.desktop ? (window.mrTableScale?.() ?? 1) : 1;
       const defs=node('defs'), marker=node('marker',{id:this.desktop?'host-arrow':'phone-arrow',viewBox:'0 0 10 10',refX:9,refY:5,markerWidth:5,markerHeight:5,orient:'auto-start-reverse'});
       marker.append(node('path',{d:'M 0 0 L 10 5 L 0 10 z',fill:'context-stroke'}));defs.append(marker);this.svg.append(defs);
       if(this.table&&!this.desktop){const pts=this.table.corners.map(c=>{const p=this.project(c);return`${p.x},${p.y}`;}).join(' ');this.svg.append(node('polygon',{points:pts,fill:'none',stroke:'#ffffff66','stroke-width':1,'stroke-dasharray':'5 5'}));}
@@ -151,11 +152,11 @@
         if(!o.draft&&this.gesture?.original && this.gesture.original.id===o.id)continue;
         const pts=o.points.map(c=>this.project(c)),str=pts.map(p=>`${p.x},${p.y}`).join(' '),first=pts[0];if(!first)continue;
         const group=node('g',{'opacity':o.draft?.85:1});
-        group.append(node(['polygon','obstacle'].includes(o.tool)?'polygon':'polyline',{points:str,fill:['polygon','obstacle'].includes(o.tool)?o.color+'44':'none',stroke:o.color,'stroke-width':o.width,'stroke-linecap':'round','stroke-linejoin':'round',...(o.tool==='arrow'?{'marker-end':`url(#${this.desktop?'host-arrow':'phone-arrow'})`}:{})}));
-        if(['marker','comment'].includes(o.tool))group.append(node('circle',{cx:first.x,cy:first.y,r:6,fill:o.color,stroke:'#fff','stroke-width':2}));
-        if(o.tool==='pen'&&pts.length===1)group.append(node('circle',{cx:first.x,cy:first.y,r:o.width/2,fill:o.color}));
-        if(o.tool==='comment')group.append(node('text',{x:first.x+10,y:first.y-10,fill:o.color,stroke:'#0b111c','stroke-width':4,'paint-order':'stroke','font-size':14},o.text));
-        if(o.id===this.selected||o.draft&&['polygon','obstacle'].includes(o.tool))pts.forEach(p=>group.append(node('circle',{cx:p.x,cy:p.y,r:5,fill:'#fff',stroke:o.color,'stroke-width':2})));
+        group.append(node(['polygon','obstacle'].includes(o.tool)?'polygon':'polyline',{points:str,fill:['polygon','obstacle'].includes(o.tool)?o.color+'44':'none',stroke:o.color,'stroke-width':o.width*scale,'stroke-linecap':'round','stroke-linejoin':'round',...(o.tool==='arrow'?{'marker-end':`url(#${this.desktop?'host-arrow':'phone-arrow'})`}:{})}));
+        if(['marker','comment'].includes(o.tool))group.append(node('circle',{cx:first.x,cy:first.y,r:6*scale,fill:o.color,stroke:'#fff','stroke-width':2*scale}));
+        if(o.tool==='pen'&&pts.length===1)group.append(node('circle',{cx:first.x,cy:first.y,r:o.width*scale/2,fill:o.color}));
+        if(o.tool==='comment')group.append(node('text',{x:first.x+10*scale,y:first.y-10*scale,fill:o.color,stroke:'#0b111c','stroke-width':4*scale,'paint-order':'stroke','font-size':14*scale},o.text));
+        if(o.id===this.selected||o.draft&&['polygon','obstacle'].includes(o.tool))pts.forEach(p=>group.append(node('circle',{cx:p.x,cy:p.y,r:5*scale,fill:'#fff',stroke:o.color,'stroke-width':2*scale})));
         group.append(node('title',{},o.creatorName||'Drawing'));this.svg.append(group);
       }
     }

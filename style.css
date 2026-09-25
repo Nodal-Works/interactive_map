@@ -674,3 +674,84 @@ html, body {
 .cfd-appearance-note { color: #9ca3af; font-size: .78rem; line-height: 1.5; margin: .25rem 0 1rem; }
 .cfd-color-bar { height: 10px; border-radius: 5px; margin-top: .5rem; }
 .cfd-color-labels { display: flex; justify-content: space-between; color: #9ca3af; font-size: .75rem; margin: .35rem 0 .5rem; }
+
+/* Physical projection: rails touch the model; letterboxing is outside the assembly.
+   One design pixel represents 1/8 cm, independent of display resolution. */
+.physical-table #map { inset: 0; }
+.physical-table #left-sidebar, .physical-table #right-sidebar {
+  top: var(--table-top); bottom: auto; height: var(--table-height);
+  width: var(--table-rail); box-sizing: border-box;
+  padding: calc(20px * var(--table-ui-scale)) 0;
+  box-shadow: none;
+}
+.physical-table #left-sidebar { left: calc(var(--table-left) - var(--table-rail)); }
+.physical-table #right-sidebar { left: calc(var(--table-left) + var(--table-width)); right: auto; }
+.physical-table .sidebar-logo {
+  width: calc(200px * var(--table-ui-scale));
+  max-height: calc(200px * var(--table-ui-scale));
+  margin: calc(70px * var(--table-ui-scale)) 0;
+  flex-shrink: 0;
+}
+.physical-table .sidebar-logo[alt="Chalmers"] {
+  width: calc(165px * var(--table-ui-scale));
+  max-height: calc(210px * var(--table-ui-scale));
+  margin: calc(67.5px * var(--table-ui-scale)) 0;
+}
+.physical-table .sidebar-title {
+  font-size: calc(14px * var(--table-ui-scale));
+  letter-spacing: calc(2px * var(--table-ui-scale));
+}
+.physical-table .icon-controls { gap: calc(8px * var(--table-ui-scale)); }
+.physical-table .icon-btn {
+  width: calc(40px * var(--table-ui-scale)); height: calc(40px * var(--table-ui-scale));
+  padding: 0; flex-shrink: 0; border-radius: calc(6px * var(--table-ui-scale));
+}
+.physical-table .icon-btn svg { width: calc(24px * var(--table-ui-scale)); height: calc(24px * var(--table-ui-scale)); }
+.physical-table #laser-pointer { width: calc(20px * var(--table-ui-scale)); height: calc(20px * var(--table-ui-scale)); box-shadow: none; }
+.physical-table :is(.mr-session-strip, .mr-local-toolbar, .mr-dialog, .slideshow-metadata, #cfd-status, #thermal-comfort-hud, #toast-container) {
+  zoom: var(--table-ui-scale);
+}
+.physical-table .mr-session-strip {
+  left: calc(var(--table-left) / var(--table-ui-scale) + 10px) !important;
+  bottom: calc(var(--table-top) / var(--table-ui-scale) + 10px) !important;
+}
+.physical-table #cfd-status {
+  bottom: calc(var(--table-top) / var(--table-ui-scale) + 18px);
+}
+
+.physical-table .icon-btn { font-size: calc(20px * var(--table-ui-scale)); }
+.physical-table .mr-local-toolbar { bottom: calc(var(--table-top) / var(--table-ui-scale) + 55px); }
+.physical-table .mr-pointer { font-size: calc(11px * var(--table-ui-scale)); padding: calc(3px * var(--table-ui-scale)) calc(7px * var(--table-ui-scale)); }
+.physical-table .mr-pointer:before { font-size: calc(22px * var(--table-ui-scale)); }
+.physical-table .mr-idle-label { padding: calc(8px * var(--table-ui-scale)) calc(14px * var(--table-ui-scale)); font-size: calc(24px * var(--table-ui-scale)); }
+.physical-table .mr-idle-join { gap: calc(12px * var(--table-ui-scale)); padding-left: calc(12px * var(--table-ui-scale)); font-size: calc(14px * var(--table-ui-scale)); }
+.physical-table #controller-link {
+  zoom: var(--table-ui-scale);
+  right: calc(var(--table-left) / var(--table-ui-scale) + 10px) !important;
+  bottom: calc(var(--table-top) / var(--table-ui-scale) + 10px) !important;
+}
+
+/* Exhibit composition order is independent of activation order. */
+#museum-analysis-map { position:fixed; pointer-events:none; z-index:840; }
+#sun-study-canvas { z-index:820; }
+#sun-study-overlay { z-index:850 !important; }
+#cfd-simulation-canvas { z-index:860; }
+#stormwater-canvas { z-index:870; }
+#slideshow-canvas { z-index:835; }
+#trafik-canvas { z-index:890 !important; }
+#bird-sounds-canvas { z-index:900; }
+#grid-animation-canvas { z-index:980; }
+/* Information lives outside the calibrated geographic rectangle. */
+.museum-zone{position:fixed;z-index:990;color:#eef6ff;line-height:1.4;overflow:auto;pointer-events:none;scrollbar-width:none;font-family:Inter,system-ui,sans-serif}
+.museum-zone h2{font-size:1.35em;line-height:1.15;margin:0 0 1em;color:#fff;font-weight:650;letter-spacing:-.025em}
+.museum-zone h3{font-size:1em;line-height:1.25;margin:1.2em 0 .35em;color:#7dd3fc}
+.museum-zone p{margin:0 0 1em;color:#cbd5e1}
+.museum-qr{box-sizing:content-box;background:#fff;image-rendering:pixelated;margin:12px 0}
+.museum-qr img,.museum-qr canvas{width:100%!important;height:100%!important}
+.museum-setup{position:fixed;right:16px;bottom:16px;z-index:10000;width:340px;max-height:85vh;overflow:auto;padding:14px;background:#0f172af5;color:#e2e8f0;border:1px solid #475569;border-radius:12px;box-shadow:0 8px 30px #0008;font:14px/1.45 system-ui}
+.museum-setup summary{cursor:pointer;font-weight:650}.museum-setup label{display:flex;align-items:center;gap:8px;justify-content:space-between;margin:12px 0}.museum-setup input[type=number]{width:75px}.museum-setup input[type=range]{width:110px}.museum-setup span{min-width:42px;font-size:12px;color:#7dd3fc}
+.mr-idle-ribbon{display:none!important}
+
+.museum-speed-key{height:10px;border-radius:3px;margin:8px 0 3px}.museum-zone small{font-size:.85em;color:#e2e8f0}
+
+.physical-table #cfd-status{display:none}

@@ -16,7 +16,7 @@
   function roster() {return [...people.values()].map(p => ({id:p.id,name:p.name,avatar:p.avatar,color:p.color,
     online:!!p.connection?.open, slot:slots.indexOf(p.id) + 1 || null, focus:p.focus, joinedAt:p.joinedAt,lastSeen:p.lastSeen}));}
   function snapshot() {
-    return {type:'state', sessionId, revision, endedAt, paused, participants:roster(), slots, objects,drafts:[...drafts.values()],
+    return {type:'state', location: window.APP_CONFIG.location || null, catalog: MR.LAYERS, sessionId, revision, endedAt, paused, participants:roster(), slots, objects,drafts:[...drafts.values()],
       ...adapter.getState()};
   }
   function summary() {
@@ -49,7 +49,7 @@
   }
   function documentLog() {
     return {schemaVersion:2, sessionId, startedAt, endedAt, updatedAt:new Date().toISOString(),revision,
-      release:MR.RELEASE, table:adapter.table(), participants:roster(), finalState:logState(), events};
+      release:MR.RELEASE, location:window.APP_CONFIG.location || null, table:adapter.table(), participants:roster(), finalState:logState(), events};
   }
   async function save() {
     if (!local || saving || !dirty) return;
