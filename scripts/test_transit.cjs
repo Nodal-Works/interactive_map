@@ -10,7 +10,7 @@ function fixture(){
  fetch:async(url,options)=>{
   if(String(url)==='trafik-config.json')return {ok:true,json:async()=>({accessToken:'test-only',tokenExpiry:1e15,bbox:[11,57,12,58]})};
   polls++;requests.push({url:String(url),signal:options.signal});return new Promise(r=>resolve=r);
- },window:{addEventListener(){},APP_CONFIG:{area:{bounds:[11,57,12,58]},transit:{fetchInterval:10000,transportModes:['bus','tram','ferry']}}}};
+ },window:{MR_FERRY_WAKE:require('../animations/ferry-wake.js'),addEventListener(){},APP_CONFIG:{area:{bounds:[11,57,12,58]},transit:{fetchInterval:10000,transportModes:['bus','tram','ferry']}}}};
  let source=fs.readFileSync('animations/trafik.js','utf8');
  source=source.replace('window.trafikAnimation = {','window.trafikAnimation = {update: updateVehicles,');vm.runInNewContext(source,sandbox);
  return {api:sandbox.window.trafikAnimation,intervals,get polls(){return polls;},requests,

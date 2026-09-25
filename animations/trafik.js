@@ -27,6 +27,7 @@ let isTrafikAnimating = false;
 let vehicles = [];
 let lastFetchTime = 0;
 let updateInterval = null;
+let lastFrameTime = null;
 let nextFetchAllowedAt = 0, inFlight = false, starting = false, generation = 0, runController = null;
 
 // API Configuration - loaded from config file (not .env since this is client-side)
@@ -360,7 +361,9 @@ function drawVehicle(ctx, vehicle) {
   
   // Draw trail from position history
   const history = vehicle.positionHistory || [];
-  if (history.length > 1) {
+  if (vehicle.type === 'FERRY') {
+    window.MR_FERRY_WAKE.draw(ctx,vehicle.wake,projectToCanvas,Date.now());
+  } else if (history.length > 1) {
     ctx.lineCap = 'round';
     ctx.lineJoin = 'round';
     
@@ -520,7 +523,9 @@ async function updateVehicles() {
       
       newPositions.forEach(v => {
         const existing = existingMap.get(v.id);
-        if (existing) {
+        const jump=existing && v.type==='FERRY' && window.MR_FERRY_WAKE.jumped(existing,v,v.timestamp-existing.timestamp);
+        if (existing && !jump) {
+          if(v.type==='FERRY')v.wake=existing.wake;
           // Preserve display position for interpolation
           v.displayLng = existing.displayLng ?? existing.lng;
           v.displayLat = existing.displayLat ?? existing.lat;
@@ -557,6 +562,8 @@ async function updateVehicles() {
 
 // Smooth interpolation towards target position and record history
 function interpolateVehicles() {
+  const now=Date.now(),dt=lastFrameTime===null?1/60:Math.min(.25,Math.max(0,(now-lastFrameTime)/1000));
+  lastFrameTime=now;
   const speed = CONFIG.interpolationSpeed;
   vehicles.forEach(v => {
     if (v.displayLng !== undefined && v.displayLat !== undefined) {
@@ -565,8 +572,13 @@ function interpolateVehicles() {
       const prevLat = v.displayLat;
       
       // Lerp towards target
-      v.displayLng += (v.lng - v.displayLng) * speed;
-      v.displayLat += (v.lat - v.displayLat) * speed;
+      const factor=v.type==='FERRY' ? 1-Math.exp(-dt/2) : speed;
+      v.displayLng += (v.lng - v.displayLng) * factor;
+      v.displayLat += (v.lat - v.displayLat) * factor;
+      if(v.type==='FERRY') {
+        v.wake=window.MR_FERRY_WAKE.sample(v.wake,{lng:v.displayLng,lat:v.displayLat},now);
+        return;
+      }
       
       // Add to history frequently for smooth persistent trail
       if (!v.positionHistory) v.positionHistory = [];
@@ -622,6 +634,7 @@ async function startTrafikAnimation() {
 }
 
 function stopTrafikAnimation() {
+  lastFrameTime=null;
   generation++;starting=false;inFlight=false;runController?.abort();
   isTrafikAnimating = false;
   trafikCanvas.style.display = 'none';
