@@ -38,6 +38,7 @@ jobs:
           for branch in main lindholmen universeum; do
             (
               cd ".pages-$branch"
+              node scripts/test_street_life.cjs
               node scripts/test_ecom_lifecycle.cjs
               node scripts/test_session.cjs
               node scripts/test_session_connection.cjs
