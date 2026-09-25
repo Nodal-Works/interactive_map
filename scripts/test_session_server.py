@@ -1,6 +1,8 @@
 import importlib.util
 from pathlib import Path
 import sys
+import json
+import tempfile
 import unittest
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -13,6 +15,14 @@ class SessionServerTests(unittest.TestCase):
     def test_ports_are_distinct(self):
         config = configuration()
         self.assertEqual(4, len({config[name] for name in ('host', 'ecom', 'coolpaths', 'sam')}))
+
+    def test_explicit_client_url_is_preserved(self):
+        for url in ('https://operator.example/custom/client.html',
+                    'https://nodal-works.github.io/interactive_map/client.html'):
+            with tempfile.TemporaryDirectory() as directory:
+                path = Path(directory) / 'services.json'
+                path.write_text(json.dumps({'client_url': url}))
+                self.assertEqual(url, configuration(path)['client_url'])
 
     def test_service_allowlist(self):
         self.assertTrue(allowed_service('ecom', '/api/mr/layer', 'POST'))

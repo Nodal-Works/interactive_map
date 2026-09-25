@@ -1,5 +1,5 @@
 /* Static public configuration. Local service addresses never belong here. */
 window.MR_CONFIG = {
-  clientUrl: 'session/client.html',
+  clientUrl: 'https://nodal-works.github.io/interactive_map/lindholmen/client.html',
   peer: {}, // Optional PeerJS host/port/path/config.iceServers for a workshop network.
 };

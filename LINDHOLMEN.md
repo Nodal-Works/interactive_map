@@ -73,12 +73,12 @@ overrides. The prepared local preview uses host 8094 and CoolPaths 8011, separat
 from campus services. Street View segmentation requires the optional SAM service;
 Street View imagery uses the existing local API key.
 
-`python scripts/build_session_client.py` builds the allowlisted phone client in
-`dist/session-client`. This branch has a distinct client release so old main clients
-cannot silently omit Cultural Gravity. For physical phones, host that artifact
-and set `client_url` in `services.local.json` to its public HTTPS `client.html` URL.
-Until then, invitations use the local companion page, suitable for same-computer
-checks only. This update does not deploy a public client.
+The shared Pages workflow publishes this branch's phone client at
+https://nodal-works.github.io/interactive_map/lindholmen/client.html alongside main
+and Universeum. Its distinct release prevents incompatible clients from silently
+omitting Cultural Gravity. Commit and push host changes, verify the public
+`deployment-manifest.json`, then restart the host and scan a fresh invitation.
+See [publishing and phone verification](session/README.md#publishing).
 
 ## Verification
 
