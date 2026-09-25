@@ -28,15 +28,21 @@
       try {
         await new Promise((resolve,reject) => {
           const finish = error => {clearTimeout(timer);map.off('sourcedata',ready);map.off('error',failed);signal.removeEventListener('abort',cancel);error?reject(error):resolve();};
-          const ready = event => {if ((!event || event.sourceId===id) && map.getSource(id) && map.isSourceLoaded(id)) finish();};
+          // MapLibre also reports metadata and failed tiles as settled. Require an actual loaded tile.
+          let hasContent=false;
+          const ready = event => {
+            if(event?.sourceId!==id)return;
+            if(event.tile?.state==='loaded')hasContent=true;
+            if(hasContent && map.getSource(id) && map.isSourceLoaded(id))finish();
+          };
           const failed = event => {if (event.sourceId===id || event.source?.id===id) finish(Error('Map service unavailable'));};
           const cancel = () => finish(aborted());
           const timer=setTimeout(()=>finish(Error('Map service timed out. Retry or choose Next.')),this.timeout);
           map.on('sourcedata',ready);map.on('error',failed);signal.addEventListener('abort',cancel,{once:true});
           try {
             map.addSource(id,{type:'raster',tiles:[tileUrl(slide)],tileSize:256,attribution:slide.metadata?.source || ''});
-            map.addLayer({id,type:'raster',source:id,paint:{'raster-opacity':0,'raster-fade-duration':0}});
-            ready();
+            // A zero-opacity layer may not request tiles; keep it imperceptible while loading.
+            map.addLayer({id,type:'raster',source:id,paint:{'raster-opacity':0.001,'raster-fade-duration':0}});
           } catch(error) {finish(error);}
         });
         await new Promise((resolve,reject) => {

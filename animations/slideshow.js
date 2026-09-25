@@ -270,7 +270,7 @@ function animateTransition(oldMedia, newMedia, transitionType, duration = 500, o
     function animate(currentTime) {
       if (signal?.aborted) {resolve(); return;}
       const elapsed = currentTime - startTime;
-      transitionProgress = Math.min(elapsed / duration, 1);
+      transitionProgress = Math.max(0, Math.min(elapsed / duration, 1));
       
       applyTransition(oldMedia, newMedia, transitionProgress, transitionType, oldRotation, newRotation, oldFitMode, newFitMode);
       
@@ -345,7 +345,7 @@ function getUniquePropertyValues(geojson, propertyName) {
 function paintReveal(progress = 1) {
   if(!reveal)return;
   const {style,values,index}=reveal, visible=values.slice(0,index+1);
-  const filter=visible.length?['in',['get',style.colorProperty],['literal',visible]]:['==',1,0];
+  const filter=['in',['get',style.colorProperty],['literal',visible]];
   const opacity=max=>index<0?0:['case',['==',['get',style.colorProperty],values[index]],max*progress,max];
   for(const [id,geometry,property,alpha] of [
     ['slideshow-fill','Polygon','fill-opacity',style.fillOpacity ?? .5],
@@ -371,7 +371,7 @@ function animateReveal() {
     paint:{'line-color':state.style.colorMap[value],'line-width':0,'line-blur':3,'line-opacity':0}});
   const frame=now=>{
     if(reveal!==state || !isSlideShowActive || !map.getLayer('slideshow-glow'))return;
-    const progress=Math.min(1,(now-started)/800),glow=Math.sin(progress*Math.PI);
+    const progress=Math.max(0,Math.min(1,(now-started)/800)),glow=Math.sin(progress*Math.PI);
     paintReveal(Math.min(1,progress*2));
     map.setPaintProperty('slideshow-glow','line-width',glow*6);
     map.setPaintProperty('slideshow-glow','line-opacity',glow*.8);
@@ -606,8 +606,9 @@ async function startSlideshow() {
   isSlideShowActive=true;slideshowBtn?.classList.add('active');
   slideshowChannel.postMessage({type:'animation_state',animationId:'slideshow-btn',isActive:true});
   slideStatus='loading';slideError=null;broadcastSlideshowState(null);
-  slideshowConfig=await loadSlideshowConfig();
+  const loaded=await loadSlideshowConfig();
   if(revision!==startRevision || !isSlideShowActive)return;
+  slideshowConfig=loaded;
   if(!slideshowConfig.slides.length){stopSlideshow();showToast('No enabled slides found');return;}
   currentSlideIndex=0;resizeSlideshowCanvas();displaySlide(0);
 }

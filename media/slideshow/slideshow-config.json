@@ -204,7 +204,7 @@
       },
       "enabled": true,
       "verification": {
-        "date": "2026-09-24",
+        "date": "2026-09-25",
         "extent": "Chalmers campus",
         "result": "HTTP 200 image response with CORS; campus GetMap request"
       }
@@ -226,7 +226,7 @@
       },
       "enabled": true,
       "verification": {
-        "date": "2026-09-24",
+        "date": "2026-09-25",
         "extent": "Chalmers campus",
         "result": "HTTP 200 image response with CORS; campus GetMap request"
       }
@@ -248,7 +248,7 @@
       },
       "enabled": true,
       "verification": {
-        "date": "2026-09-24",
+        "date": "2026-09-25",
         "extent": "Chalmers campus",
         "result": "HTTP 200 image response with CORS; campus GetMap request"
       }
@@ -270,7 +270,7 @@
       },
       "enabled": true,
       "verification": {
-        "date": "2026-09-24",
+        "date": "2026-09-25",
         "extent": "Chalmers campus",
         "result": "HTTP 200 image response with CORS; campus GetMap request"
       }
@@ -292,7 +292,7 @@
       },
       "enabled": false,
       "verification": {
-        "date": "2026-09-24",
+        "date": "2026-09-25",
         "extent": "Chalmers campus",
         "result": "HTTP 200 image response with CORS; campus GetMap request"
       },
@@ -315,7 +315,7 @@
       },
       "enabled": false,
       "verification": {
-        "date": "2026-09-24",
+        "date": "2026-09-25",
         "extent": "Chalmers campus",
         "result": "HTTP 200 image response with CORS; campus GetMap request"
       },
@@ -338,7 +338,7 @@
       },
       "enabled": true,
       "verification": {
-        "date": "2026-09-24",
+        "date": "2026-09-25",
         "extent": "Chalmers campus",
         "result": "HTTP 200 image response with CORS; campus GetMap request"
       }
@@ -360,7 +360,7 @@
       },
       "enabled": false,
       "verification": {
-        "date": "2026-09-24",
+        "date": "2026-09-25",
         "extent": "Chalmers campus",
         "result": "HTTP 200 image response with CORS; campus GetMap request"
       },
@@ -383,7 +383,7 @@
       },
       "enabled": true,
       "verification": {
-        "date": "2026-09-24",
+        "date": "2026-09-25",
         "extent": "Chalmers campus",
         "result": "HTTP 200 image response with CORS; campus GetMap request"
       }
@@ -405,7 +405,7 @@
       },
       "enabled": false,
       "verification": {
-        "date": "2026-09-24",
+        "date": "2026-09-25",
         "extent": "Chalmers campus",
         "result": "HTTP 200 image response with CORS; campus GetMap request"
       },

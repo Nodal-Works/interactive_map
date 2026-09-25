@@ -14,7 +14,7 @@ class MapFixture {
  removeSource(id){this.sources.delete(id);}
  setPaintProperty(id,key,value){this.layers.get(id).paint[key]=value;}
  isSourceLoaded(id){return !!this.sources.get(id)?.loaded;}
- ready(id){this.sources.get(id).loaded=true;this.emit('sourcedata',{sourceId:id});}
+ ready(id){this.sources.get(id).loaded=true;this.emit('sourcedata',{sourceId:id,tile:{state:'loaded'}});}
 }
 (async()=>{
  const slide={type:'wms',wms:{url:'https://example.com/wms?existing=yes',layers:'a,b',version:'1.3.0'},metadata:{source:'Test source'}};
@@ -24,7 +24,7 @@ class MapFixture {
  let pending=raster.show(slide,job.signal,0);map.ready('slideshow-raster-1');await pending;
  assert.equal(map.layers.size,1);assert.equal(map.getLayer(raster.active).paint['raster-opacity'],1);
  const cancel=new AbortController();pending=raster.show(slide,cancel.signal,0);cancel.abort();await assert.rejects(pending,{name:'AbortError'});assert.equal(map.layers.size,1,'Cancelled source removed, previous retained');
- pending=raster.show(slide,new AbortController().signal,0);await assert.rejects(pending,/timed out/);assert.equal(map.layers.size,1);
+ pending=raster.show(slide,new AbortController().signal,0);map.sources.get('slideshow-raster-3').loaded=true;map.emit('sourcedata',{sourceId:'slideshow-raster-3',sourceDataType:'content'});await assert.rejects(pending,/timed out/);assert.equal(map.layers.size,1);
  pending=raster.show(slide,new AbortController().signal,0);map.emit('error',{sourceId:'slideshow-raster-4'});await assert.rejects(pending,/unavailable/);
  pending=raster.show(slide,new AbortController().signal,0);map.ready('slideshow-raster-5');await pending;assert.equal(map.layers.size,1);assert.ok(!map.getSource('slideshow-raster-1'));
  raster.clear();assert.equal(map.sources.size,0);assert.equal(map.layers.size,0);

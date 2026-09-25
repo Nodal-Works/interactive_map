@@ -19,6 +19,7 @@ const flush=async()=>{for(let i=0;i<15;i++)await Promise.resolve();};
 (async()=>{
  const f=fixture();await f.run('startSlideshow()');await flush();assert.equal(f.state().status,'ready');assert.equal(f.state().categoryIndex,-1);
  f.run("categoryControl('category_next')");assert.equal(f.state().category,'housing');
+ const [firstId,firstFrame]=[...f.frames.entries()].at(-1);f.frames.delete(firstId);firstFrame(-5);assert.ok(f.layers.get('slideshow-glow').paint['line-width']>=0,'A frame timestamp preceding performance.now cannot produce negative paint values');
  f.run("categoryControl('category_next')");assert.equal(f.state().category,'school');
  f.run("categoryControl('category_next')");assert.equal(f.state().categoryIndex,1,'Clamped at final category');
  f.run("categoryControl('category_previous')");assert.equal(f.state().categoryIndex,0);

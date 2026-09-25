@@ -781,8 +781,8 @@ function updateDashboard(targetId) {
                     We want this space to be a place to test and ask questions about complex data communication and also inspire a new form of data story telling and research.
                 </p>
                 <div style="margin-top: 1.5rem; display: flex; justify-content: center; align-items: center;">
-                    <img src="media/chalmers_logo.png" style="height: 40px; margin-right: 20px; opacity: 0.8;">
-                    <img src="media/dtcc_logo.png" style="height: 70px; opacity: 0.8;">
+                    <img src="${window.APP_CONFIG.images.chalmers}" style="height: 40px; margin-right: 20px; opacity: 0.8;">
+                    <img src="${window.APP_CONFIG.images.dtcc}" style="height: 70px; opacity: 0.8;">
                 </div>
             </div>
             <div class="dashboard-card">
@@ -791,7 +791,7 @@ function updateDashboard(targetId) {
                     Help us improve! Scan the QR code to share your feedback.
                 </p>
                 <div style="display: flex; justify-content: center; align-items: center;">
-                    <img src="media/survey_qr.png" style="width: 300px; height: 300px; border-radius: 8px;">
+                    <img src="${window.APP_CONFIG.images.survey}" style="width: 300px; height: 300px; border-radius: 8px;">
                 </div>
             </div>
         `;
@@ -1788,7 +1788,8 @@ channel.onmessage = (event) => {
         };
         // Update dashboard if slideshow is the active layer
         const slideshowBtn = document.querySelector('.control-btn[data-target="slideshow-btn"]');
-        if (slideshowBtn && slideshowBtn.classList.contains('active')) {
+        if (slideshowBtn?.getAttribute('aria-current') === 'true' || document.body.dataset.layer === 'slideshow-btn') {
+            updateMetadata('slideshow-btn');
             updateSlideshowDashboard();
         }
     } else if (data.type === MSG_TYPES.SLIDESHOW_LEGEND_HIGHLIGHT) {

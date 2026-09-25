@@ -82,7 +82,7 @@ function updateSlideshowDashboard() {
                         <span class="material-icons">chevron_left</span> Previous
                     </button>
                     <div style="padding: 0 1rem; text-align: center;">
-                        <div style="font-size: 1.5rem; font-weight: 600; color: #1f2937;">${slideNum} / ${totalSlides}</div>
+                        <div style="font-size: 1.5rem; font-weight: 600; color: inherit;">${slideNum} / ${totalSlides}</div>
                         <div style="font-size: 0.75rem; color: #6b7280;">Slide</div>
                     </div>
                     <button id="slideshow-next-btn" class="modern-btn" style="flex: 1;">
@@ -117,10 +117,10 @@ function updateSlideshowDashboard() {
                     <span class="material-icons" style="font-size: 18px;">info</span>
                     Current Slide
                 </div>
-                ${meta.title ? `<div style="font-size: 1.1rem; font-weight: 600; color: #1f2937; margin-bottom: 0.5rem;">${meta.title}</div>` : ''}
+                ${meta.title ? `<div style="font-size: 1.1rem; font-weight: 600; color: inherit; margin-bottom: 0.5rem;">${meta.title}</div>` : ''}
                 ${meta.description ? `<p class="info-text" style="margin-bottom: 0.75rem;">${meta.description}</p>` : ''}
                 ${meta.source ? `<p style="font-size: 0.8rem; color: #9ca3af; font-style: italic;">Source: ${meta.source}</p>` : ''}
-                ${slideshowState.slideType ? `<div style="margin-top: 0.5rem;"><span style="background: #e5e7eb; padding: 2px 8px; border-radius: 4px; font-size: 0.75rem; text-transform: uppercase;">${slideshowState.slideType}</span></div>` : ''}
+                ${slideshowState.slideType ? `<div style="margin-top: 0.5rem;"><span style="background: #244256; color: #d8edfb; padding: 2px 8px; border-radius: 4px; font-size: 0.75rem; text-transform: uppercase;">${slideshowState.slideType}</span></div>` : ''}
             </div>
         </div>
     `;

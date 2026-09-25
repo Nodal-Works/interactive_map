@@ -434,3 +434,113 @@ database and any credentials must remain in the EPC Browser environment.
 ## Licence
 
 This project is part of the ACE MR Studio research initiative at Chalmers University of Technology.
+
+## Shared frontend configuration and presentation layers
+
+[`app-config.js`](app-config.js) is the public configuration shared by the campus
+map, launcher, desktop controller and phone client. It contains branding, area
+bounds, Sun Study location, bird sensors, physical table dimensions, asset-path
+mappings, disabled layer IDs and transit settings. Change the **values** in the
+asset map to redirect existing modules to another dataset. Credentials remain in
+the ignored `trafik-config.json`; local service addresses remain in service
+configuration. Public configuration is included in the phone build.
+
+Calibration is resolved locally through `calibration-config.js`: the existing
+`map-calibration.json` supplies the project default, with the configured fallback
+used if that file is unavailable. A selected saved preset takes precedence; an
+overwritten default applies when no preset is selected. Choosing **Original
+Calibration** restores the project default. Existing storage keys and saved
+presets are retained, and their dimensions now also drive the display overlays.
+The calibration resolver, saved presets and calibration JSON are excluded from
+the published phone artifact.
+
+This is a campus-ready frontend foundation, not an area selector. Changing it
+does **not** regenerate CoolPaths products, EPC exports or ECOM backend datasets.
+Those still require their own preparation workflows.
+
+### Presenting map layers
+
+The slideshow retains its local slides and adds six enabled geographic context
+slides: current aerial imagery, infrared imagery, historical aerials around
+1960 and 1975, terrain hillshade and property boundaries. Slope, hydrography and
+two topographic styles are defined with `enabled: false` as optional additions.
+Edit `media/slideshow/slideshow-config.json` to enable or reorder them. Automatic
+slide advancement is off by default.
+
+WMS slides use `type: "wms"` and a `wms` object containing `url`, `layers`,
+`version` and `format`. ArcGIS slides use `type: "arcgis"` and an `arcgis` object
+containing the MapServer `url`, layer IDs in `layers`, and optional `format`.
+Both are rendered in EPSG:3857 without changing the calibrated camera. Put the
+source credit in `metadata.source`. Services must permit browser CORS requests.
+
+A raster slide waits up to 12 seconds for source content. Unavailable slides show
+an error with **Retry** and **Next**; they do not loop automatically through
+failing services. Navigating or stopping cancels pending loads and transitions.
+The curated services returned images with CORS enabled for the campus extent
+during this port; availability depends on the external providers.
+
+Styled GeoJSON slides reveal categories in the order of `metadata.style.colorMap`.
+They begin unrevealed and reset when re-entered. The desktop and phone controls
+provide **Previous category**, **Next category**, **Show all**, **Auto reveal**
+and **Pause reveal**, alongside separate slide navigation. Manual category input
+stops automatic reveal; reaching either end does not change slides.
+
+- **Left / Right:** categories on categorical slides, otherwise slides.
+- **Shift + Left / Right:** previous / next slide regardless of category progress.
+- **Escape:** stop. Shortcuts are ignored while typing.
+
+The host broadcasts authoritative category/progress, loading and playback state.
+Phones receive only compact control state for the open slideshow, retaining their
+input-only role and synchronizing again after reconnection. The existing
+`slideshow_control` actions remain supported; additional actions are `retry`,
+`category_next`, `category_previous`, `show_all`, `auto_reveal` and `pause_reveal`.
+
+### Ferries and transit updates
+
+Transit now enables buses, trams and ferries, polling every 10 seconds with one
+request in flight. Rate-limit responses honor `Retry-After` (seconds or HTTP date),
+with a 30-second fallback. Temporary failures preserve the last vehicles; stopping
+cancels the active request and prevents late results from restarting the layer.
+Explicit bounds in the local transit configuration still override the shared
+area bounds. The campus view is not expanded to include ferry routes.
+
+Ferries have time-based, curved wakes with subtle spreading arms and cross-ripples.
+Geographic history is sampled at 10 Hz, capped at 202 points and aged out after
+20 seconds. Wakes fade when stopped, reset across implausible jumps and track map
+zoom/bearing. Other vehicle trail styles are retained.
+
+### Port verification
+
+Run focused checks from the repository root:
+
+```sh
+node scripts/test_app_config.cjs
+node scripts/test_slideshow.cjs
+node scripts/test_slideshow_raster.cjs
+node scripts/test_transit.cjs
+node scripts/test_ferry_wake.cjs
+node scripts/test_session.cjs
+node scripts/test_session_connection.cjs
+python3 scripts/build_session_client.py
+```
+
+Phone controls require rebuilding and publishing the phone client to become
+available at its public URL; this port only builds that artifact locally.
+
+The existing CFD numerical/visual, DEM/stormwater, ECOM lifecycle and session
+server checks also cover the shared configuration changes. The browser suites
+use the same `MR_TEST_URL`, `MR_PLAYWRIGHT` and `MR_BROWSER` settings documented
+in the session guide. Run a real host (`python3 host_server.py 8093`) for session
+checks; a plain static server does not provide the invitation API.
+
+```sh
+MR_TEST_URL=http://127.0.0.1:8093 node scripts/test_presentation_browser.cjs
+# Optional external-service verification, requiring internet access:
+MR_TEST_URL=http://127.0.0.1:8093 node scripts/test_presentation_browser.cjs --live
+MR_TEST_URL=http://127.0.0.1:8093 MR_TEST_TRANSPORT=memory node scripts/test_session_browser.cjs
+```
+
+The presentation suite covers desktop categories, WMS/ArcGIS rendering, retry,
+unchanged camera and cleanup. The session suite includes phone reveals, automatic
+playback, reload synchronization and the existing multi-user flows. Ferry visual
+checks use synthetic tracks, avoiding reliance on live ferries entering campus.
