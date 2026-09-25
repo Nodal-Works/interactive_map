@@ -277,8 +277,17 @@ function getPointAlongPath(path, progress) {
   return {
     lng: p1[0] + (p2[0] - p1[0]) * segmentProgress,
     lat: p1[1] + (p2[1] - p1[1]) * segmentProgress,
-    angle: path.segmentAngles[i] // Pre-calculated angle - zero computation!
+    angle: path.segmentAngles[i], // Pre-calculated geographic angle
+    segmentIndex: i
   };
+}
+
+// Use the projected road tangent so headlights follow travel under calibration,
+// map rotation and pitch. The vehicle renderers point forward along local +X.
+function getScreenPathAngle(path, point) {
+  const start = map.project(path.coords[point.segmentIndex]);
+  const end = map.project(path.coords[point.segmentIndex + 1]);
+  return Math.atan2(end.y - start.y, end.x - start.x);
 }
 
 // Spawn a new car - with smart spawning based on road hierarchy
@@ -468,7 +477,7 @@ function drawEmergencyVehicle(ctx, pos, angle, vehicle) {
   ctx.save();
   ctx.translate(pos.x, pos.y);
   
-  const finalAngle = vehicle.direction === 1 ? angle + Math.PI : angle;
+  const finalAngle = angle + (vehicle.direction < 0 ? Math.PI : 0);
   ctx.rotate(finalAngle);
   
   // Determine which light is on (alternating red/blue)
@@ -1023,7 +1032,7 @@ function drawStreetLife() {
     
     if (!isOnScreen(pos, width, height)) return;
     
-    const screenAngle = -point.angle + mapBearing;
+    const screenAngle = getScreenPathAngle(v.path, point);
     
     if (v.type === 'car') {
       drawFastLight(streetLifeCtx, pos, screenAngle, v.colors.body, 25, 8, v.direction);
@@ -1042,7 +1051,7 @@ function drawStreetLife() {
     if (ePoint) {
       const ePos = projectToStreetLifeCanvas(ePoint.lng, ePoint.lat);
       if (isOnScreen(ePos, width, height)) {
-        const eAngle = -ePoint.angle + mapBearing;
+        const eAngle = getScreenPathAngle(emergencyVehicle.path, ePoint);
         drawEmergencyVehicle(streetLifeCtx, ePos, eAngle, emergencyVehicle);
       }
     }
@@ -1259,7 +1268,7 @@ function drawFastLight(ctx, pos, angle, color, length, width, direction = 1) {
   ctx.save();
   ctx.translate(pos.x, pos.y);
   
-  const finalAngle = direction === 1 ? angle + Math.PI : angle;
+  const finalAngle = angle + (direction < 0 ? Math.PI : 0);
   ctx.rotate(finalAngle);
   
   // Headlight Beam (single gradient cone — replaces halo + beam)
