@@ -37,6 +37,11 @@
       ['comfort-raster','Show comfort on table','checkbox','showRaster','show_raster',true],
       ['comfort-streets','Show streets on table','checkbox','showStreets','show_streets',true]
     ],actions:[['Clear route','clear_route'],['Play tour','tour_play'],['Pause tour','tour_pause'],['Previous','tour_back'],['Next','tour_next'],['End tour','tour_end']]},
+    'artwork-btn':{state:'artwork',type:'artwork_control',fields:[
+      ['artwork-lens','Magnifier on dashboard','checkbox','lensEnabled','set_lens',false],
+      ['artwork-pin','Pin magnifier','checkbox','lensPinned','pin_lens',false],
+      ['artwork-zoom','Magnification','range','zoom','set_zoom',2,6,.25,3,'×']
+    ],actions:[['Back','previous'],['Next','next'],['Replay','restart'],['Show all','show_all'],['Retry','retry']]},
     'cultural-gravity-btn':{type:'cultural_gravity_control',actions:[['Advance sequence','advance']]},
     'bird-sounds-btn':{type:'bird_control',fields:[['bird-volume','Volume','range','volume','set_volume',0,1,.1,.5,'']],actions:[['Stop sounds','stop_all']]},
     'slideshow-btn':{state:'slideshow',type:'slideshow_control',actions:[['Previous slide','previous'],['Next slide','next'],['Previous category','category_previous'],['Next category','category_next'],['Show all','show_all'],['Auto reveal','auto_reveal'],['Pause reveal','pause_reveal'],['Retry','retry'],['Stop','stop']]},
@@ -48,6 +53,7 @@
     open(layer){
       this.definition=definitions[layer.id]||{};this.layer=layer.id;this.inputs=[];this.element.replaceChildren();
       const lead=document.createElement('p');lead.className='control-note';lead.textContent=layer.tool?'Use Map to place your input. See the result on the table.':'See and hear the result on the table.';this.element.append(lead);
+      if(this.layer==='artwork-btn'){this.artworkStatus=document.createElement('p');this.artworkStatus.setAttribute('role','status');this.element.append(this.artworkStatus);}
       if(this.layer==='slideshow-btn'){this.slideStatus=document.createElement('p');this.slideStatus.setAttribute('role','status');this.element.append(this.slideStatus);}
       const advanced=document.createElement('details'),summary=document.createElement('summary');summary.textContent='More settings';advanced.append(summary);
       for(const field of this.definition.fields||[]){
@@ -78,6 +84,15 @@
         input.disabled=!canEdit||(input.id==='isovist-fov'&&values.humanFov===false);
       }
       for(const button of this.element.querySelectorAll('button'))button.disabled=!canEdit;
+      if(this.layer==='artwork-btn') {
+        for(const {input}of this.inputs){input.disabled ||= !values.isActive||values.loading||!!values.error||(input.id!=='artwork-lens'&&!values.lensEnabled);}
+        this.artworkStatus.textContent=values.error|| (values.loading?'Preparing artwork…':!values.isActive?'Turn on Artwork to begin':values.chapter===8?'All seven artworks':values.chapter?`Artwork ${values.chapter} / 7`:'The drawing');
+        for(const button of this.element.querySelectorAll('[data-action]')){
+          const action=button.dataset.action;
+          button.hidden=action==='retry'&&!values.error;
+          button.disabled=!canEdit||!values.isActive||values.loading||!!values.error&&action!=='retry'||values.transitioning&&['next','previous'].includes(action)||action==='next'&&values.chapter===8||action==='previous'&&values.chapter===0;
+        }
+      }
       if(this.layer==='slideshow-btn') {
         this.slideStatus.textContent=[values.title,values.totalSlides ? `Slide ${values.currentIndex+1} / ${values.totalSlides}` : '',values.status==='loading'?'Loading…':values.error || '',values.categoryCount?`${values.category || 'Ready to reveal'} · ${values.categoryIndex+1} / ${values.categoryCount} categories`:''].filter(Boolean).join(' · ');
         for(const button of this.element.querySelectorAll('[data-action]')) {

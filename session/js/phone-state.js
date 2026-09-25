@@ -16,6 +16,18 @@
     const entry=settings[focus?.layer];
     if(entry){const[name,keys]=entry;result[name]=pick(state[name],keys.split(' '));
       if(name==='thermal'&&result.thermal.tour)result.thermal.tour=pick(result.thermal.tour,['open','playing','step','layer']);}
+    if(focus?.layer==='artwork-btn') {
+      const art=(state.messages||[]).find(m=>m.type==='artwork_state');
+      if(art){
+        result.artwork={...pick(art,['isActive','chapter','transitioning','loading','error']),lensEnabled:!!art.lens?.enabled,lensPinned:!!art.lens?.pinned,zoom:art.lens?.zoom||3};
+        // Only the small render recipe travels over the connection. Original
+        // vectors load locally from the companion bundle, never as image frames.
+        if(focus.tab==='controls')result.messages=[{
+          ...pick(art,['type','isActive','chapter','fromChapter','transitioning','startedAt','reducedMotion','loading','error','hover','previousHover','hoverStartedAt','sentAt']),
+          lens:pick(art.lens,['enabled','pinned','x','y','zoom','diameter','span','changedAt'])
+        }];
+      }
+    }
     if(focus?.layer==='slideshow-btn') {
       const slide=(state.messages || []).find(m=>m.type==='slideshow_update');
       if(slide) result.slideshow={...pick(slide,['isActive','currentIndex','totalSlides','status','error','categoryIndex','categoryCount','category','autoReveal']),title:slide.metadata?.title || ''};

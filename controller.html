@@ -6,7 +6,7 @@
     <title>Map Controller</title>
     <script src="session/runtime.js"></script>
     <script src="session/js/services.js"></script>
-    <script src="session/js/dashboard-bridge.js?v=20260925-lindholmen-1"></script>
+    <script src="session/js/dashboard-bridge.js?v=20260925-lindholmen-artwork-3"></script>
     <link rel="stylesheet" href="style.css?v=20260922-tour-fixed-view" />
     <link rel="stylesheet" href="controller/ecom-controls.css" />
     <link href="https://fonts.googleapis.com/icon?family=Material+Icons" rel="stylesheet">
@@ -808,6 +808,7 @@
     <script src="app-config.js"></script>
     <script src="app-config-runtime.js"></script>
     <script src="calibration-config.js"></script>
+    <link rel="stylesheet" href="controller/artwork.css?v=20260925-lindholmen-artwork-3">
 </head>
 <body>
     <header>
@@ -851,6 +852,7 @@
             <button class="control-btn animation-btn" data-action="click" data-target="isovist-btn" title="Interactive Isovist">
                 <span class="material-icons">visibility</span>
             </button>
+            <button class="control-btn" data-target="artwork-btn" data-action="click" title="Artwork" aria-label="Artwork"><span class="material-icons" aria-hidden="true">palette</span></button>
             <button class="control-btn" data-target="cultural-gravity-btn" data-action="click" title="Cultural Gravity" aria-label="Cultural Gravity">◎</button>
 <button class="control-btn animation-btn" data-action="click" data-target="bird-sounds-btn" title="Bird Sounds">
                 <svg width="24" height="24" viewBox="0 0 24 24" fill="currentColor" stroke="none" style="width: 24px; height: 24px;">
@@ -1010,15 +1012,17 @@
     <script src="controller/tour.js"></script>
     <script src="controller/bg-animation.js"></script>
     <script src="ecom-palette.js"></script>
-    <script src="controller/ecom-controls.js?v=20260925-lindholmen-1"></script>
+    <script src="controller/ecom-controls.js?v=20260925-lindholmen-artwork-3"></script>
     <script src="controller/ecom-dashboard.js"></script>
     <script src="animations/coolpaths-guide.js?v=20260922-tour-fixed-view"></script>
     <script src="animations/cfd-core.js"></script>
     <script src="animations/cfd-visuals.js"></script>
-    <script src="controller.js?v=20260925-lindholmen-1"></script>
-    <link rel="stylesheet" href="session/css/desktop.css?v=20260925-lindholmen-1">
-    <script src="session/js/shared.js?v=20260925-lindholmen-1"></script>
-    <script src="session/js/desktop.js?v=20260925-lindholmen-1"></script>
+    <script src="animations/artwork-core.js?v=20260925-lindholmen-artwork-3"></script>
+    <script src="controller/artwork-dashboard.js?v=20260925-lindholmen-artwork-3"></script>
+    <script src="controller.js?v=20260925-lindholmen-artwork-3"></script>
+    <link rel="stylesheet" href="session/css/desktop.css?v=20260925-lindholmen-artwork-3">
+    <script src="session/js/shared.js?v=20260925-lindholmen-artwork-3"></script>
+    <script src="session/js/desktop.js?v=20260925-lindholmen-artwork-3"></script>
     
     <!-- Auto-fullscreen when launched from launcher -->
     <script>

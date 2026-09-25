@@ -27,10 +27,13 @@ def build():
         if path.suffix in ('.js', '.css') and path.name != 'manual-calibration.js':
             copy(str(path.relative_to(ROOT)))
     for relative in ('app-config.js', 'app-config-runtime.js', 'controller.js', 'style.css', 'ecom-palette.js', 'animations/coolpaths-guide.js',
-                     'animations/cfd-core.js', 'animations/cfd-visuals.js', 'media/chalmers_logo.png',
+                     'animations/artwork-core.js', 'animations/cfd-core.js', 'animations/cfd-visuals.js', 'media/chalmers_logo.png',
                      'media/dtcc_logo.png', 'media/survey_qr.png',
                      'media/logo-InfraVis-lightTextimage.png', 'media/logo-gbg.svg'):
         copy(relative)
+    for path in (ROOT / 'media/artwork').glob('*'):
+        if path.suffix in ('.svg', '.json'):
+            copy(str(path.relative_to(ROOT)))
     controller = (ROOT / 'controller.html').read_text()
     controller = re.sub(r'\s*<script src="calibration-config\.js"></script>', '', controller)
     controller = re.sub(r'\s*<script src="(?:controller/manual-calibration|session/js/desktop|session/runtime)\.js(?:\?[^"]*)?"></script>', '', controller)

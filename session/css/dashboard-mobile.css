@@ -47,3 +47,23 @@ body{background:#f5f7fa!important;color:#172b3a!important}
 .ecom-roof.is-on .ecom-roof-kw,.ecom-roof-tag{color:#665500!important}.ecom-cp-kw{color:#086b57!important}
 .ecom-roofs,.ecom-roof,.ecom-ctl-members,.ecom-ctl-member{border-color:#cbd5e1!important}
 .ecom-roof input[type=range]{accent-color:#857000}
+
+/* Artwork retains the artist's black ground inside the companion viewer. */
+body[data-layer="artwork-btn"],body[data-layer="artwork-btn"] #main-panel,body[data-layer="artwork-btn"] #dashboard-section {background:#090a09!important;color:#ece6d9!important}
+body[data-layer="artwork-btn"] #main-panel {padding:12px!important}
+body[data-layer="artwork-btn"] #artwork-dashboard {padding:8px 0 18px;gap:10px;min-height:0}
+body[data-layer="artwork-btn"] #main-panel h2 {color:#ece6d9!important;font-size:24px}
+body[data-layer="artwork-btn"] #main-panel p,body[data-layer="artwork-btn"] #main-panel label {color:#a69e8c!important}
+body[data-layer="artwork-btn"] #main-panel button {background:#1d1d18!important;color:#e6d6b5!important;border-color:#514b3d!important;min-height:44px}
+body[data-layer="artwork-btn"] .artwork-view-wrap {height:auto;aspect-ratio:3370/2384;width:100%;max-width:600px}
+body[data-layer="artwork-btn"] .lens-active .artwork-view-wrap {width:min(100%,420px);aspect-ratio:1;height:auto}
+body[data-layer="artwork-btn"] .artwork-dashboard-controls {gap:6px}
+body[data-layer="artwork-btn"] .artwork-zoom {width:min(100%,310px);gap:8px}
+body[data-layer="artwork-btn"] .artwork-zoom input {flex:1;min-width:60px;width:auto!important}
+body[data-layer="artwork-btn"] .artwork-credit {font-size:10px;line-height:1.6}
+body[data-layer="artwork-btn"] .artwork-navigator-wrap {width:min(100%,280px)}
+#artwork-navigator {display:block;width:100%;height:auto;aspect-ratio:3370/2384;background:#000;border:1px solid #484333;border-radius:6px;touch-action:none;cursor:crosshair}
+#artwork-navigator:focus-visible {outline:2px solid #ecd099;outline-offset:3px}
+#artwork-navigator[aria-disabled="true"] {cursor:default;touch-action:auto;opacity:.6}
+#artwork-navigator-hint {font-size:10px;margin:5px 0 0}
+body.mr-readonly #artwork-navigator {pointer-events:none;touch-action:auto}

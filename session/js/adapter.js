@@ -41,6 +41,7 @@
   }
   function setLayer(layer, enabled) {
     if (!(layer in active) || typeof enabled !== 'boolean') throw Error('Unknown layer');
+    if (layer !== 'artwork-btn' && enabled && window.artworkAnimation?.isActive()) window.artworkAnimation.stop(layer);
     if (layer === 'ecom-energy-btn') {
       if (!window.ecomEnergyLayer) throw Error('ECOM is still starting. Please try again.');
       return window.ecomEnergyLayer.setEnabled(enabled);
@@ -83,6 +84,6 @@
   window.addEventListener('resize', () => { transformRevision++; window.dispatchEvent(new Event('mr-transform')); });
   setTimeout(() => {
     for (const data of [{type:'cfd_control',action:'get_state'}, {type:'thermal_control',action:'request_state'},
-      {type:'cultural_gravity_control',action:'request_state'}, {type:'bird_control',action:'request_status'}, {type:'slideshow_control',action:'request_status'}, {type:'ecom_request_summary'}]) channel.postMessage(data);
+      {type:'artwork_control',action:'request_state'}, {type:'cultural_gravity_control',action:'request_state'}, {type:'bird_control',action:'request_status'}, {type:'slideshow_control',action:'request_status'}, {type:'ecom_request_summary'}]) channel.postMessage(data);
   }, 1200);
 })();

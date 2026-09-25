@@ -112,6 +112,7 @@ const ANIMATION_BUTTONS = [
     'grid-animation-btn',
     'isovist-btn',
     'cultural-gravity-btn',
+    'artwork-btn',
     'bird-sounds-btn',
     'campus-demo-btn',
     'fcc-demo-btn',
@@ -137,6 +138,8 @@ function isAnimationButton(targetId) {
 
 // Called when we receive actual state from the main window
 function setAnimationState(targetId, isActive, follow = true) {
+    // Artwork publishes a richer authoritative snapshot, also on reconnection.
+    if (targetId === 'artwork-btn' && window.ArtworkDashboard?.getState()) isActive = window.ArtworkDashboard.getState().isActive;
     const newlyActive = isActive && !activeAnimations.includes(targetId);
     if (isActive) {
         if (!activeAnimations.includes(targetId)) {
@@ -202,6 +205,7 @@ statusText.textContent = 'Connected';
 
 // Function to show welcome screen
 function showWelcome() {
+    window.ArtworkDashboard?.hide();
     welcomeScreen.classList.remove('hidden');
     // Home changes navigation only; retain authoritative layer state.
     syncAnimationButtonStates();
@@ -519,6 +523,8 @@ function updateThermalDashboard() {
 }
 
 function updateDashboard(targetId) {
+    if (targetId === 'artwork-btn' && document.getElementById('artwork-dashboard')) { window.ArtworkDashboard.show(); return; }
+    if (targetId !== 'artwork-btn') window.ArtworkDashboard?.hide();
     if (targetId !== 'thermal-comfort-btn' && thermalComfortState.tour?.playing) {
         channel.postMessage({ type: 'thermal_control', action: 'tour_pause' });
     }
@@ -559,6 +565,7 @@ function updateDashboard(targetId) {
         samSection.style.display = 'none';
     }
 
+    if (targetId === 'artwork-btn') { window.ArtworkDashboard.show(); return; }
     if (targetId === 'cultural-gravity-btn') {
         dashboardContent.innerHTML = '<div class="dashboard-card"><h3>Cultural Gravity</h3><p>Advance once to reveal cultural places, then again after the reveal to start their gravity flow.</p><button id="cultural-advance" class="modern-btn">Advance sequence →</button><p>Keyboard: Right Arrow</p></div>';
         legendContent.innerHTML = '<p>Cultural places in Lindholmen attract animated particles. Site names and the original sequence are preserved.</p>';
@@ -1966,6 +1973,10 @@ function updateMetadata(layerId) {
                     </div>
                 </div>
             `;
+            break;
+        case 'artwork-btn':
+            name = 'Artwork';
+            desc = 'Artwork and visibility studies by Vishvi Rajakaruna. Click to reveal, or magnify the architectural drawing.';
             break;
         case 'cultural-gravity-btn':
             name = 'Cultural Gravity';

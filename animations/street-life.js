@@ -1523,6 +1523,7 @@ function isAnyVisualizationActive() {
   if (window.MR_ADAPTER?.active['canvas-btn']) return true;
   // Check for active/toggled-on/toggled-off buttons
   const activeButtons = [
+    'artwork-btn',
     'cfd-simulation-btn',
     'canvas-btn',
     'thermal-comfort-btn',

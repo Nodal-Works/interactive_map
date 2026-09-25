@@ -1,7 +1,7 @@
 const assert=require('node:assert/strict');
 const fs=require('node:fs'),vm=require('node:vm');
 const MR=require('../session/js/shared.js');
-assert.equal(MR.LAYERS.length,15);
+assert.equal(MR.LAYERS.length,16);
 for(const message of [{type:'calibrate_action',action:'pan_up'},{type:'control_action',target:'calibrate-btn'}, {type:'reset_view'}, {type:'cfd_control',action:'arbitrary'}, {type:'sun_control',action:'set_date',value:'invalid'}, {type:'isovist_control',action:'set_radius',value:Infinity}])assert.equal(MR.validControl(message),false);
 assert.equal(MR.validControl({type:'cfd_control',action:'set_wind_speed',value:5}),true);
 const alice={id:'alice',name:'Alice'},bob={id:'bob',name:'Bob'},host={id:'host',name:'Host'},objects=[];

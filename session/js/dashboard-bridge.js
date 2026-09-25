@@ -39,7 +39,7 @@
     currentLayer=layer;document.body.dataset.layer=layer;
     if(typeof stopTour==='function')stopTour();
     updateMetadata(layer);updateDashboard(layer);
-    for(const key of [...delivered.keys()])if(/^(cfd_state|thermal_state|sun_state|isovist_state|epc_building_selected|isovist_stats)/.test(key))delivered.delete(key);
+    for(const key of [...delivered.keys()])if(/^(artwork_state|cfd_state|thermal_state|sun_state|isovist_state|epc_building_selected|isovist_stats)/.test(key))delivered.delete(key);
     if(lastState)update(lastState);
   }
   function update(message){

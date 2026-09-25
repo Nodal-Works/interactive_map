@@ -195,7 +195,8 @@
       }
       else throw Error('Unknown session action');
       seen.add(key); if (seen.size>10000) seen.delete(seen.values().next().value);
-      if (message.type !== 'canvas') record(message.type,person,message.type === 'control' ? {type:message.message.type,action:message.message.action,value:message.message.value} : {layer:message.layer,enabled:message.enabled,x:message.x,y:message.y});
+      const artworkCursor=message.type==='control'&&message.message?.type==='artwork_control'&&message.message.action==='set_lens_position';
+      if (message.type !== 'canvas'&&!artworkCursor) record(message.type,person,message.type === 'control' ? {type:message.message.type,action:message.message.action,value:message.message.value} : {layer:message.layer,enabled:message.enabled,x:message.x,y:message.y});
       person.send({type:'ack',actionId:message.actionId}); publish();
     } catch(error) {person.send({type:'error',requestId:message.requestId,actionId:message.actionId,text:error.message});}
   }

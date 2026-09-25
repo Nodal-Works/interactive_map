@@ -57,10 +57,12 @@
     if(next!=='map')exitExpandedMap();
     tab=next;document.body.classList.toggle('map-open',tab==='map');$('controls-tab').setAttribute('aria-selected',String(tab==='controls'));$('map-tab').setAttribute('aria-selected',String(tab==='map'));
     $('controls-view').hidden=tab!=='controls';$('map-view').hidden=tab!=='map';
-    const ecom=layer.id==='ecom-energy-btn'&&tab==='controls';
-    $('dashboard').hidden=!ecom;$('phone-controls').hidden=ecom||layer.id==='canvas-btn';
-    if(ecom&&!$('dashboard').getAttribute('src'))$('dashboard').src=dashboardUrl.href;
-    else if(!ecom&&$('dashboard').getAttribute('src')){unloadDashboard();}
+    const rich=['ecom-energy-btn','artwork-btn'].includes(layer.id)&&tab==='controls';
+    $('dashboard').hidden=!rich;$('phone-controls').hidden=rich||layer.id==='canvas-btn';
+    $('dashboard').title=layer.name+' controls and viewer';
+    if(rich&&!$('dashboard').getAttribute('src'))$('dashboard').src=dashboardUrl.href;
+    else if(!rich&&$('dashboard').getAttribute('src')){unloadDashboard();}
+    else if(rich&&frameReady){frame({type:'open-layer',layer:layer.id});syncFrame();}
     if(tab==='map'){
       if(!mapView){
         mapView=new MR_MAP.CompanionMap({element:$('phone-map'),send,identity:()=>({id:identity.id,canEdit:canEdit()&&!!state?.layers[layer.id]})});
@@ -168,7 +170,7 @@
   window.addEventListener('message',({source,origin,data})=>{
     if(source!==$('dashboard').contentWindow||origin!==location.origin)return;
     if(data?.type==='dashboard-ready'){frameReady=true;frame({type:'open-layer',layer:layer.id});syncFrame();}
-    if(data?.type==='dashboard-control'){if(data.message?.type==='ecom_activate')send({type:'layer',layer:'ecom-energy-btn',enabled:true});else send({type:'control',message:data.message});}
+    if(data?.type==='dashboard-control'){if(!canEdit()&&!/request|get_state|ping/.test(data.message?.action||''))return;if(data.message?.type==='ecom_activate')send({type:'layer',layer:'ecom-energy-btn',enabled:true});else send({type:'control',message:data.message});}
     if(data?.type==='dashboard-rpc'){
       const requestId=MR.id();requests.set(requestId,{frameId:data.requestId,timer:setTimeout(()=>{frame({type:'rpc-result',requestId:data.requestId,error:'Host request timed out'});requests.delete(requestId);},185000)});
       if(!send({...data,type:'rpc',requestId})){const req=requests.get(requestId);clearTimeout(req.timer);requests.delete(requestId);frame({type:'rpc-result',requestId:data.requestId,error:'Host disconnected'});}
@@ -188,7 +190,7 @@
   }
   function status(value){
     if(ended)return;
-    if(value==='connected'){focus();render();return;}
+    if(value==='connected'){focus();if(layer.id==='artwork-btn')send({type:'control',message:{type:'artwork_control',action:'request_state'}});render();return;}
     if(value==='disconnected'){
       sessionReady=false;
       for(const req of requests.values()){clearTimeout(req.timer);frame({type:'rpc-result',requestId:req.frameId,error:'Connection interrupted. Please try again.'});}requests.clear();

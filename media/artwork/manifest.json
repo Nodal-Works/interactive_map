@@ -1,0 +1,262 @@
+{
+  "version": 1,
+  "credit": "Artwork and visibility studies by Vishvi Rajakaruna",
+  "source": "artworks with  white lines - test 1 .ai",
+  "sourceSha256": "5a264f2e73af3e8468790fd532ed89226697a660170e0ba2987623783ae134db",
+  "width": 3370,
+  "height": 2384,
+  "base": "base.svg",
+  "stacking": [
+    5,
+    6,
+    2,
+    1,
+    3,
+    7,
+    4
+  ],
+  "items": [
+    {
+      "id": 1,
+      "label": "Artwork 1",
+      "field": "field-1.svg",
+      "sculpture": "sculpture-1.svg",
+      "fieldBounds": [
+        830.37,
+        2003.18,
+        994.26,
+        2168.42
+      ],
+      "anchor": [
+        903.8935387,
+        2132.4927618
+      ]
+    },
+    {
+      "id": 2,
+      "label": "Artwork 2",
+      "field": "field-2.svg",
+      "sculpture": "sculpture-2.svg",
+      "fieldBounds": [
+        858.24,
+        1917.38,
+        1194.9,
+        2168.45
+      ],
+      "anchor": [
+        987.6300201500001,
+        1991.7200103
+      ]
+    },
+    {
+      "id": 3,
+      "label": "Artwork 3",
+      "field": "field-3.svg",
+      "sculpture": "sculpture-3.svg",
+      "fieldBounds": [
+        1066.65,
+        1479.716,
+        1772.61,
+        2168.536
+      ],
+      "anchor": [
+        1268.0478799999999,
+        2015.3300013
+      ]
+    },
+    {
+      "id": 4,
+      "label": "Artwork 4",
+      "field": "field-4.svg",
+      "sculpture": "sculpture-4.svg",
+      "fieldBounds": [
+        1101.45,
+        769.01,
+        1689.69,
+        2168.424
+      ],
+      "anchor": [
+        1220.59705295,
+        1735.339957
+      ]
+    },
+    {
+      "id": 5,
+      "label": "Artwork 5",
+      "field": "field-5.svg",
+      "sculpture": "sculpture-5.svg",
+      "fieldBounds": [
+        1420.32,
+        773.06,
+        2154.24,
+        2041.76
+      ],
+      "anchor": [
+        1765.7098953,
+        1457.61507115
+      ]
+    },
+    {
+      "id": 6,
+      "label": "Artwork 6",
+      "field": "field-6.svg",
+      "sculpture": "sculpture-6.svg",
+      "fieldBounds": [
+        924.48,
+        1659.08,
+        1032.66,
+        1752.8
+      ],
+      "anchor": [
+        986.37000785,
+        1714.66932185
+      ]
+    },
+    {
+      "id": 7,
+      "label": "Artwork 7",
+      "field": "field-7.svg",
+      "sculpture": "sculpture-7.svg",
+      "fieldBounds": [
+        1599.48,
+        840.6500000000001,
+        1972.89,
+        1185.38
+      ],
+      "anchor": [
+        1783.5298945499999,
+        979.40000295
+      ]
+    }
+  ],
+  "registration": {
+    "crs": "EPSG:3857",
+    "matrix": [
+      [
+        0.8256046529385752,
+        0.0007982367835794872,
+        1327917.3348099985
+      ],
+      [
+        0.0006561338712365276,
+        -0.8273258633321193,
+        7907244.916446828
+      ]
+    ],
+    "method": "One least-squares affine fit of six original building centroids; no individual building warping.",
+    "controlPoints": [
+      {
+        "footprintIndex": 46,
+        "artboard": [
+          1339.7850000000144,
+          1563.4250000000175
+        ],
+        "mercator": [
+          1329024.4617268697,
+          7905952.235810319
+        ],
+        "residualGroundMetres": 0.1453008829214315
+      },
+      {
+        "footprintIndex": 118,
+        "artboard": [
+          2481.833349426708,
+          489.96077656018855
+        ],
+        "mercator": [
+          1329966.837812272,
+          7906841.158343296
+        ],
+        "residualGroundMetres": 0.05502131762736614
+      },
+      {
+        "footprintIndex": 12,
+        "artboard": [
+          800.3700000000002,
+          2026.1
+        ],
+        "mercator": [
+          1328579.926284233,
+          7905569.240748395
+        ],
+        "residualGroundMetres": 0.10158529135353468
+      },
+      {
+        "footprintIndex": 81,
+        "artboard": [
+          1404.5185159167838,
+          768.7532979627064
+        ],
+        "mercator": [
+          1329077.492461019,
+          7906609.8676647395
+        ],
+        "residualGroundMetres": 0.0273611569030193
+      },
+      {
+        "footprintIndex": 447,
+        "artboard": [
+          2872.0814094928346,
+          1174.7337717024404
+        ],
+        "mercator": [
+          1330289.4559568223,
+          7906274.938387839
+        ],
+        "residualGroundMetres": 0.017262011495785885
+      },
+      {
+        "footprintIndex": 159,
+        "artboard": [
+          2206.457277500524,
+          977.6505302537713
+        ],
+        "mercator": [
+          1329739.8000529646,
+          7906437.547344099
+        ],
+        "residualGroundMetres": 0.016035671735704825
+      }
+    ],
+    "validationPoints": [
+      {
+        "footprintIndex": 424,
+        "artboard": [
+          2350.588125274338,
+          510.41964904400436
+        ],
+        "mercator": [
+          1329858.5500809615,
+          7906824.146640043
+        ],
+        "residualGroundMetres": 0.08229601334330836
+      },
+      {
+        "footprintIndex": 453,
+        "artboard": [
+          2648.635534839325,
+          569.229880922315
+        ],
+        "mercator": [
+          1330104.5835263433,
+          7906775.7280710535
+        ],
+        "residualGroundMetres": 0.037194393593641815
+      },
+      {
+        "footprintIndex": 226,
+        "artboard": [
+          491.0289342395507,
+          593.1319454803042
+        ],
+        "mercator": [
+          1328322.9429882104,
+          7906754.327533711
+        ],
+        "residualGroundMetres": 0.17494251522311
+      }
+    ],
+    "rmsGroundMetres": 0.0772042918782684,
+    "maxGroundMetres": 0.1453008829214315
+  }
+}

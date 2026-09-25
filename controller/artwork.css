@@ -1,0 +1,47 @@
+#artwork-canvas { position:fixed; inset:0; width:100%; height:100%; z-index:950; }
+#artwork-canvas[hidden],#artwork-hud[hidden],#artwork-magnifier-btn[hidden] { display:none !important; }
+#artwork-hud { position:fixed; z-index:960; bottom:65px; left:92px; right:92px; color:#e3dfd5; font:12px/1.6 system-ui,sans-serif; pointer-events:none; display:flex; align-items:center; gap:24px; justify-content:space-between; }
+.artwork-caption { display:flex; flex-direction:column; letter-spacing:.05em; }
+.artwork-caption span+span { opacity:.55; font-size:10px; }
+#artwork-hint { color:#a09b90; }
+.artwork-controls { display:flex; gap:6px; pointer-events:auto; }
+.artwork-controls button,#artwork-dashboard button { font:inherit; color:#d5d0c5; background:#111210; border:1px solid #35352f; border-radius:6px; padding:8px 14px; cursor:pointer; transition:background .25s,border-color .25s; }
+.artwork-controls button:hover,#artwork-dashboard button:hover { background:#24231e; border-color:#7a715b; }
+.artwork-controls button:disabled,#artwork-dashboard button:disabled { opacity:.35; cursor:default; }
+.artwork-controls button:focus-visible,#artwork-dashboard button:focus-visible { outline:2px solid #efcd91; outline-offset:3px; }
+#main-panel.artwork-mode { display:block; overflow:auto; background:#090a09; padding:0 24px; }
+#main-panel.artwork-mode #legend-section,#main-panel.artwork-mode #metadata-section,#main-panel.artwork-mode #dashboard-title { display:none !important; }
+#main-panel.artwork-mode #dashboard-section { background:transparent; border:0; box-shadow:none; margin:0; padding:0; height:100%; }
+#artwork-dashboard { min-height:100%; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:12px; padding:28px 0 20px; text-align:center; color:#ece6d9; }
+.artwork-kicker { font-size:10px; letter-spacing:.23em; color:#9a907d; }
+#artwork-dashboard h2 { font-weight:400; font-size:clamp(22px,3vw,34px); letter-spacing:-.035em; margin:0; border:0; padding:0; }
+#artwork-dashboard-status { margin:0 0 4px; color:#928d82; font-size:12px; min-height:19px; }
+.artwork-view-wrap { width:min(100%,1000px); height:clamp(200px,calc(100dvh - 330px),640px); display:flex; align-items:center; justify-content:center; }
+#artwork-dashboard-view { width:100%; height:100%; background:#000; border-radius:2px; }
+.lens-active .artwork-view-wrap { width:min(720px,calc(100dvh - 395px),100%); height:auto; aspect-ratio:1; border-radius:50%; border:1px solid #494436; position:relative;box-shadow:0 0 22px #e1bd7126,0 0 75px #b69a5120,inset 0 0 24px #e9d9a810; }
+.lens-active #artwork-dashboard-view { border-radius:50%; aspect-ratio:1; }
+.artwork-chapters { display:flex; gap:9px; margin:5px 0; }
+.artwork-chapters span { width:4px; height:4px; border-radius:50%; background:#363730; transition:background .6s,box-shadow .6s; }
+.artwork-chapters span.revealed { background:#c0aa7d; }
+.artwork-chapters span.current { background:#ffdfaa; box-shadow:0 0 8px #efd49f; }
+.artwork-dashboard-controls,.artwork-secondary-controls { display:flex; justify-content:center; align-items:center; gap:9px; flex-wrap:wrap; }
+#artwork-dashboard button { display:inline-flex; align-items:center; justify-content:center; gap:6px; font-size:12px; }
+#artwork-dashboard button .material-icons { font-size:17px; }
+#artwork-dashboard button.selected { color:#ffe4b4; border-color:#a28c61; background:#28251b; }
+#artwork-dashboard [hidden] { display:none !important; }
+#artwork-dashboard .artwork-secondary-controls button { padding:3px 12px; background:transparent; border-color:transparent; color:#918b7d; font-size:11px; }
+.artwork-zoom { display:flex; align-items:center; gap:12px; font-size:11px; color:#aaa18c; }
+.artwork-zoom input { width:150px; accent-color:#ddc493; }
+.artwork-credit { color:#807b71; font-size:10px; margin:4px 0 0; letter-spacing:.03em; }
+.artwork-credit strong { color:#bcb4a3; font-weight:400; }
+@media(max-width:650px) { #main-panel.artwork-mode{padding:0 12px} #artwork-dashboard{gap:10px;padding:20px 0}.lens-active .artwork-view-wrap{width:min(720px,calc(100dvh - 390px),100%)} #artwork-hud{left:20px;right:20px;flex-wrap:wrap;bottom:12px}#artwork-hint{display:none}.artwork-controls button{padding:7px 9px} }
+
+body.artwork-presenting #laser-pointer { display:none !important; }
+/* All layer buttons remain reachable on shorter projection/control screens. */
+#left-sidebar { overflow-y:auto; overflow-x:hidden; scrollbar-width:none; }
+#left-sidebar .icon-controls { flex-shrink:0; }
+#left-sidebar .sidebar-logo { flex-shrink:0; }
+
+/* Glass reflections sit above the live rendering, never over the sharp centre. */
+.lens-active .artwork-view-wrap::after { content:"";position:absolute;inset:-2px;border-radius:50%;pointer-events:none;background:conic-gradient(from 200deg,transparent 0deg,#fff8d655 34deg,transparent 75deg,transparent 215deg,#efdba829 258deg,transparent 295deg);mask:radial-gradient(circle,transparent 69.7%,#000 70%,#000 70.6%,transparent 71%); }
+.lens-active .artwork-view-wrap::before { content:"";position:absolute;inset:3px;border-radius:50%;pointer-events:none;z-index:1;box-shadow:inset 0 0 17px #ffe9b81c,inset 0 -5px 15px #0006; }

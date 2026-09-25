@@ -1,6 +1,6 @@
 (function(root) {
   'use strict';
-  const RELEASE = '20260925-lindholmen-1';
+  const RELEASE = '20260925-lindholmen-artwork-3';
   const LAYERS = [
     ['cfd-simulation-btn', 'Wind · CFD', 'Environment', '🌬', 'obstacle'],
     ['stormwater-btn', 'Stormwater', 'Environment', '💧'],
@@ -10,6 +10,7 @@
     ['street-view-btn', 'Street View', 'Explore', '📍', 'location'],
     ['epc-btn', 'Building energy · EPC', 'Energy', '▥', 'location'],
     ['ecom-energy-btn', 'Energy community', 'Energy', '⚡', 'location'],
+    ['artwork-btn', 'Artwork', 'Explore', '◉'],
     ['cultural-gravity-btn', 'Cultural Gravity', 'Explore', '◎'],
     ['bird-sounds-btn', 'Bird sounds', 'Explore', '♫'],
     ['slideshow-btn', 'Slideshow', 'Present', '▧'],
@@ -19,6 +20,7 @@
     ['canvas-btn', 'Canvas', 'Create', '✎', 'pen']
   ].filter(([id]) => !(root.APP_CONFIG?.disabledLayers || []).includes(id)).map(([id, name, group, icon, tool]) => ({id, name, group, icon, tool}));
   const ACTIONS = {
+    artwork_control: 'next previous restart show_all request_state retry stop set_lens set_zoom pin_lens set_lens_diameter set_lens_position',
     cultural_gravity_control: 'advance request_state',
     cfd_control: 'get_state set_wind_speed set_wind_direction set_viscosity set_resolution toggle_trees set_particles set_visual_style set_facade_glow set_color_palette set_color_range set_particle_speed',
     thermal_control: 'request_state clear_route set_mode tour_play tour_pause tour_step tour_next tour_back tour_end tour_explore tour_layer set_hour show_raster show_streets',
@@ -39,6 +41,13 @@
     if (ECOM.has(message.type)) return true;
     if (!ACTIONS[message.type]?.split(' ').includes(message.action)) return false;
     const v = message.value;
+    if (message.type === 'artwork_control') {
+      if (message.action === 'set_lens_position') return !!v && typeof v === 'object' && !Array.isArray(v) && Object.keys(v).length === 2 && ['x','y'].every(k => typeof v[k] === 'number' && Number.isFinite(v[k]) && v[k] >= 0 && v[k] <= 1);
+      if (['set_lens','pin_lens'].includes(message.action)) return typeof v === 'boolean';
+      if (message.action === 'set_zoom') return typeof v === 'number' && Number.isFinite(v) && v >= 2 && v <= 6;
+      if (message.action === 'set_lens_diameter') return typeof v === 'number' && Number.isFinite(v) && v >= 100 && v <= 720;
+      return v === undefined;
+    }
     if (v !== undefined && !['number','string','boolean'].includes(typeof v)) return false;
     if (typeof v === 'number' && (!Number.isFinite(v) || Math.abs(v) > 100000)) return false;
     if (typeof v === 'string' && v.length > 100) return false;
@@ -99,6 +108,7 @@
     const priority=new Set(['ping','pong','ack','error','identity','ended','rejected']);
     function key(value){
       if(['state','objects','draft','focus'].includes(value.type))return value.type;
+      if(value.type==='control'&&value.message?.type==='artwork_control'&&value.message.action==='set_lens_position')return 'artwork-position';
       if(value.type==='gesture'&&value.phase==='move')return 'gesture:'+value.layer;
       return null;
     }

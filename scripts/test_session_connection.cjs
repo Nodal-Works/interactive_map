@@ -19,6 +19,9 @@ class Channel extends EventEmitter{
  const send=MR.wire(congested,()=>{});for(let i=0;i<100;i++)send({type:'state',i});send({type:'pong',time:7});
  await wait(25);assert.equal(congested.sent.length,0);congested.dataChannel.bufferedAmount=0;await wait(60);
  assert.equal(congested.sent[0].type,'pong');assert.equal(congested.sent.filter(m=>m.type==='state').length,1);assert.equal(congested.sent.at(-1).i,99);
+ const cursorWire=new Channel();cursorWire.open=true;cursorWire.dataChannel.bufferedAmount=100000;
+ const sendCursor=MR.wire(cursorWire,()=>{});for(let i=0;i<100;i++)sendCursor({type:'control',message:{type:'artwork_control',action:'set_lens_position',value:{x:i/100,y:.5}}});
+ await wait(25);cursorWire.dataChannel.bufferedAmount=0;await wait(60);assert.equal(cursorWire.sent.length,1,'Congestion keeps only the newest lens position');assert.equal(cursorWire.sent[0].message.value.x,.99);cursorWire.close();
  const chunked=new Channel();chunked.open=true;const sendLarge=MR.wire(chunked,()=>{});
  sendLarge({type:'rpc-result',body:'x'.repeat(180000)});await wait(2);sendLarge({type:'pong'});await wait(80);
  assert.ok(chunked.sent.findIndex(m=>m.type==='pong')<chunked.sent.length-1,'Heartbeat interleaves before final bulk chunk');
