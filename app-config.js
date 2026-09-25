@@ -99,10 +99,11 @@ window.APP_CONFIG = {
   },
   "disabledLayers": [],
   "transit": {
-    "fetchInterval": 3000,
+    "fetchInterval": 10000,
     "transportModes": [
       "tram",
-      "bus"
+      "bus",
+      "ferry"
     ]
   }
 };

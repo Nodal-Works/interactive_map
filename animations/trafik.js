@@ -27,6 +27,7 @@ let isTrafikAnimating = false;
 let vehicles = [];
 let lastFetchTime = 0;
 let updateInterval = null;
+let nextFetchAllowedAt = 0, inFlight = false, starting = false, generation = 0, runController = null;
 
 // API Configuration - loaded from config file (not .env since this is client-side)
 let apiConfig = {
@@ -105,14 +106,15 @@ const vehicleHistory = new Map();
 // ===== API Functions =====
 
 // Load configuration from local file
-async function loadConfig() {
+async function loadConfig(signal) {
   try {
     console.log('Trafik: Loading config from', CONFIG.configPath);
-    const response = await fetch(CONFIG.configPath);
+    const response = await fetch(CONFIG.configPath, {signal});
     if (!response.ok) {
       throw new Error(`Config file not found: ${CONFIG.configPath} (status: ${response.status})`);
     }
     const config = await response.json();
+    if (signal?.aborted) return false;
     console.log('Trafik: Config JSON parsed:', Object.keys(config));
     
     // Store credentials in apiConfig
@@ -150,7 +152,7 @@ async function loadConfig() {
 }
 
 // Refresh OAuth2 access token
-async function refreshAccessToken() {
+async function refreshAccessToken(signal) {
   // Can use either authenticationKey or clientId/clientSecret
   if (!apiConfig.authenticationKey && (!apiConfig.clientId || !apiConfig.clientSecret)) {
     console.warn('Trafik: Missing client credentials for token refresh', {
@@ -167,7 +169,7 @@ async function refreshAccessToken() {
     console.log('Trafik: Refreshing access token...');
     
     const response = await fetch('https://ext-api.vasttrafik.se/token', {
-      method: 'POST',
+      method: 'POST', signal,
       headers: {
         'Content-Type': 'application/x-www-form-urlencoded',
         'Authorization': `Basic ${authKey}`
@@ -180,6 +182,7 @@ async function refreshAccessToken() {
     }
     
     const data = await response.json();
+    if (signal?.aborted) return false;
     apiConfig.accessToken = data.access_token;
     apiConfig.tokenExpiry = Date.now() + (data.expires_in * 1000);
     
@@ -192,23 +195,23 @@ async function refreshAccessToken() {
 }
 
 // Check if token needs refresh
-async function ensureValidToken() {
+async function ensureValidToken(signal) {
   if (!apiConfig.accessToken) {
-    return await refreshAccessToken();
+    return await refreshAccessToken(signal);
   }
   
   if (Date.now() >= apiConfig.tokenExpiry - CONFIG.tokenRefreshBuffer) {
-    return await refreshAccessToken();
+    return await refreshAccessToken(signal);
   }
   
   return true;
 }
 
 // Fetch live vehicle positions from Västtrafik API
-async function fetchLivePositions() {
-  if (!await ensureValidToken()) {
+async function fetchLivePositions(signal, retried = false) {
+  if (!await ensureValidToken(signal)) {
     console.warn('Trafik: No valid access token');
-    return [];
+    return null;
   }
   
   try {
@@ -222,16 +225,23 @@ async function fetchLivePositions() {
     url.searchParams.set('limit', CONFIG.positionsLimit);
     
     const response = await fetch(url, {
+      signal,
       headers: {
         'Authorization': `Bearer ${apiConfig.accessToken}`,
         'Accept': 'application/json'
       }
     });
     
-    if (response.status === 401) {
-      // Token expired, refresh and retry
-      await refreshAccessToken();
-      return fetchLivePositions();
+    if (signal?.aborted) return null;
+    if (response.status === 429) {
+      const header=response.headers.get('Retry-After');
+      const seconds=Number(header), date=Date.parse(header);
+      const delay=header && Number.isFinite(seconds) && seconds>0 ? seconds*1000 : Number.isFinite(date) && date>Date.now() ? date-Date.now() : 30000;
+      nextFetchAllowedAt=Date.now()+delay;
+      return null;
+    }
+    if (response.status === 401 && !retried && await refreshAccessToken(signal)) {
+      return fetchLivePositions(signal,true);
     }
     
     if (!response.ok) {
@@ -242,8 +252,8 @@ async function fetchLivePositions() {
     return parseVehiclePositions(data);
     
   } catch (err) {
-    console.error('Trafik: Fetch error:', err);
-    return [];
+    if (!signal?.aborted) console.warn('Trafik: Position update unavailable:', err.message);
+    return null;
   }
 }
 
@@ -251,8 +261,8 @@ async function fetchLivePositions() {
 // Västtrafik /positions returns array of JourneyPositionApiModel
 function parseVehiclePositions(data) {
   if (!data || !Array.isArray(data)) {
-    console.warn('Trafik: Unexpected API response format', data);
-    return [];
+    console.warn('Trafik: Unexpected API response format');
+    return null;
   }
   
   return data
@@ -498,10 +508,13 @@ function drawLegend(ctx) {
 async function updateVehicles() {
   const now = Date.now();
   
-  // Fetch new positions at interval
-  if (now - lastFetchTime > CONFIG.fetchInterval) {
-    const newPositions = await fetchLivePositions();
-    if (newPositions.length > 0) {
+  if (!isTrafikAnimating || inFlight || now<nextFetchAllowedAt || now-lastFetchTime<CONFIG.fetchInterval) return;
+  const revision=generation, signal=runController.signal;
+  inFlight=true;lastFetchTime=now;
+  try {
+    const newPositions = await fetchLivePositions(signal);
+    if(revision!==generation || signal.aborted || !isTrafikAnimating)return;
+    if (newPositions !== null) {
       // Merge with existing vehicles for smooth interpolation
       const existingMap = new Map(vehicles.map(v => [v.id, v]));
       
@@ -535,9 +548,10 @@ async function updateVehicles() {
       });
       
       vehicles = newPositions;
-      console.log(`Trafik: Updated ${vehicles.length} vehicle positions (tram/bus only)`);
+      console.log(`Trafik: Updated ${vehicles.length} vehicle positions`);
     }
-    lastFetchTime = now;
+  } finally {
+    if(revision===generation)inFlight=false;
   }
 }
 
@@ -591,38 +605,24 @@ function resizeTrafikCanvas() {
 // ===== Public API =====
 
 async function startTrafikAnimation() {
-  if (isTrafikAnimating) return;
-  
-  // Load config
-  const configLoaded = await loadConfig();
-  if (!configLoaded) {
-    console.warn('Trafik: Cannot start without valid configuration');
-    console.warn('Create trafik-config.json with your Västtrafik API credentials');
-    return;
-  }
-  
-  isTrafikAnimating = true;
-  trafikCanvas.style.display = 'block';
-  resizeTrafikCanvas();
-  
-  // Initial fetch
-  await updateVehicles();
-  
-  // Start update interval
-  updateInterval = setInterval(() => {
-    if (isTrafikAnimating) {
-      updateVehicles();
-    } else {
-      clearInterval(updateInterval);
-      updateInterval = null;
-    }
-  }, CONFIG.fetchInterval);
-  
-  animateTrafik();
-  console.log('✓ Trafik: Live transit animation started');
+  if (isTrafikAnimating || starting) return;
+  starting=true;
+  const revision=++generation;
+  runController=new AbortController();
+  try {
+    const loaded=await loadConfig(runController.signal);
+    if(revision!==generation || !loaded)return;
+    isTrafikAnimating=true;trafikCanvas.style.display='block';resizeTrafikCanvas();
+    lastFetchTime=-Infinity;nextFetchAllowedAt=0;
+    await updateVehicles();
+    if(revision!==generation || !isTrafikAnimating)return;
+    updateInterval=setInterval(updateVehicles,CONFIG.fetchInterval);
+    animateTrafik();
+  } finally {if(revision===generation)starting=false;}
 }
 
 function stopTrafikAnimation() {
+  generation++;starting=false;inFlight=false;runController?.abort();
   isTrafikAnimating = false;
   trafikCanvas.style.display = 'none';
   
