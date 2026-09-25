@@ -1,3 +1,50 @@
+// CFD controls reflect the display's authoritative state whenever this panel opens.
+let cfdState = { ...CFD.DEFAULTS };
+function renderCfdState() {
+    const ids = { 'wind-visual-style': cfdState.visualStyle, 'wind-palette': cfdState.palette,
+        'wind-color-range': cfdState.colorMaxMps, 'wind-speed': cfdState.windSpeed, 'wind-direction': cfdState.angle,
+        'particle-count': cfdState.particles, 'particle-speed': cfdState.playback,
+        'viscosity': (cfdState.viscosity - .02) / .13, 'grid-resolution': cfdState.resolution };
+    for (const [id, value] of Object.entries(ids)) {
+        const input = document.getElementById(id);
+        if (input) input.value = value;
+    }
+    const labels = { 'wind-speed-display': `${cfdState.windSpeed.toFixed(1)} m/s`,
+        'wind-dir-display': `${cfdState.angle}° ${['→','↘','↓','↙','←','↖','↑','↗'][Math.round(cfdState.angle / 45) % 8]}`,
+        'particle-speed-display': `${cfdState.playback}x`, 'trees-status': cfdState.trees ? 'On' : 'Off' };
+    for (const [id, value] of Object.entries(labels)) {
+        const label = document.getElementById(id);
+        if (label) label.textContent = value;
+    }
+    const facadeToggle = document.getElementById('wind-facade-glow');
+    if (facadeToggle) facadeToggle.checked = cfdState.facadeGlow;
+    const facadeLegend = document.getElementById('wind-impact-swatch');
+    if (facadeLegend) {
+        const color = cfdState.palette === 'monochrome' ? '#f5f5f5' : '#ffd58c';
+        facadeLegend.style.background = color;
+        facadeLegend.style.boxShadow = `0 0 8px ${color}`;
+    }
+    const description = document.getElementById('wind-style-description');
+    if (description) description.textContent = CFDVisuals.STYLES[cfdState.visualStyle] || CFDVisuals.STYLES.ribbons;
+    const legend = CFD.colorLegend(cfdState.palette, cfdState.colorMaxMps);
+    for (const id of ['wind-color-preview', 'wind-color-legend']) {
+        const element = document.getElementById(id);
+        if (element) element.style.background = legend.gradient;
+    }
+    legend.labels.forEach((text, i) => {
+        for (const prefix of ['wind-range-label-', 'wind-preview-label-']) {
+            const element = document.getElementById(prefix + i);
+            if (element) element.textContent = text;
+        }
+    });
+    const trees = document.getElementById('toggle-trees-btn');
+    if (trees) {
+        trees.dataset.enabled = String(cfdState.trees);
+        trees.style.background = cfdState.trees ? '#2D5A27' : '#333';
+        trees.style.borderColor = cfdState.trees ? '#4a9441' : '#555';
+    }
+}
+
 // Controller logic for the secondary screen
 // ============================================
 
@@ -12,6 +59,7 @@ const MSG_TYPES = {
     ISOVIST_CONTROL: 'isovist_control',
     BIRD_CONTROL: 'bird_control',
     SLIDESHOW_CONTROL: 'slideshow_control',
+    FCC_DEMO_CONTROL: 'fcc_demo_control',
     // Incoming (main -> controller)
     STATE_UPDATE: 'state_update',
     ANIMATION_STATE: 'animation_state',  // New: animation on/off state
@@ -20,7 +68,12 @@ const MSG_TYPES = {
     BIRD_STATUS: 'bird_status',
     SUN_POSITION: 'sun_position',
     SUN_TIME_UPDATE: 'sun_time_update',
-    CALIBRATION_DATA: 'calibration_data'
+    CALIBRATION_DATA: 'calibration_data',
+    FCC_DEMO_PROGRESS: 'fcc_demo_progress',
+    FCC_DEMO_READY: 'fcc_demo_ready',
+    FCC_DEMO_STATS: 'fcc_demo_stats',
+    FCC_DEMO_PLAYBACK_STATE: 'fcc_demo_playback_state',
+    EPC_BUILDING_SELECTED: 'epc_building_selected'
 };
 
 // Debug mode - set to false in production
@@ -34,30 +87,13 @@ const statusIndicator = document.getElementById('connection-status');
 const statusText = document.getElementById('connection-text');
 const welcomeScreen = document.getElementById('welcome-screen');
 
-// Apply config-driven values to the DOM
-(function applyConfig() {
-    const cfg = window.APP_CONFIG;
-    if (!cfg) return;
-    const welcomeTitle = document.getElementById('welcome-title');
-    if (welcomeTitle && cfg.app && cfg.app.welcomeTitle) {
-        welcomeTitle.textContent = cfg.app.welcomeTitle;
-    }
-    const headerTitle = document.getElementById('header-title');
-    if (headerTitle && cfg.app && cfg.app.title) {
-        headerTitle.textContent = cfg.app.title + ' Dashboard';
-    }
-    if (cfg.data && cfg.data.images) {
-        const logo1 = document.getElementById('welcome-logo-1');
-        const logo2 = document.getElementById('welcome-logo-2');
-        if (logo1 && cfg.data.images.chalmersLogo) logo1.src = cfg.data.images.chalmersLogo;
-        if (logo2 && cfg.data.images.dtccLogo) logo2.src = cfg.data.images.dtccLogo;
-    }
-})();
-
 
 // State objects loaded from their respective module files:
 // - slideshowState from controller/slideshow-dashboard.js
+// - fccDemoState from controller/fcc-demo-dashboard.js
 // - sunStudyState from controller/sun-study-ui.js
+
+let thermalComfortState = { hour: 14, meanPet: null, active: false, ready: false, showRaster: true, showStreets: true, route: null };
 
 
 
@@ -70,12 +106,18 @@ const welcomeScreen = document.getElementById('welcome-screen');
 const ANIMATION_BUTTONS = [
     'cfd-simulation-btn',
     'stormwater-btn', 
+    'thermal-comfort-btn',
     'sun-study-btn',
     'slideshow-btn',
     'grid-animation-btn',
     'isovist-btn',
+    'cultural-gravity-btn',
     'bird-sounds-btn',
-    'cultural-gravity-btn'
+    'campus-demo-btn',
+    'fcc-demo-btn',
+    'street-view-btn',
+    'epc-btn',
+    'ecom-energy-btn'
 ];
 
 // Function buttons are buttons that perform actions (not toggleable animations)
@@ -94,7 +136,8 @@ function isAnimationButton(targetId) {
 }
 
 // Called when we receive actual state from the main window
-function setAnimationState(targetId, isActive) {
+function setAnimationState(targetId, isActive, follow = true) {
+    const newlyActive = isActive && !activeAnimations.includes(targetId);
     if (isActive) {
         if (!activeAnimations.includes(targetId)) {
             activeAnimations.push(targetId);
@@ -104,8 +147,21 @@ function setAnimationState(targetId, isActive) {
         if (targetId === 'sun-study-btn') {
             setSunStudyLayout(false);
         }
+        // Reset campus demo legend when it's deactivated
+        if (targetId === 'campus-demo-btn') {
+            resetCampusDemoLegend();
+        }
+        if (targetId === 'epc-btn') {
+            epcState.selected = null;
+            if (document.getElementById('main-panel')?.classList.contains('epc-mode')) {
+                renderEpcBuildingDashboard(null);
+            }
+        }
     }
     syncAnimationButtonStates();
+    const toggle = document.querySelector(`[data-layer-switch="${targetId}"]`);
+    if (toggle) toggle.checked = isActive;
+    if (follow && newlyActive && !new URLSearchParams(location.search).has('sessionController')) openHostLayer(targetId);
 }
 
 function syncAnimationButtonStates() {
@@ -147,8 +203,7 @@ statusText.textContent = 'Connected';
 // Function to show welcome screen
 function showWelcome() {
     welcomeScreen.classList.remove('hidden');
-    // Clear all animation tracking and sync button states
-    activeAnimations = [];
+    // Home changes navigation only; retain authoritative layer state.
     syncAnimationButtonStates();
     // Also clear function button selections
     document.querySelectorAll('.control-btn.function-btn').forEach(b => b.classList.remove('selected'));
@@ -165,13 +220,35 @@ headerTitle.addEventListener('click', showWelcome);
 // Home button
 document.getElementById('home-btn').addEventListener('click', showWelcome);
 
+function openHostLayer(targetId) {
+    document.querySelectorAll('.control-btn[data-target]').forEach(button=>button.setAttribute('aria-current',String(button.dataset.target===targetId)));
+    if (location.hash === '#session') { history.replaceState(null, '', location.pathname + location.search); window.dispatchEvent(new Event('hashchange')); }
+    stopTour();
+    updateMetadata(targetId);
+    updateDashboard(targetId);
+}
+
 // Handle button clicks
 document.querySelectorAll('.control-btn[data-target]').forEach(btn => {
+    if (isAnimationButton(btn.dataset.target) && !new URLSearchParams(location.search).has('sessionController')) {
+        const row = document.createElement('div'); row.className = 'host-layer-row';
+        btn.before(row); row.append(btn);
+        const toggle = document.createElement('input'); toggle.type = 'checkbox';
+        toggle.dataset.layerSwitch = btn.dataset.target;
+        toggle.setAttribute('aria-label', 'Enable ' + (btn.title || btn.textContent.trim()));
+        toggle.onchange = () => {
+            const admin = new BroadcastChannel('mr_session_admin');
+            admin.postMessage({type:'admin-command',action:'layer',layer:btn.dataset.target,enabled:toggle.checked});admin.close();
+        };
+        row.append(toggle);
+    }
     btn.addEventListener('click', () => {
         stopTour();
         const targetId = btn.dataset.target;
         const action = btn.dataset.action;
         
+        if (isAnimationButton(targetId)) { openHostLayer(targetId); return; }
+
         // Send message to main window - the main window will respond with actual state
         channel.postMessage({
             type: MSG_TYPES.CONTROL_ACTION,
@@ -200,13 +277,260 @@ document.querySelectorAll('.control-btn[data-target]').forEach(btn => {
     });
 });
 
+function thermalNumber(value, digits = 1) {
+    return value != null && Number.isFinite(Number(value)) ? Number(value).toFixed(digits) : '--';
+}
+
+function thermalProfileSvg(route) {
+    if (!route) return '<p class="thermal-empty-profile">Select an origin and destination to compare exposure along both paths.</p>';
+    const paths = [route.shortest, route.coolest];
+    const samples = paths.flatMap(item => item.properties.profile || []);
+    if (!samples.length) return '';
+    const maxDistance = Math.max(...samples.map(item => Number(item.distance_m)), 1);
+    const minPet = Math.floor(Math.min(...samples.map(item => Number(item.pet_c))) - 2);
+    const maxPet = Math.ceil(Math.max(...samples.map(item => Number(item.pet_c))) + 2);
+    const x = item => 35 + Number(item.distance_m) / maxDistance * 525;
+    const y = item => 112 - (Number(item.pet_c) - minPet) / Math.max(maxPet - minPet, 1) * 90;
+    const line = item => (item.properties.profile || []).map((sample, index) =>
+        `${index ? 'L' : 'M'}${x(sample).toFixed(1)},${y(sample).toFixed(1)}`).join(' ');
+    return `<svg viewBox="0 0 580 140" role="img" aria-label="PET along shortest and coolest routes">
+        <line x1="35" y1="112" x2="560" y2="112" stroke="#64748b" />
+        <line x1="35" y1="20" x2="35" y2="112" stroke="#64748b" />
+        <text x="3" y="27" fill="#94a3b8" font-size="12">${maxPet}°</text>
+        <text x="3" y="112" fill="#94a3b8" font-size="12">${minPet}°</text>
+        <text x="485" y="134" fill="#94a3b8" font-size="12">${Math.round(maxDistance)} m</text>
+        <path d="${line(route.shortest)}" fill="none" stroke="#f8fafc" stroke-width="2.5" stroke-dasharray="5 4" />
+        <path d="${line(route.coolest)}" fill="none" stroke="#48e7ff" stroke-width="3" />
+    </svg>`;
+}
+
+function updateCoolpathsExplorer(state, dashboardContent) {
+    const tour = state.tour || { open: false, playing: false, step: 0 };
+    const step = window.COOLPATHS_GUIDE[tour.step] || window.COOLPATHS_GUIDE[0];
+    const usable = state.active && state.ready;
+    const specialNames = { buildings: 'Building geometry', streets: 'Walking network', routes: 'Shortest & coolest routes' };
+    const element = id => document.getElementById(id);
+    element('coolpaths-tour-count').textContent = tour.open ? `${tour.step + 1} / 6` : '6 steps';
+    element('coolpaths-step-title').textContent = tour.open ? step.title : 'Explore the data behind every route';
+    element('coolpaths-step-body').textContent = tour.open ? step.body : 'Follow the preparation from city geometry to a cooler walk. Each step reveals its actual map layer.';
+    element('coolpaths-step-hint').textContent = tour.open ? step.hint : 'Start the tour or choose any step above.';
+    dashboardContent.querySelectorAll('[data-tour-step]').forEach(button => {
+        const selected = tour.open && Number(button.dataset.tourStep) === tour.step;
+        button.setAttribute('aria-current', selected ? 'step' : 'false');
+        button.disabled = !usable;
+    });
+    element('coolpaths-tour-play').textContent = tour.playing ? 'Pause' : tour.open ? 'Play tour' : 'Start tour';
+    element('coolpaths-tour-play').disabled = !usable;
+    element('coolpaths-tour-back').disabled = !usable || !tour.open || tour.step === 0;
+    element('coolpaths-tour-next').disabled = !usable || !tour.open || tour.step === 5;
+    element('coolpaths-tour-explore').disabled = !usable || !tour.open;
+    element('coolpaths-tour-end').disabled = !tour.open;
+    element('coolpaths-layer-controls').hidden = !tour.open;
+    const select = element('coolpaths-input-layer');
+    const signature = `${tour.step}:${!!state.catalog}`;
+    if (select.dataset.options !== signature) {
+        select.replaceChildren(...step.choices.map(name => {
+            const option = document.createElement('option');
+            option.value = name;
+            option.textContent = specialNames[name] || state.catalog?.layers[name]?.title || name;
+            return option;
+        }));
+        select.dataset.options = signature;
+    }
+    select.value = tour.layer || step.layer;
+    const selected = state.catalog?.layers[tour.layer];
+    const scale = element('coolpaths-input-scale');
+    scale.replaceChildren();
+    if (selected) {
+        const bar = document.createElement('div');
+        bar.style.background = `linear-gradient(90deg, ${selected.colors.join(',')})`;
+        const labels = document.createElement('span');
+        labels.textContent = selected.unit === 'mask' ?
+            (tour.layer === 'shade' ? 'Indigo: cast shadow · clear: no cast shadow' : 'Blue: water · clear: land') :
+            `${selected.stops[0]} → ${selected.stops.at(-1)} ${selected.unit}`;
+        scale.append(bar, labels);
+    }
+    element('coolpaths-layer-source').textContent = selected?.source ||
+        (tour.layer === 'buildings' ? 'Local and OpenStreetMap footprints · heights inferred where absent' :
+            tour.layer === 'streets' ? 'OpenStreetMap walking graph · sampled PET per street' :
+                tour.layer === 'routes' ? (state.route ? 'Your selected walk' : 'Example walk calculated live on the prepared graph') : '');
+    const weather = state.status?.hours?.[String(state.hour)];
+    const sun = state.catalog?.sun;
+    element('coolpaths-tour-weather').innerHTML = usable ?
+        `<span>Air <strong>${thermalNumber(weather?.air_temperature_c)}°C</strong></span>
+         <span>Humidity <strong>${thermalNumber(weather?.relative_humidity_pct, 0)}%</strong></span>
+         <span>Wind at 10 m <strong>${thermalNumber(weather?.wind_10m_ms)} m/s</strong></span>
+         ${tour.open && sun ? `<span>☀ ${thermalNumber(sun.elevation_deg, 0)}° high · ${thermalNumber(sun.azimuth_deg, 0)}° bearing</span>` : ''}` : '';
+    element('coolpaths-tour-status').textContent = tour.error || (tour.loading ? 'Loading the prepared map layer…' :
+        tour.playing ? 'Playing · the sun step also moves through the study hours' : '');
+    ['route', 'inspect'].forEach(mode => {
+        element(`coolpaths-mode-${mode}`).setAttribute('aria-pressed', String((state.mode || 'route') === mode));
+        element(`coolpaths-mode-${mode}`).disabled = !usable;
+    });
+    const sample = state.inspection;
+    const values = sample?.values;
+    element('coolpaths-inspector-message').textContent = state.inspectionLoading ? 'Sampling this location…' :
+        state.inspectionError || sample?.message || (state.mode === 'inspect' ?
+            'Click a location on the map. The pink ring marks your sample.' : 'Choose Inspect, then click the map to sample a location.');
+    element('coolpaths-sample-pet').textContent = values?.pet == null ? '--' : `${thermalNumber(values.pet)}°C`;
+    element('coolpaths-sample-mrt').textContent = values?.mrt == null ? '--' : `${thermalNumber(values.mrt)}°C`;
+    element('coolpaths-sample-air').textContent = sample ? `${thermalNumber(sample.weather.air_temperature_c)}°C` : '--';
+    element('coolpaths-sample-shade').textContent = sample?.building ? 'Building' : values?.shade == null ? '--' :
+        values.shade > 0.5 ? 'Cast shade' : values.canopy > 0.1 ? 'Under canopy' : 'Sunlit';
+    element('coolpaths-sample-sky').textContent = values?.svf == null ? '--' : `${thermalNumber(values.svf * 100, 0)}%`;
+    element('coolpaths-sample-canopy').textContent = values?.canopy == null ? '--' : `${thermalNumber(values.canopy)} m`;
+    element('coolpaths-sample-detail').textContent = sample ?
+        `${sample.point[1].toFixed(5)}, ${sample.point[0].toFixed(5)} · ${String(sample.hour).padStart(2, '0')}:00 · ` +
+        (sample.building ? `${thermalNumber(sample.building.height_m)} m building (${sample.building.source})` :
+            `NDVI ${thermalNumber(values.ndvi, 2)} · direct sunlight ${thermalNumber(values.direct, 0)} W/m²`) : '';
+}
+
+function updateThermalDashboard() {
+    const dashboardContent = document.getElementById('dashboard-content');
+    const dashboardTitle = document.getElementById('dashboard-title');
+    const legendTitle = document.getElementById('legend-title');
+    const legendContent = document.getElementById('legend-content');
+    if (!dashboardContent || !legendContent) return;
+    if (dashboardTitle) dashboardTitle.textContent = 'CoolPaths routing';
+    if (legendTitle) legendTitle.textContent = 'PET and routes';
+    if (!document.getElementById('coolpaths-dashboard')) {
+        dashboardContent.innerHTML = `
+            <div id="coolpaths-dashboard" class="coolpaths-dashboard">
+                <div class="coolpaths-heading">
+                    <div><span class="coolpaths-eyebrow">GOTHENBURG STUDY</span>
+                        <strong id="coolpaths-date">15 July 2026</strong></div>
+                    <span id="coolpaths-state" class="coolpaths-state">Waiting for map</span>
+                </div>
+                <div class="coolpaths-controls">
+                    <label for="thermal-hour">Study hour <strong id="thermal-hour-display">14:00</strong></label>
+                    <input type="range" id="thermal-hour" class="modern-range" min="8" max="20" step="1" value="14">
+                    <div class="coolpaths-hour-ends"><span>08:00</span><span>20:00</span></div>
+                    <div class="coolpaths-options">
+                        <label><input type="checkbox" id="thermal-raster" checked> PET surface</label>
+                        <label><input type="checkbox" id="thermal-streets" checked> Walking streets</label>
+                        <button type="button" id="thermal-clear" class="modern-btn">Clear route</button>
+                    </div>
+                </div>
+                <div id="coolpaths-instruction" class="coolpaths-instruction" role="status">Activate the layer on the map.</div>
+                <div class="coolpaths-metrics">
+                    <div class="coolpaths-metric coolpaths-short"><span>Shortest</span><strong id="thermal-short-distance">--</strong><small id="thermal-short-pet">-- PET</small><small id="thermal-short-heat">-- exposure</small></div>
+                    <div class="coolpaths-metric coolpaths-cool"><span>Coolest</span><strong id="thermal-cool-distance">--</strong><small id="thermal-cool-pet">-- PET</small><small id="thermal-cool-heat">-- exposure</small></div>
+                    <div class="coolpaths-metric coolpaths-benefit"><span>Difference</span><strong id="thermal-reduction">--</strong><small id="thermal-detour">-- distance</small><small>50% detour limit</small></div>
+                </div>
+                <div class="coolpaths-profile"><div><strong>PET along route</strong><span>°C by walking distance</span></div><div id="thermal-profile"></div></div>
+                <section class="coolpaths-tour" aria-labelledby="coolpaths-tour-heading">
+                    <div class="coolpaths-card-heading"><div><span class="coolpaths-eyebrow">FROM INPUTS TO A WALK</span>
+                        <h3 id="coolpaths-tour-heading">How CoolPaths works</h3></div><span id="coolpaths-tour-count">6 steps</span></div>
+                    <nav class="coolpaths-steps" aria-label="CoolPaths processing steps">
+                        ${window.COOLPATHS_GUIDE.map((step, index) => `<button type="button" data-tour-step="${index}" aria-label="Step ${index + 1}: ${step.title}"><span>${index + 1}</span>${step.short}</button>`).join('')}
+                    </nav>
+                    <h4 id="coolpaths-step-title">Explore the data behind every route</h4>
+                    <p id="coolpaths-step-body">Follow the preparation from city geometry to a cooler walk. Each step reveals its actual map layer.</p>
+                    <p id="coolpaths-step-hint" class="coolpaths-muted">Start the tour or choose any step above.</p>
+                    <div id="coolpaths-layer-controls" hidden>
+                        <label class="coolpaths-layer-label" for="coolpaths-input-layer">On the map <select id="coolpaths-input-layer"></select></label>
+                        <div id="coolpaths-input-scale" class="coolpaths-input-scale"></div>
+                        <p id="coolpaths-layer-source" class="coolpaths-muted"></p>
+                    </div>
+                    <div class="coolpaths-tour-actions">
+                        <button type="button" id="coolpaths-tour-back" class="modern-btn" aria-label="Previous tour step">←</button>
+                        <button type="button" id="coolpaths-tour-play" class="modern-btn coolpaths-primary">Start tour</button>
+                        <button type="button" id="coolpaths-tour-next" class="modern-btn" aria-label="Next tour step">→</button>
+                        <button type="button" id="coolpaths-tour-explore" class="modern-btn">Explore this layer</button>
+                        <button type="button" id="coolpaths-tour-end" class="modern-btn">Back to routing</button>
+                    </div>
+                    <div id="coolpaths-tour-weather" class="coolpaths-tour-weather"></div>
+                    <p id="coolpaths-tour-status" class="coolpaths-muted" role="status"></p>
+                </section>
+                <section class="coolpaths-inspector" aria-labelledby="coolpaths-inspector-heading">
+                    <div class="coolpaths-card-heading"><h3 id="coolpaths-inspector-heading">At this location</h3>
+                        <div class="coolpaths-mode" role="group" aria-label="Map click action">
+                            <button type="button" id="coolpaths-mode-route" aria-pressed="true">Route</button>
+                            <button type="button" id="coolpaths-mode-inspect" aria-pressed="false">Inspect</button>
+                        </div>
+                    </div>
+                    <p id="coolpaths-inspector-message" class="coolpaths-muted" role="status">Choose Inspect, then click the map to sample a location.</p>
+                    <dl class="coolpaths-samples">
+                        <div><dt>PET</dt><dd id="coolpaths-sample-pet">--</dd></div>
+                        <div><dt>Radiant temperature</dt><dd id="coolpaths-sample-mrt">--</dd></div>
+                        <div><dt>Air temperature</dt><dd id="coolpaths-sample-air">--</dd></div>
+                        <div><dt>Sun exposure</dt><dd id="coolpaths-sample-shade">--</dd></div>
+                        <div><dt>Sky visible</dt><dd id="coolpaths-sample-sky">--</dd></div>
+                        <div><dt>Canopy height</dt><dd id="coolpaths-sample-canopy">--</dd></div>
+                    </dl>
+                    <p id="coolpaths-sample-detail" class="coolpaths-muted"></p>
+                </section>
+                <footer class="coolpaths-credit">
+                    <strong>Based on CoolPaths</strong> · Deepank Verma, Olaf Mumm &amp; Vanessa Miriam Carlow (2026).<br>
+                    <a href="https://doi.org/10.1016/j.cacint.2026.100349" target="_blank" rel="noopener noreferrer">CoolPaths: Street-scale Physiological Equivalent Temperature (PET) mapping and cooler-routes planning using open data.</a>
+                    <em>City and Environment Interactions, 30</em>, 100349. ·
+                    <a href="https://github.com/deepankverma/coolpaths" target="_blank" rel="noopener noreferrer">Original project ↗</a>
+                    <span>Gothenburg adaptation: local geometry, 2 m rasters, MEMI PET and a revised radiation calculation.</span>
+                </footer>
+            </div>`;
+        document.getElementById('thermal-hour')?.addEventListener('input', event => {
+            document.getElementById('thermal-hour-display').textContent = `${String(event.target.value).padStart(2, '0')}:00`;
+            channel.postMessage({ type: 'thermal_control', action: 'set_hour', value: Number(event.target.value) });
+        });
+        document.getElementById('thermal-raster')?.addEventListener('change', event =>
+            channel.postMessage({ type: 'thermal_control', action: 'show_raster', value: event.target.checked }));
+        document.getElementById('thermal-streets')?.addEventListener('change', event =>
+            channel.postMessage({ type: 'thermal_control', action: 'show_streets', value: event.target.checked }));
+        document.getElementById('thermal-clear')?.addEventListener('click', () =>
+            channel.postMessage({ type: 'thermal_control', action: 'clear_route' }));
+        const send = (action, value) => channel.postMessage({ type: 'thermal_control', action, value });
+        dashboardContent.querySelectorAll('[data-tour-step]').forEach(button =>
+            button.addEventListener('click', () => send('tour_step', Number(button.dataset.tourStep))));
+        ['back', 'play', 'next', 'explore', 'end'].forEach(action =>
+            document.getElementById(`coolpaths-tour-${action}`).addEventListener('click', () => send(`tour_${action}`)));
+        document.getElementById('coolpaths-input-layer').addEventListener('change', event => send('tour_layer', event.target.value));
+        ['route', 'inspect'].forEach(mode => document.getElementById(`coolpaths-mode-${mode}`).addEventListener('click', () => send('set_mode', mode)));
+    }
+    const state = thermalComfortState;
+    const route = state.route || (state.tour?.open && state.tour.step === 5 ? state.demoRoute : null);
+    const short = route?.shortest?.properties;
+    const cool = route?.coolest?.properties;
+    document.getElementById('coolpaths-date').textContent = state.studyDate || '15 July 2026';
+    document.getElementById('coolpaths-state').textContent = state.ready ? 'PET data ready' :
+        (state.phase === 'connecting' ? 'Connecting…' : state.active ? 'Data unavailable' : 'Layer off');
+    document.getElementById('coolpaths-state').dataset.ready = String(!!state.ready);
+    document.getElementById('thermal-hour').value = String(state.hour ?? 14);
+    document.getElementById('thermal-hour-display').textContent = `${String(state.hour ?? 14).padStart(2, '0')}:00`;
+    document.getElementById('thermal-raster').checked = state.showRaster !== false;
+    document.getElementById('thermal-streets').checked = state.showStreets !== false;
+    document.getElementById('coolpaths-instruction').textContent = state.mode === 'inspect' && state.active ?
+        'Inspect mode · click the map to sample a location. Choose Route to set walking points.' :
+        state.message || (state.active ? 'Click once for origin, twice for destination; the third click starts a new route.' : 'Activate the layer on the map.');
+    document.getElementById('thermal-short-distance').textContent = short ? `${thermalNumber(short.distance_m, 0)} m` : '--';
+    document.getElementById('thermal-cool-distance').textContent = cool ? `${thermalNumber(cool.distance_m, 0)} m` : '--';
+    document.getElementById('thermal-short-pet').textContent = short ? `${thermalNumber(short.mean_pet_c)}°C mean PET` : '-- mean PET';
+    document.getElementById('thermal-cool-pet').textContent = cool ? `${thermalNumber(cool.mean_pet_c)}°C mean PET` : '-- mean PET';
+    document.getElementById('thermal-short-heat').textContent = short ? `${thermalNumber(short.heat_exposure_c_m, 0)} °C·m exposure` : '-- exposure';
+    document.getElementById('thermal-cool-heat').textContent = cool ? `${thermalNumber(cool.heat_exposure_c_m, 0)} °C·m exposure` : '-- exposure';
+    document.getElementById('thermal-reduction').textContent = route ? `${thermalNumber(route.comparison.heat_reduction_pct)}% less heat` : '--';
+    document.getElementById('thermal-detour').textContent = route ? `+${thermalNumber(route.comparison.extra_distance_m, 0)} m (${thermalNumber(route.comparison.extra_distance_pct)}%)` : '-- distance';
+    document.getElementById('thermal-profile').innerHTML = thermalProfileSvg(route);
+    updateCoolpathsExplorer(state, dashboardContent);
+    legendContent.innerHTML = `
+        <div class="thermal-legend-gradient"></div>
+        <div class="thermal-legend-labels"><span>≤20°C</span><span>24°C</span><span>30°C</span><span>36°C</span><span>≥44°C</span></div>
+        <div class="thermal-route-legend"><span class="thermal-route-swatch thermal-route-swatch-cool"></span> Coolest <span class="thermal-route-swatch thermal-route-swatch-short"></span> Shortest</div>
+        <p class="thermal-note">${state.airTemp == null ? '' : `Air temperature: ${thermalNumber(state.airTemp)}°C. `}PET is modeled outdoor comfort under clear-sky irradiance; it is not air temperature. Street colors and route exposure use the selected hour.</p>`;
+}
+
 function updateDashboard(targetId) {
+    if (targetId !== 'thermal-comfort-btn' && thermalComfortState.tour?.playing) {
+        channel.postMessage({ type: 'thermal_control', action: 'tour_pause' });
+    }
     const dashboardContent = document.getElementById('dashboard-content');
     const legendContent = document.getElementById('legend-content');
     const dashboardTitle = document.getElementById('dashboard-title');
     const legendTitle = document.getElementById('legend-title');
-    const metadataTitle = document.querySelector('#metadata-section h2');
     const mainPanel = document.getElementById('main-panel');
+    if (mainPanel) {
+        mainPanel.classList.toggle('epc-mode', targetId === 'epc-btn');
+        mainPanel.classList.toggle('thermal-mode', targetId === 'thermal-comfort-btn');
+    }
 
     // Check if already in sun study mode to avoid duplicate setup
     if (targetId === 'sun-study-btn' && mainPanel && mainPanel.classList.contains('sun-study-mode')) {
@@ -215,13 +539,128 @@ function updateDashboard(targetId) {
 
     if (targetId !== 'sun-study-btn') {
         setSunStudyLayout(false);
+        updateMetadata(targetId);
     }
 
     // Reset titles by default
     if (dashboardTitle) dashboardTitle.textContent = 'Dashboard';
     if (legendTitle) legendTitle.textContent = 'Legend';
+
+    const ecomGroups = document.getElementById('ecom-groups');
+    const metadataTitle = document.getElementById('metadata-title');
+    const metadataBody = document.getElementById('metadata-content');
+    if (ecomGroups) ecomGroups.style.display = 'none';
+    if (metadataBody) metadataBody.style.display = '';
     if (metadataTitle) metadataTitle.textContent = 'Metadata';
     
+    // Hide SAM segmentation section by default (only shown for street-view-btn)
+    const samSection = document.getElementById('sam-segmentation-section');
+    if (samSection && targetId !== 'street-view-btn') {
+        samSection.style.display = 'none';
+    }
+
+    if (targetId === 'cultural-gravity-btn') {
+        dashboardContent.innerHTML = '<div class="dashboard-card"><h3>Cultural Gravity</h3><p>Advance once to reveal cultural places, then again after the reveal to start their gravity flow.</p><button id="cultural-advance" class="modern-btn">Advance sequence →</button><p>Keyboard: Right Arrow</p></div>';
+        legendContent.innerHTML = '<p>Cultural places in Lindholmen attract animated particles. Site names and the original sequence are preserved.</p>';
+        document.getElementById('cultural-advance').onclick = () => channel.postMessage({type:'cultural_gravity_control', action:'advance'});
+        return;
+    }
+    if (targetId === 'epc-btn') {
+        showEpcDashboard(dashboardTitle, legendTitle, legendContent);
+        return;
+    }
+
+    if (targetId === 'thermal-comfort-btn') {
+        updateThermalDashboard();
+        channel.postMessage({ type: 'thermal_control', action: 'request_state' });
+        return;
+    }
+
+    if (targetId === 'ecom-energy-btn') {
+        const campusLegend = document.getElementById('campus-demo-legend');
+        if (campusLegend) campusLegend.style.display = 'none';
+        if (legendContent) legendContent.style.display = '';
+        if (ecomGroups) ecomGroups.style.display = '';
+        if (metadataBody) metadataBody.style.display = 'none';
+        if (metadataTitle) metadataTitle.textContent = 'Community Parameters';
+        renderEcomDashboard();
+        channel.postMessage({ type: 'ecom_request_summary' });
+        window.ecomControls.load();
+        return;
+    }
+
+    // Campus Demo dashboard
+    if (targetId === 'campus-demo-btn') {
+        if (dashboardTitle) dashboardTitle.textContent = 'Campus Vision';
+        if (legendTitle) legendTitle.textContent = 'Campus Vision Legend';
+
+        dashboardContent.innerHTML = `
+            <div class="dashboard-container">
+                <div class="dashboard-card">
+                    <div class="dashboard-section-title">
+                        <span class="material-icons" style="font-size: 18px;">school</span>
+                        Chalmers Campus Vision
+                    </div>
+                    <div class="info-box" style="border-left-color: #3b82f6;">
+                        <div class="info-title">Interactive Campus Presentation</div>
+                        <p class="info-text">
+                            Navigate through the campus vision with layers showing routes, activity nodes, and green spaces.
+                        </p>
+                    </div>
+                    <p style="color: #888; margin-top: 1rem; font-size: 0.9rem;">
+                        Press → to start, use ← → to navigate
+                    </p>
+                </div>
+            </div>
+        `;
+        
+        // Show the campus demo legend container, hide default
+        const campusLegend = document.getElementById('campus-demo-legend');
+        if (campusLegend) {
+            legendContent.style.display = 'none';
+            campusLegend.style.display = 'block';
+        } else {
+            legendContent.innerHTML = `
+                <div class="dashboard-card">
+                    <div class="dashboard-section-title">Ready to Start</div>
+                    <p style="color: #888;">Press → to begin the presentation</p>
+                </div>
+            `;
+        }
+        
+        // Show Campus Demo Contributors in the metadata section
+        const metadataContent = document.getElementById('metadata-content');
+        const metadataSection = metadataContent?.parentElement;
+        if (metadataSection) {
+            const metadataTitle = metadataSection.querySelector('h2');
+            if (metadataTitle) metadataTitle.textContent = 'Contributors';
+            metadataContent.className = 'credits-grid';
+            metadataContent.innerHTML = `
+                <div class="credit-item">
+                    <div class="credit-role">Chalmers Fastigheter</div>
+                    <div class="credit-name">Ida Gäskeby</div>
+                </div>
+                <div class="credit-item">
+                    <div class="credit-role">Spacescape</div>
+                    <div class="credit-contribution">Spatial Planning & Analysis</div>
+                    <div class="credit-name">Selma Sinanovic Gabrallah</div>
+                    <div class="credit-name">Malin Dahlhielm</div>
+                </div>
+                <div class="credit-item">
+                    <div class="credit-role">Chalmers Rektors Office</div>
+                    <div class="credit-name">Stefan Forsaeus Nilsson</div>
+                    <div class="credit-contribution">Rådgivare, Ledningskansliet, Chalmers verksamhetsstöd</div>
+                </div>
+                <div class="credit-item">
+                    <div class="credit-role">Visualisation Developer</div>
+                    <div class="credit-name">Sanjay Somanath</div>
+                </div>
+            `;
+        }
+        
+        return;
+    }
+
     // Use dedicated slideshow dashboard function for slideshow
     if (targetId === 'slideshow-btn') {
         // If we already know the slideshow is active, show the dashboard immediately
@@ -344,14 +783,14 @@ function updateDashboard(targetId) {
             <div class="dashboard-card">
                 <div class="dashboard-section-title">About the Project</div>
                 <p class="info-text" style="margin-bottom: 1rem;">
-                    The <strong>${(window.APP_CONFIG && window.APP_CONFIG.app.title) || 'ACE MR Studio'}</strong> is an interactive platform designed to bridge the gap between complex urban data and stakeholder engagement.
+                    The <strong>ACE MR Studio</strong> is an interactive platform designed to bridge the gap between complex urban data and stakeholder engagement.
                 </p>
                 <p class="info-text">
                     We want this space to be a place to test and ask questions about complex data communication and also inspire a new form of data story telling and research.
                 </p>
                 <div style="margin-top: 1.5rem; display: flex; justify-content: center; align-items: center;">
-                    <img src="${(window.APP_CONFIG && window.APP_CONFIG.data.images.chalmersLogo) || 'media/chalmers_logo.png'}" style="height: 40px; margin-right: 20px; opacity: 0.8;">
-                    <img src="${(window.APP_CONFIG && window.APP_CONFIG.data.images.dtccLogo) || 'media/dtcc_logo.png'}" style="height: 70px; opacity: 0.8;">
+                    <img src="${window.APP_CONFIG.images.chalmers}" style="height: 40px; margin-right: 20px; opacity: 0.8;">
+                    <img src="${window.APP_CONFIG.images.dtcc}" style="height: 70px; opacity: 0.8;">
                 </div>
             </div>
             <div class="dashboard-card">
@@ -360,7 +799,7 @@ function updateDashboard(targetId) {
                     Help us improve! Scan the QR code to share your feedback.
                 </p>
                 <div style="display: flex; justify-content: center; align-items: center;">
-                    <img src="${(window.APP_CONFIG && window.APP_CONFIG.data.images.surveyQr) || 'media/survey_qr.png'}" style="width: 300px; height: 300px; border-radius: 8px;">
+                    <img src="${window.APP_CONFIG.images.survey}" style="width: 300px; height: 300px; border-radius: 8px;">
                 </div>
             </div>
         `;
@@ -368,176 +807,10 @@ function updateDashboard(targetId) {
     }
 
     if (targetId === 'calibrate-btn') {
-        if (dashboardTitle) dashboardTitle.textContent = 'Calibration Controls';
-        if (legendTitle) legendTitle.textContent = 'Legend';
-
-        dashboardContent.innerHTML = `
-            <div class="dashboard-container">
-                <div class="dashboard-card">
-                    <div class="dashboard-section-title">
-                        <span class="material-icons" style="font-size: 18px;">camera</span>
-                        Auto-Calibration
-                    </div>
-                    
-                    <div class="control-row">
-                        <span class="control-label">Camera</span>
-                        <select id="ctrl-camera-select" class="modern-date" style="width: 150px;">
-                            <option value="">Select camera...</option>
-                        </select>
-                    </div>
-                    
-                    <div id="camera-preview-container" style="width: 100%; aspect-ratio: 1/1; min-height: 440px; background: #1a1a1a; border-radius: 8px; margin: 0.75rem 0; overflow: hidden; position: relative;">
-                        <canvas id="camera-preview" style="width: 100%; height: 100%; object-fit: contain;"></canvas>
-                        <div id="camera-status" style="position: absolute; bottom: 8px; left: 8px; background: rgba(0,0,0,0.7); color: #888; padding: 4px 8px; border-radius: 4px; font-size: 0.8rem;">No camera selected</div>
-                    </div>
-                    
-                    <div class="action-grid">
-                        <button id="ctrl-start-auto-calibrate" class="modern-btn primary">
-                            <span class="material-icons" style="font-size: 16px;">auto_fix_high</span>
-                            Start Auto-Calibrate
-                        </button>
-                        <button id="ctrl-stop-auto-calibrate" class="modern-btn" disabled>
-                            <span class="material-icons" style="font-size: 16px;">stop</span>
-                            Stop
-                        </button>
-                    </div>
-                    
-                    <div id="calibration-progress" style="margin-top: 0.75rem; padding: 0.5rem; background: #1a1a1a; border-radius: 6px; display: none;">
-                        <div style="display: flex; justify-content: space-between; margin-bottom: 0.25rem;">
-                            <span id="calibration-phase">Initializing...</span>
-                            <span id="calibration-iteration">0/15</span>
-                        </div>
-                        <div style="height: 4px; background: #333; border-radius: 2px; overflow: hidden;">
-                            <div id="calibration-progress-bar" style="height: 100%; width: 0%; background: #4ade80; transition: width 0.3s;"></div>
-                        </div>
-                    </div>
-                </div>
-
-                <div class="dashboard-card">
-                    <div class="dashboard-section-title">Manual Calibration</div>
-                    
-                    <div class="control-row">
-                        <span class="control-label">Screen Width (cm)</span>
-                        <input type="number" id="ctrl-screen-w" class="modern-date" value="111.93" step="0.1" style="width: 80px;">
-                    </div>
-                    <div class="control-row">
-                        <span class="control-label">Screen Height (cm)</span>
-                        <input type="number" id="ctrl-screen-h" class="modern-date" value="62.96" step="0.1" style="width: 80px;">
-                    </div>
-                    <div class="control-row">
-                        <span class="control-label">Table Width (cm)</span>
-                        <input type="number" id="ctrl-table-w" class="modern-date" value="100" step="0.1" style="width: 80px;">
-                    </div>
-                    <div class="control-row">
-                        <span class="control-label">Table Height (cm)</span>
-                        <input type="number" id="ctrl-table-h" class="modern-date" value="60" step="0.1" style="width: 80px;">
-                    </div>
-
-                    <div class="action-grid">
-                        <button id="ctrl-show-overlay" class="modern-btn">Show Overlay</button>
-                        <button id="ctrl-hide-overlay" class="modern-btn">Hide Overlay</button>
-                    </div>
-                    
-                    <div style="margin-top: 1rem;">
-                        <button id="ctrl-calibrate-fit" class="modern-btn primary" style="width: 100%;">Copy Current Calibration</button>
-                    </div>
-                </div>
-
-                <div class="dashboard-card">
-                    <div class="dashboard-section-title">Map Adjustment</div>
-                    <div class="action-grid" style="grid-template-columns: repeat(3, 1fr);">
-                        <button id="ctrl-rotate-left" class="modern-btn"><span class="material-icons">rotate_left</span></button>
-                        <button id="ctrl-reset-rotation" class="modern-btn">Reset</button>
-                        <button id="ctrl-rotate-right" class="modern-btn"><span class="material-icons">rotate_right</span></button>
-                    </div>
-                    <div class="action-grid">
-                        <button id="ctrl-zoom-in" class="modern-btn"><span class="material-icons">add</span> Zoom</button>
-                        <button id="ctrl-zoom-out" class="modern-btn"><span class="material-icons">remove</span> Zoom</button>
-                    </div>
-                    <div style="margin-top: 1rem;">
-                        <button id="ctrl-lock-center" class="modern-btn" style="width: 100%;">Lock Center</button>
-                    </div>
-                    <div style="margin-top: 0.5rem;">
-                        <button id="ctrl-toggle-table-markers" class="modern-btn" style="width: 100%;">Toggle Table Markers</button>
-                    </div>
-                </div>
-            </div>
-        `;
-        
-        const metadataContent = document.getElementById('metadata-content');
-        const metadataSection = metadataContent?.parentElement;
-        if (metadataSection && metadataContent) {
-            const currentMetadataTitle = metadataSection.querySelector('h2');
-            if (currentMetadataTitle) currentMetadataTitle.textContent = 'Educational Context';
-            metadataContent.innerHTML = `
-                <div class="dashboard-card" style="border: none; background: transparent; padding: 0;">
-                    <div class="info-box" style="margin-bottom: 1rem; border-left-color: #3b82f6;">
-                        <div class="info-title">Why Calibration Matters</div>
-                        <p class="info-text">
-                            Calibration aligns the projected map with the physical table model, so measurements, overlays, and analysis correspond to real positions in the room.
-                        </p>
-                    </div>
-                    <div class="info-box" style="border-left-color: #3b82f6;">
-                        <div class="info-title">How To Use This Layer</div>
-                        <p class="info-text">
-                            Start with Auto-Calibration to estimate fit from marker detections, then refine with manual width/height and map adjustments for precise alignment.
-                        </p>
-                    </div>
-                </div>
-            `;
-        }
-
-        // Preserve concise legend while educational context lives in metadata for this layer.
-        legendContent.innerHTML = `
-            <div class="dashboard-card">
-                <div class="dashboard-section-title">Calibration Legend</div>
-                <p class="info-text">
-                    Live preview from selected camera with auto and manual alignment controls.
-                </p>
-            </div>
-        `;
-
-        // Initialize auto-calibrator
-        initAutoCalibrator();
-
-        // Add event listeners for manual calibration
-        document.getElementById('ctrl-show-overlay').addEventListener('click', () => {
-            const sw = document.getElementById('ctrl-screen-w').value;
-            const sh = document.getElementById('ctrl-screen-h').value;
-            const tw = document.getElementById('ctrl-table-w').value;
-            const th = document.getElementById('ctrl-table-h').value;
-            channel.postMessage({ type: MSG_TYPES.CALIBRATE_ACTION, action: 'show_overlay', params: { sw, sh, tw, th } });
-        });
-        
-        document.getElementById('ctrl-hide-overlay').addEventListener('click', () => {
-            channel.postMessage({ type: MSG_TYPES.CALIBRATE_ACTION, action: 'hide_overlay' });
-        });
-
-        document.getElementById('ctrl-calibrate-fit').addEventListener('click', () => {
-            channel.postMessage({ type: MSG_TYPES.CALIBRATE_ACTION, action: 'copy_calibration' });
-        });
-
-        document.getElementById('ctrl-zoom-in').addEventListener('click', () => channel.postMessage({ type: MSG_TYPES.CALIBRATE_ACTION, action: 'zoom_in' }));
-        document.getElementById('ctrl-zoom-out').addEventListener('click', () => channel.postMessage({ type: MSG_TYPES.CALIBRATE_ACTION, action: 'zoom_out' }));
-        document.getElementById('ctrl-rotate-left').addEventListener('click', () => channel.postMessage({ type: MSG_TYPES.CALIBRATE_ACTION, action: 'rotate_left' }));
-        document.getElementById('ctrl-rotate-right').addEventListener('click', () => channel.postMessage({ type: MSG_TYPES.CALIBRATE_ACTION, action: 'rotate_right' }));
-        document.getElementById('ctrl-reset-rotation').addEventListener('click', () => channel.postMessage({ type: MSG_TYPES.CALIBRATE_ACTION, action: 'reset_rotation' }));
-        
-        const lockBtn = document.getElementById('ctrl-lock-center');
-        lockBtn.addEventListener('click', () => {
-            lockBtn.classList.toggle('active');
-            channel.postMessage({ type: MSG_TYPES.CALIBRATE_ACTION, action: 'lock_center', value: lockBtn.classList.contains('active') });
-        });
-
-        const toggleTableMarkersBtn = document.getElementById('ctrl-toggle-table-markers');
-        toggleTableMarkersBtn.addEventListener('click', () => {
-            toggleTableMarkersBtn.classList.toggle('active');
-            channel.postMessage({ type: MSG_TYPES.CALIBRATE_ACTION, action: 'toggle_table_markers', value: toggleTableMarkersBtn.classList.contains('active') });
-        });
-
+        renderManualCalibration(dashboardTitle, legendTitle, dashboardContent, legendContent);
         return;
     }
-    
+
     if (targetId === 'stormwater-btn') {
         dashboardContent.innerHTML = `
             <div class="dashboard-container">
@@ -780,12 +1053,67 @@ function updateDashboard(targetId) {
     } else if (targetId === 'cfd-simulation-btn') {
         dashboardContent.innerHTML = `
             <div class="dashboard-container">
+                <div class="dashboard-card cfd-appearance">
+                    <div class="dashboard-section-title">
+                        <span class="material-icons" style="font-size: 18px;">air</span>
+                        Wind appearance
+                    </div>
+                    <div class="control-row">
+                        <label class="control-label" for="wind-visual-style">Style</label>
+                        <select id="wind-visual-style" class="modern-date" aria-describedby="wind-style-description">
+                            <option value="ribbons">Ribbons</option>
+                            <option value="particles">Particles</option>
+                        </select>
+                    </div>
+                    <p id="wind-style-description" class="cfd-appearance-note" aria-live="polite"></p>
+                    <div class="control-row">
+                        <label class="control-label" for="wind-palette">Palette</label>
+                        <select id="wind-palette" class="modern-date">
+                            <option value="classic">Classic · blue to red</option>
+                            <option value="ocean">Ocean · blue to white</option>
+                            <option value="ember">Ember · purple to yellow</option>
+                            <option value="monochrome">Monochrome · gray to white</option>
+                        </select>
+                    </div>
+                    <div class="control-row">
+                        <label class="control-label" for="wind-color-range">Speed range</label>
+                        <select id="wind-color-range" class="modern-date" aria-describedby="wind-range-note">
+                            <option value="5">0–5+ m/s</option>
+                            <option value="10">0–10+ m/s</option>
+                            <option value="20" selected>0–20+ m/s</option>
+                            <option value="40">0–40+ m/s</option>
+                        </select>
+                    </div>
+                    <div id="wind-color-preview" class="cfd-color-bar"></div>
+                    <div class="cfd-color-labels"><span id="wind-preview-label-0"></span><span id="wind-preview-label-1"></span><span id="wind-preview-label-2"></span></div>
+                    <p id="wind-range-note" class="cfd-appearance-note">Color shows speed in m/s. White moving highlights show direction. “+” means the color has reached the top of the scale.</p>
+                    <div class="control-row">
+                        <label class="control-label" for="wind-facade-glow">Wind-impact glow</label>
+                        <input type="checkbox" id="wind-facade-glow" checked aria-describedby="wind-impact-note" style="width: 20px; height: 20px; accent-color: #ffd58c;">
+                    </div>
+                    <p id="wind-impact-note" class="cfd-appearance-note">Building edges glow brighter where stronger wind approaches the façade. Qualitative impact, not a measured pressure coefficient.</p>
+                    <div class="control-row">
+                        <label class="control-label" for="particle-count">Visual density</label>
+                        <select id="particle-count" class="modern-date" style="width: 100px;">
+                            <option value="200">Low</option>
+                            <option value="500" selected>Medium</option>
+                            <option value="1000">High</option>
+                        </select>
+                    </div>
+
+                    <div class="control-row">
+                        <label class="control-label" for="particle-speed" title="Visualization speed; independent of wind speed">Tracer playback</label>
+                        <input type="range" id="particle-speed" class="modern-range" min="2" max="40" step="2" value="20">
+                        <span id="particle-speed-display" class="control-value">20x</span>
+                    </div>
+
+                </div>
                 <div class="dashboard-card">
                     <div class="dashboard-section-title">
                         <span class="material-icons" style="font-size: 18px;">tune</span>
-                        Wind Controls
+                        Wind physics
                     </div>
-                    
+
                     <div class="control-row">
                         <label class="control-label">Wind Speed</label>
                         <input type="range" id="wind-speed" class="modern-range" min="1" max="20" step="0.5" value="5">
@@ -793,36 +1121,21 @@ function updateDashboard(targetId) {
                     </div>
 
                     <div class="control-row">
-                        <label class="control-label">Direction</label>
+                        <label class="control-label" title="Clockwise in screen space: 0° points right, 90° points down">Flow Direction</label>
                         <input type="range" id="wind-direction" class="modern-range" min="0" max="360" step="15" value="0">
-                        <span id="wind-dir-display" class="control-value">0°</span>
-                    </div>
-
-                    <div class="control-row">
-                        <label class="control-label">Particles</label>
-                        <select id="particle-count" class="modern-date" style="width: 100px;">
-                            <option value="200" selected>Low</option>
-                            <option value="500">Medium</option>
-                            <option value="1000">High</option>
-                        </select>
-                    </div>
-
-                    <div class="control-row">
-                        <label class="control-label">Particle Speed</label>
-                        <input type="range" id="particle-speed" class="modern-range" min="2" max="40" step="2" value="20">
-                        <span id="particle-speed-display" class="control-value">20x</span>
+                        <span id="wind-dir-display" class="control-value">0° →</span>
                     </div>
 
                     <div class="control-row">
                         <label class="control-label">Viscosity</label>
-                        <input type="range" id="viscosity" class="modern-range" min="0" max="1" step="0.1" value="0">
+                        <input type="range" id="viscosity" class="modern-range" min="0" max="1" step="0.001" value="0.077">
                     </div>
 
                     <div class="control-row">
                         <label class="control-label">Grid Resolution</label>
                         <select id="grid-resolution" class="modern-date" style="width: 100px;">
-                            <option value="100" selected>100 (Fast)</option>
-                            <option value="150">150</option>
+                            <option value="100">100 (Fast)</option>
+                            <option value="150" selected>150</option>
                             <option value="200">200 (Normal)</option>
                             <option value="250">250</option>
                             <option value="300">300 (High)</option>
@@ -851,13 +1164,13 @@ function updateDashboard(targetId) {
                     <div class="info-box" style="margin-bottom: 1rem; border-left-color: #10b981;">
                         <div class="info-title">Methodology</div>
                         <p class="info-text">
-                            Uses the <strong>Lattice Boltzmann Method (LBM)</strong>, a powerful CFD technique that simulates fluid dynamics by tracking particle distributions on a grid (D2Q9 lattice). It solves the Navier-Stokes equations in real-time.
+                            Uses a <strong>2D Lattice Boltzmann model</strong> to illustrate flow around building footprints. Ribbons and particles sample the computed velocity field; tracer playback changes presentation speed only. Changing the color range changes colors, not the flow or its motion.
                         </p>
                     </div>
                     <div class="info-box" style="border-left-color: #10b981;">
                         <div class="info-title">Application</div>
                         <p class="info-text">
-                            Essential for <strong>wind comfort analysis</strong> in urban design. Helps architects ensure pedestrian safety, plan natural ventilation corridors, and mitigate dangerous wind tunnel effects around tall buildings.
+                            Explore sheltered areas and accelerated flow between buildings. This qualitative model does not simulate wind over roofs or provide validated wind-comfort or safety predictions.
                         </p>
                     </div>
                 </div>
@@ -871,11 +1184,11 @@ function updateDashboard(targetId) {
                     
                     <div>
                         <div class="legend-label" style="margin-bottom: 0.5rem;">Wind Velocity Scale</div>
-                        <div style="height: 12px; background: linear-gradient(to right, #3b82f6, #10b981, #ef4444); border-radius: 6px; margin-bottom: 0.25rem;"></div>
+                        <div id="wind-color-legend" style="height: 12px; background: ${CFD.colorGradient(cfdState.palette, cfdState.colorMaxMps)}; border-radius: 6px; margin-bottom: 0.25rem;"></div>
                         <div style="display: flex; justify-content: space-between; font-size: 0.75rem; color: #6b7280;">
-                            <span>0 m/s</span>
-                            <span>Moderate</span>
-                            <span>High</span>
+                            <span id="wind-range-label-0">0 m/s</span>
+                            <span id="wind-range-label-1">10 m/s</span>
+                            <span id="wind-range-label-2">20+ m/s</span>
                         </div>
                     </div>
 
@@ -888,29 +1201,37 @@ function updateDashboard(targetId) {
                     </div>
 
                     <div class="legend-item">
+                        <div id="wind-impact-swatch" class="legend-color" style="background: #ffd58c; box-shadow: 0 0 8px #ffd58c;"></div>
+                        <div>
+                            <span class="legend-label">Wind impact on façades</span>
+                            <div style="font-size: 0.75rem; color: #6b7280;">Dim → bright: less → more incoming wind. Independent of the speed color scale.</div>
+                        </div>
+                    </div>
+
+                    <div class="legend-item">
                         <div class="legend-color" style="background: #2D5A27; border: 1px dashed #4a9441;"></div>
                         <div>
                             <span class="legend-label">Tree Canopies</span>
-                            <div style="font-size: 0.75rem; color: #6b7280;">Permeable obstacles (~60% flow)</div>
+                            <div style="font-size: 0.75rem; color: #6b7280;">Approximate porous drag</div>
                         </div>
                     </div>
 
                     <div class="legend-item">
                         <div class="legend-color" style="background: rgba(255,255,255,0.5); border: 1px dashed #9ca3af;"></div>
                         <div>
-                            <span class="legend-label">Airflow Particles</span>
-                            <div style="font-size: 0.75rem; color: #6b7280;">Tracers visualizing flow path</div>
+                            <span class="legend-label">Computed airflow</span>
+                            <div style="font-size: 0.75rem; color: #6b7280;">Colored marks show speed; white highlights move downstream</div>
                         </div>
                     </div>
 
                     <div style="border-top: 1px solid #e5e7eb; padding-top: 0.5rem; margin-top: 0.5rem;">
                         <div style="font-size: 0.8rem; color: #6b7280; display: flex; justify-content: space-between;">
-                            <span>Domain Width:</span>
-                            <span style="font-family: monospace;">~500m</span>
+                            <span>Speed Reference:</span>
+                            <span style="font-family: monospace;">Inlet calibrated</span>
                         </div>
                         <div style="font-size: 0.8rem; color: #6b7280; display: flex; justify-content: space-between;">
-                            <span>Simulation Method:</span>
-                            <span style="font-family: monospace;">LBM D2Q9</span>
+                            <span>Model Fidelity:</span>
+                            <span style="font-family: monospace;">Qualitative 2D LBM</span>
                         </div>
                     </div>
                 </div>
@@ -936,13 +1257,35 @@ function updateDashboard(targetId) {
             });
         };
 
+        for (const [id, action, property] of [
+            ['wind-visual-style', 'set_visual_style', 'visualStyle'],
+            ['wind-palette', 'set_color_palette', 'palette'],
+            ['wind-color-range', 'set_color_range', 'colorMaxMps']
+        ]) {
+            document.getElementById(id).addEventListener('change', event => {
+                const value = property === 'colorMaxMps' ? Number(event.target.value) : event.target.value;
+                cfdState[property] = value;
+                renderCfdState();
+                sendCfdControl(action, value);
+            });
+        }
+
+        document.getElementById('wind-facade-glow').addEventListener('change', event => {
+            cfdState.facadeGlow = event.target.checked;
+            sendCfdControl('set_facade_glow', event.target.checked);
+        });
+
         windSpeed.addEventListener('input', (e) => {
-            windSpeedDisplay.textContent = parseFloat(e.target.value).toFixed(1) + ' m/s';
+            const speed = parseFloat(e.target.value);
+            windSpeedDisplay.textContent = speed.toFixed(1) + ' m/s';
             sendCfdControl('set_wind_speed', e.target.value);
         });
 
         windDir.addEventListener('input', (e) => {
-            windDirDisplay.textContent = e.target.value + '°';
+            const angle = parseFloat(e.target.value);
+            const arrows = ['→', '↘', '↓', '↙', '←', '↖', '↑', '↗'];
+            const arrow = arrows[Math.round(angle / 45) % arrows.length];
+            windDirDisplay.textContent = `${e.target.value}° ${arrow}`;
             sendCfdControl('set_wind_direction', e.target.value);
         });
 
@@ -966,15 +1309,18 @@ function updateDashboard(targetId) {
         // Tree toggle button
         const toggleTreesBtn = document.getElementById('toggle-trees-btn');
         const treesStatus = document.getElementById('trees-status');
-        let treesEnabled = true;
         
         toggleTreesBtn.addEventListener('click', () => {
-            treesEnabled = !treesEnabled;
+            const treesEnabled = toggleTreesBtn.dataset.enabled !== 'true';
+            toggleTreesBtn.dataset.enabled = String(treesEnabled);
             treesStatus.textContent = treesEnabled ? 'On' : 'Off';
             toggleTreesBtn.style.background = treesEnabled ? '#2D5A27' : '#333';
             toggleTreesBtn.style.borderColor = treesEnabled ? '#4a9441' : '#555';
             sendCfdControl('toggle_trees', treesEnabled);
         });
+
+        renderCfdState();
+        sendCfdControl('get_state');
 
     } else if (targetId === 'isovist-btn') {
         dashboardContent.innerHTML = `
@@ -986,7 +1332,7 @@ function updateDashboard(targetId) {
                             Street View (Live)
                         </div>
                     </div>
-                    <div id="street-view-panel" style="width: 100%; height: 200px; background: #1a1a1a; position: relative;">
+                    <div id="street-view-panel" style="width: 100%; height: 620px; background: #1a1a1a; position: relative;">
                         <img id="street-view-image" style="width: 100%; height: 100%; object-fit: cover; display: none;" />
                         <div id="street-view-no-coverage" style="
                             position: absolute;
@@ -1014,16 +1360,6 @@ function updateDashboard(targetId) {
                             border-radius: 3px;
                             display: none;
                         "></div>
-                        <div id="street-view-heading-controls" style="
-                            position: absolute;
-                            bottom: 8px;
-                            right: 8px;
-                            display: none;
-                            gap: 4px;
-                        ">
-                            <button id="sv-rotate-left" style="background: rgba(0,0,0,0.7); border: none; color: white; padding: 8px 12px; border-radius: 4px; cursor: pointer;">◀</button>
-                            <button id="sv-rotate-right" style="background: rgba(0,0,0,0.7); border: none; color: white; padding: 8px 12px; border-radius: 4px; cursor: pointer;">▶</button>
-                        </div>
                     </div>
                 </div>
                 
@@ -1080,7 +1416,6 @@ function updateDashboard(targetId) {
         
         // Initialize Street View for isovist dashboard
         loadStreetViewConfig();
-        initStreetViewControls();
         
         legendContent.innerHTML = `
             <div class="dashboard-card">
@@ -1289,10 +1624,108 @@ function updateDashboard(targetId) {
             });
         }
 
+    } else if (targetId === 'fcc-demo-btn') {
+        // FCC VR Demo dashboard with video player and timeline
+        updateFCCDemoDashboard();
+        
+    } else if (targetId === 'street-view-btn') {
+        // Street View dashboard with embedded image
+        dashboardContent.innerHTML = `
+            <div class="dashboard-container">
+                <div class="dashboard-card" style="padding: 0; overflow: hidden;">
+                    <div id="street-view-panel" style="width: 100%; height: 350px; background: #1a1a1a; position: relative;">
+                        <img id="street-view-image" style="width: 100%; height: 100%; object-fit: cover; display: none;" />
+                        <div id="street-view-no-coverage" style="
+                            position: absolute;
+                            top: 0; left: 0; right: 0; bottom: 0;
+                            display: flex;
+                            align-items: center;
+                            justify-content: center;
+                            flex-direction: column;
+                            color: #666;
+                            font-size: 14px;
+                            background: #1a1a1a;
+                        ">
+                            <span style="font-size: 48px; margin-bottom: 12px;">📍</span>
+                            <span style="font-size: 16px; margin-bottom: 4px;">Click on the map</span>
+                            <span style="font-size: 12px; color: #555;">to view Street View at that location</span>
+                        </div>
+                        <div id="street-view-coords" style="
+                            position: absolute;
+                            bottom: 8px;
+                            left: 8px;
+                            background: rgba(0,0,0,0.7);
+                            color: #888;
+                            font-size: 10px;
+                            padding: 4px 8px;
+                            border-radius: 4px;
+                            font-family: monospace;
+                            z-index: 10;
+                        "></div>
+                        <div id="street-view-heading-controls" style="
+                            position: absolute;
+                            bottom: 8px;
+                            right: 8px;
+                            display: none;
+                            gap: 4px;
+                            z-index: 10;
+                        ">
+                            <button id="sv-rotate-left" style="background: rgba(0,0,0,0.7); border: none; color: white; padding: 8px 12px; border-radius: 4px; cursor: pointer;">◀</button>
+                            <button id="sv-rotate-right" style="background: rgba(0,0,0,0.7); border: none; color: white; padding: 8px 12px; border-radius: 4px; cursor: pointer;">▶</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        `;
+        
+        legendContent.innerHTML = `
+            <div class="dashboard-card">
+                <div class="dashboard-section-title">How to Use</div>
+                <div style="font-size: 11px; color: #ccc; line-height: 1.6;">
+                    <div style="display: flex; align-items: flex-start; gap: 8px; margin-bottom: 8px;">
+                        <span style="color: #3b82f6; font-weight: bold;">1.</span>
+                        <span>Click the Street View button to activate</span>
+                    </div>
+                    <div style="display: flex; align-items: flex-start; gap: 8px; margin-bottom: 8px;">
+                        <span style="color: #3b82f6; font-weight: bold;">2.</span>
+                        <span>Click anywhere on the main map display</span>
+                    </div>
+                    <div style="display: flex; align-items: flex-start; gap: 8px; margin-bottom: 8px;">
+                        <span style="color: #3b82f6; font-weight: bold;">3.</span>
+                        <span>View the Street View image here</span>
+                    </div>
+                    <div style="display: flex; align-items: flex-start; gap: 8px;">
+                        <span style="color: #3b82f6; font-weight: bold;">4.</span>
+                        <span>Use ◀ ▶ buttons to rotate view</span>
+                    </div>
+                </div>
+            </div>
+            <div class="dashboard-card" style="margin-top: 1rem;">
+                <div class="info-box" style="border-left-color: #22c55e;">
+                    <div class="info-title">Coverage</div>
+                    <p class="info-text">
+                        Street View is available along most roads in Sweden. 
+                        If no imagery exists, you'll see a "No Coverage" message.
+                    </p>
+                </div>
+            </div>
+        `;
+        
+        // Initialize rotation controls
+        initStreetViewControls();
+        
+        // Show SAM segmentation section for Street View
+        const samSection = document.getElementById('sam-segmentation-section');
+        if (samSection) samSection.style.display = 'block';
+        
     } else {
         // Default or other tools
         dashboardContent.innerHTML = '<p>Select a simulation to view details.</p>';
         legendContent.innerHTML = '<p>Select a simulation to view its legend.</p>';
+        
+        // Hide SAM segmentation section for non-Street View
+        const samSection = document.getElementById('sam-segmentation-section');
+        if (samSection) samSection.style.display = 'none';
     }
 }
 
@@ -1322,9 +1755,34 @@ channel.onmessage = (event) => {
     if (data.type === MSG_TYPES.ANIMATION_STATE) {
         // Received actual animation state from main window - update our tracking
         setAnimationState(data.animationId, data.isActive);
+    } else if (data.type === 'isovist_state') {
+        const radius = document.getElementById('isovist-radius'), fov = document.getElementById('isovist-fov');
+        if (radius) radius.value = data.radius;
+        if (fov) {fov.value = data.fov;fov.disabled = !data.humanFov;}
+        if (document.getElementById('radius-display')) document.getElementById('radius-display').textContent = data.radius + 'm';
+        if (document.getElementById('fov-display')) document.getElementById('fov-display').textContent = data.fov + '°';
+        document.getElementById('toggle-360-btn')?.classList.toggle('active', !data.humanFov);
+        document.getElementById('toggle-follow-btn')?.classList.toggle('active', data.follow);
+    } else if (data.type === 'sun_state') {
+        sunStudyState.time = data.time;sunStudyState.date = data.date;
+        for (const [id, value] of [['sun-time',data.time],['sun-date',data.date],['sun-speed',data.speed],['shadow-opacity',data.opacity]]) {
+            const input = document.getElementById(id);if(input) input.value = value;
+        }
+        updateSunStudySky(data.time, data.date);
+    } else if (data.type === 'cfd_state') {
+        cfdState = { ...cfdState, ...data };
+        renderCfdState();
+    } else if (data.type === 'thermal_state') {
+        thermalComfortState = { ...thermalComfortState, ...data };
+        if (document.getElementById('main-panel')?.classList.contains('thermal-mode')) updateThermalDashboard();
     } else if (data.type === MSG_TYPES.STATE_UPDATE) {
         // Legacy state update - ignore for animation buttons now
         // We use ANIMATION_STATE for that instead
+    } else if (data.type === MSG_TYPES.EPC_BUILDING_SELECTED) {
+        epcState.selected = data.building || null;
+        if (document.getElementById('main-panel')?.classList.contains('epc-mode')) {
+            renderEpcBuildingDashboard(epcState.selected);
+        }
     } else if (data.type === MSG_TYPES.SLIDESHOW_UPDATE) {
         // Update slideshow state and display
         slideshowState = {
@@ -1332,11 +1790,14 @@ channel.onmessage = (event) => {
             currentIndex: data.currentIndex,
             totalSlides: data.totalSlides,
             metadata: data.metadata,
+            status: data.status, error: data.error,
+            categoryIndex: data.categoryIndex, categoryCount: data.categoryCount, category: data.category, autoReveal: data.autoReveal,
             slideType: data.slideType
         };
         // Update dashboard if slideshow is the active layer
         const slideshowBtn = document.querySelector('.control-btn[data-target="slideshow-btn"]');
-        if (slideshowBtn && slideshowBtn.classList.contains('active')) {
+        if (slideshowBtn?.getAttribute('aria-current') === 'true' || document.body.dataset.layer === 'slideshow-btn') {
+            updateMetadata('slideshow-btn');
             updateSlideshowDashboard();
         }
     } else if (data.type === MSG_TYPES.SLIDESHOW_LEGEND_HIGHLIGHT) {
@@ -1399,10 +1860,49 @@ channel.onmessage = (event) => {
             alert('Failed to copy to clipboard. Check console for data.');
             console.log(calibrationText);
         });
+    } else if (data.type === 'calibration_saved') {
+        localStorage.setItem((window.APP_CONFIG.calibration.storagePrefix + 'selected_calibration'), data.calibration.id);
+        refreshSavedCalibrationSelect();
+        const calibrateButton = document.querySelector('.control-btn[data-target="calibrate-btn"]');
+        if (calibrateButton && calibrateButton.classList.contains('selected')) {
+            renderCalibrationHistory(document.getElementById('legend-content'));
+        }
     } else if (data.type === 'isovist_stats') {
         updateIsovistChart(data.data);
+    } else if (data.type === 'fcc_demo_progress') {
+        // Update FCC demo progress from main window
+        fccDemoState.progress = data.progress;
+        fccDemoState.currentTime = data.time;
+        updateFCCDemoProgress();
+    } else if (data.type === 'fcc_demo_ready') {
+        // FCC demo is ready
+        fccDemoState.pathLength = data.data.pathLength;
+        fccDemoState.pointCount = data.data.pointCount;
+        updateFCCDemoDashboard();
+    } else if (data.type === 'fcc_demo_stats') {
+        // Update FCC demo stats
+        fccDemoState.stats = data.data;
+        updateFCCDemoStats();
+    } else if (data.type === 'fcc_demo_playback_state') {
+        // Update playback state
+        fccDemoState.isPlaying = data.isPlaying;
+        updateFCCDemoPlayButton();
     } else if (data.type === 'street_view_position') {
+        // Received position from main map - update Street View panorama
         updateStreetViewPosition(data.position, data.heading);
+    } else if (data.type === 'campus_demo_phase') {
+        // Update campus demo legend based on current phase
+        updateCampusDemoLegend(data.phase, data.phaseIndex, data.label);
+    } else if (data.type === 'sam_segment') {
+        // Trigger segmentation as requested from main window
+        const segBtn = document.getElementById('sam-segment-btn');
+        if (segBtn) {
+            // Simulate user click
+            segBtn.click();
+        } else {
+            // Update status if available
+            if (typeof setSamStatus === 'function') setSamStatus('No segmentation UI', false);
+        }
     } else {
         // Log unknown message types for debugging new features
         debugLog('Unknown message type:', data.type);
@@ -1410,105 +1910,16 @@ channel.onmessage = (event) => {
 };
 
 
-// --- Street View (used by isovist dashboard) ---
-let streetViewApiKey = null;
-let streetViewCurrentPosition = null;
-let streetViewCurrentHeading = 0;
-
-async function loadStreetViewConfig() {
-    if (streetViewApiKey) return true;
-    try {
-        const response = await fetch('map_config.json');
-        const config = await response.json();
-        streetViewApiKey = config.data && config.data.apiKeys && config.data.apiKeys.streetViewApiKey;
-        if (!streetViewApiKey) {
-            // Fallback: try trafik-config.json
-            const resp2 = await fetch('trafik-config.json');
-            const cfg2 = await resp2.json();
-            streetViewApiKey = cfg2.streetViewApiKey;
-        }
-        if (streetViewApiKey) {
-            console.log('Street View API key loaded');
-            return true;
-        }
-        console.warn('No Street View API key found');
-        return false;
-    } catch (e) {
-        console.warn('Could not load Street View API key:', e);
-        return false;
-    }
-}
-
-function initStreetViewControls() {
-    const leftBtn = document.getElementById('sv-rotate-left');
-    const rightBtn = document.getElementById('sv-rotate-right');
-    if (leftBtn) {
-        leftBtn.addEventListener('click', () => {
-            streetViewCurrentHeading = (streetViewCurrentHeading - 45 + 360) % 360;
-            if (streetViewCurrentPosition) updateStreetViewImage();
-        });
-    }
-    if (rightBtn) {
-        rightBtn.addEventListener('click', () => {
-            streetViewCurrentHeading = (streetViewCurrentHeading + 45) % 360;
-            if (streetViewCurrentPosition) updateStreetViewImage();
-        });
-    }
-}
-
-function updateStreetViewImage() {
-    const img = document.getElementById('street-view-image');
-    const noCoverageMsg = document.getElementById('street-view-no-coverage');
-    const coordsDisplay = document.getElementById('street-view-coords');
-    const controls = document.getElementById('street-view-heading-controls');
-    if (!img || !streetViewApiKey || !streetViewCurrentPosition) return;
-
-    const { lat, lng } = streetViewCurrentPosition;
-    if (coordsDisplay) {
-        coordsDisplay.textContent = `${lat.toFixed(6)}, ${lng.toFixed(6)} | Heading: ${streetViewCurrentHeading}\u00B0`;
-    }
-
-    const size = '640x350';
-    const url = `https://maps.googleapis.com/maps/api/streetview?size=${size}&location=${lat},${lng}&heading=${streetViewCurrentHeading}&pitch=0&fov=100&key=${streetViewApiKey}`;
-
-    img.onload = () => {
-        img.style.display = 'block';
-        if (noCoverageMsg) noCoverageMsg.style.display = 'none';
-        if (coordsDisplay) coordsDisplay.style.display = 'block';
-        if (controls) controls.style.display = 'flex';
-    };
-    img.onerror = () => {
-        img.style.display = 'none';
-        if (coordsDisplay) coordsDisplay.style.display = 'none';
-        if (noCoverageMsg) {
-            noCoverageMsg.innerHTML = `
-                <span style="font-size: 48px; margin-bottom: 12px;">\uD83D\uDCF7</span>
-                <span style="font-size: 16px; margin-bottom: 4px;">No Street View Coverage</span>
-                <span style="font-size: 12px; color: #555;">Try clicking a different location on the map</span>
-            `;
-            noCoverageMsg.style.display = 'flex';
-        }
-        if (controls) controls.style.display = 'none';
-    };
-    img.src = url;
-}
-
-function updateStreetViewPosition(position, heading) {
-    streetViewCurrentPosition = position;
-    if (heading !== undefined) {
-        streetViewCurrentHeading = Math.round(heading);
-    }
-    if (!streetViewApiKey) {
-        loadStreetViewConfig().then(hasKey => {
-            if (hasKey) updateStreetViewImage();
-        });
-        return;
-    }
-    updateStreetViewImage();
-}
-
 // Isovist dashboard loaded from controller/isovist-dashboard.js
 // Bird dashboard loaded from controller/bird-dashboard.js
+
+
+
+// FCC demo dashboard loaded from controller/fcc-demo-dashboard.js
+
+
+
+// Campus demo legend loaded from controller/campus-demo-legend.js
 
 
 
@@ -1537,6 +1948,11 @@ function updateMetadata(layerId) {
     let legend = '<p>Select a simulation to view its legend.</p>';
 
     switch(layerId) {
+        case 'ecom-energy-btn':
+            name = 'Energy Community';
+            desc = 'Hourly electricity flows between campus members, their roof arrays, the battery and the grid.';
+            legend = '';
+            break;
         case 'cfd-simulation-btn':
             name = 'CFD Wind Simulation';
             desc = 'Computational Fluid Dynamics simulation showing wind flow patterns around buildings. Colors indicate wind speed.';
@@ -1550,6 +1966,10 @@ function updateMetadata(layerId) {
                     </div>
                 </div>
             `;
+            break;
+        case 'cultural-gravity-btn':
+            name = 'Cultural Gravity';
+            desc = 'Reveal Lindholmen’s cultural places, then animate their attraction. Press Right Arrow to advance.';
             break;
         case 'bird-sounds-btn':
             name = 'Bird Sounds';
@@ -1595,6 +2015,11 @@ function updateMetadata(layerId) {
                 </div>
             `;
             break;
+        case 'thermal-comfort-btn':
+            name = 'Outdoor Thermal Comfort';
+            desc = 'Processed PET surface and live comparison of shortest and coolest walking routes.';
+            legend = '<p>Choose the study hour, then click the map to set a walking origin and destination.</p>';
+            break;
         case 'sun-study-btn':
             name = 'Sun Study';
             desc = 'Shadow analysis showing sunlight exposure at different times of day/year.';
@@ -1620,45 +2045,10 @@ function updateMetadata(layerId) {
             desc = 'Visual field analysis from a specific point. Shows what is visible from the selected location.';
             legend = '<p>Click on map to set view point.</p>';
             break;
-        case 'cultural-gravity-btn':
-            name = 'Cultural Gravity';
-            desc = 'Cultural points of interest in Lindholmen visualised as gravity wells attracting crowds of visitors. Larger attractions draw more people.';
-            legend = `
-                <div style="display: flex; flex-direction: column; gap: 10px;">
-                    <div style="display: flex; align-items: center; gap: 10px;">
-                        <span style="width: 12px; height: 12px; border-radius: 50%; background: rgb(255,69,58);"></span>
-                        <span>Landmark</span>
-                    </div>
-                    <div style="display: flex; align-items: center; gap: 10px;">
-                        <span style="width: 12px; height: 12px; border-radius: 50%; background: rgb(175,82,222);"></span>
-                        <span>Theatre</span>
-                    </div>
-                    <div style="display: flex; align-items: center; gap: 10px;">
-                        <span style="width: 12px; height: 12px; border-radius: 50%; background: rgb(255,159,10);"></span>
-                        <span>Heritage</span>
-                    </div>
-                    <div style="display: flex; align-items: center; gap: 10px;">
-                        <span style="width: 12px; height: 12px; border-radius: 50%; background: rgb(48,176,199);"></span>
-                        <span>Education</span>
-                    </div>
-                    <div style="display: flex; align-items: center; gap: 10px;">
-                        <span style="width: 12px; height: 12px; border-radius: 50%; background: rgb(255,55,95);"></span>
-                        <span>Studio</span>
-                    </div>
-                    <div style="display: flex; align-items: center; gap: 10px;">
-                        <span style="width: 12px; height: 12px; border-radius: 50%; background: rgb(50,215,75);"></span>
-                        <span>Nature</span>
-                    </div>
-                    <div style="display: flex; align-items: center; gap: 10px;">
-                        <span style="width: 12px; height: 12px; border-radius: 50%; background: rgb(255,214,10);"></span>
-                        <span>Community</span>
-                    </div>
-                    <div style="display: flex; align-items: center; gap: 10px;">
-                        <span style="width: 12px; height: 12px; border-radius: 50%; background: rgb(94,92,230);"></span>
-                        <span>Art</span>
-                    </div>
-                </div>
-            `;
+        case 'epc-btn':
+            name = 'Energy Performance Certificates';
+            desc = 'Building energy classes and certificate details.';
+            legend = '<p>Click a building to inspect its EPC.</p>';
             break;
         case 'calibrate-btn':
             name = 'Projector Calibration';
@@ -1689,30 +2079,53 @@ startTour();
 
 // Keyboard controls for slideshow navigation when slideshow is active
 document.addEventListener('keydown', (e) => {
+    if (e.repeat || e.target?.closest?.('input,textarea,select,[contenteditable="true"]')) return;
     // Check if slideshow button is active
     const slideshowBtn = document.querySelector('.control-btn[data-target="slideshow-btn"]');
     if (slideshowBtn && slideshowBtn.classList.contains('active') && slideshowState.isActive) {
-        if (e.key === 'ArrowRight' || e.key === ' ') {
+        if (e.key === 'ArrowRight') {
             e.preventDefault();
-            channel.postMessage({ type: MSG_TYPES.SLIDESHOW_CONTROL, action: 'next' });
+            channel.postMessage({ type: MSG_TYPES.SLIDESHOW_CONTROL, action: slideshowState.categoryCount && !e.shiftKey ? 'category_next' : 'next' });
         } else if (e.key === 'ArrowLeft') {
             e.preventDefault();
-            channel.postMessage({ type: MSG_TYPES.SLIDESHOW_CONTROL, action: 'previous' });
+            channel.postMessage({ type: MSG_TYPES.SLIDESHOW_CONTROL, action: slideshowState.categoryCount && !e.shiftKey ? 'category_previous' : 'previous' });
         } else if (e.key === 'Escape') {
             e.preventDefault();
             channel.postMessage({ type: MSG_TYPES.SLIDESHOW_CONTROL, action: 'stop' });
         }
         return;
     }
-
-    // Cultural Gravity staged progression from controller keyboard
-    const culturalBtn = document.querySelector('.control-btn[data-target="cultural-gravity-btn"]');
-    if (culturalBtn && culturalBtn.classList.contains('active') && e.key === 'ArrowRight' && !e.repeat) {
-        e.preventDefault();
-        channel.postMessage({ type: 'cultural_gravity_advance' });
+    
+    // Check if campus demo button is active
+    const campusDemoBtn = document.querySelector('.control-btn[data-target="campus-demo-btn"]');
+    if (campusDemoBtn && campusDemoBtn.classList.contains('active')) {
+        if (e.key === ' ') {
+            e.preventDefault();
+            channel.postMessage({ type: 'campus_demo_control', action: 'autoplay' });
+        } else if (e.key === 'ArrowRight') {
+            e.preventDefault();
+            channel.postMessage({ type: 'campus_demo_control', action: 'next' });
+        } else if (e.key === 'ArrowLeft') {
+            e.preventDefault();
+            channel.postMessage({ type: 'campus_demo_control', action: 'previous' });
+        } else if (e.key === 'Escape') {
+            e.preventDefault();
+            channel.postMessage({ type: 'campus_demo_control', action: 'stop' });
+        }
+        return;
     }
 });
 
 
-// Auto-Calibration loaded from controller/auto-calibration.js
 
+
+// Street View + SAM loaded from controller/street-view.js
+
+// Preserve Lindholmen’s presentation keyboard control on the dashboard.
+window.addEventListener('keydown', event => {
+  if (event.key !== 'ArrowRight' || event.repeat || /INPUT|TEXTAREA|SELECT/.test(event.target?.tagName) || event.target?.isContentEditable) return;
+  if (activeAnimations.includes('cultural-gravity-btn')) {
+    event.preventDefault();
+    channel.postMessage({type:'cultural_gravity_control', action:'advance'});
+  }
+});

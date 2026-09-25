@@ -1,0 +1,49 @@
+body{display:block!important;overflow:auto!important;height:auto!important;min-height:100vh;background:#101722!important}body>header,#controls-panel,#right-panel,#welcome-screen,#bg-animation-canvas,.desktop-session-strip{display:none!important}#main-panel{display:flex!important;flex-direction:column!important;padding:12px!important;gap:12px!important;overflow:visible!important;width:100%!important;max-width:100%!important;height:auto!important;min-height:0!important;margin:0!important}#main-panel>section{width:100%!important;min-width:0!important;grid-area:auto!important}#dashboard-section{order:0}#legend-section{order:1}#metadata-section{order:2}#main-panel.sun-study-mode .sun-study-bottom{display:flex!important;flex-direction:column!important}#main-panel.sun-study-mode .sun-study-hero{width:100%!important}#main-panel.sun-study-mode .sun-study-hidden{display:none!important}.panel-section,.dashboard-card{max-width:100%;overflow-x:auto}.dashboard-container{display:flex;flex-direction:column}.dashboard-card:has(#isovist-radius){order:-1}.dashboard-card:has(#street-view-image)>div[style*="height: 620px"]{height:190px!important}.ecom-grid,.ecom-params-grid,.thermal-grid,.thermal-controls{grid-template-columns:1fr!important}input,select,button{min-height:42px}input[type=range]{width:100%!important}img,video,canvas{max-width:100%}#legend-content,#dashboard-content,#metadata-content{min-width:0!important}#metadata-section{font-size:12px}.modern-controls{flex-wrap:wrap}body.mr-readonly #main-panel input,body.mr-readonly #main-panel select,body.mr-readonly #main-panel button{pointer-events:none;opacity:.5}#main-panel [style*="grid-template-columns"]{grid-template-columns:1fr!important}#main-panel [style*="min-width"]{min-width:0!important}
+/* Sun Study: controls first, with a compact sky and no desktop minimum widths. */
+body[data-layer="sun-study-btn"] #metadata-section{order:0;padding:12px!important}
+body[data-layer="sun-study-btn"] #dashboard-section{order:1;padding:12px!important;min-height:0!important}
+.sun-study-bottom-grid{display:grid!important;grid-template-columns:minmax(0,1fr)!important;gap:12px}
+.sun-compact-card{min-width:0;padding:12px}
+.sun-compact-row{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:8px;align-items:center}
+.sun-compact-row input[type=range]{grid-column:1/-1;grid-row:2;min-width:0;margin:0}
+.sun-compact-row input[type=date]{grid-column:1/-1;width:100%;max-width:100%;min-width:0!important;box-sizing:border-box}
+.sun-compact-row .control-value{min-width:0;white-space:nowrap}
+#main-panel .sun-compact-card .action-grid{grid-template-columns:repeat(3,minmax(0,1fr))!important;gap:6px}
+.sun-compact-card .modern-btn{padding:8px 3px;font-size:12px;min-width:0;display:flex;flex-direction:column;gap:4px}
+.sun-sky-card{flex:none;height:180px;min-height:180px}
+.sun-sky{height:180px}
+.sun-time-center{padding:8px 12px;white-space:nowrap}
+.sun-time-center .sun-time{font-size:28px}
+.sun-time-center .sun-date{font-size:12px}
+.sunrise-label,.sunset-label{font-size:11px;padding:4px;bottom:10px}
+.sunrise-label{left:8px}.sunset-label{right:8px}
+.sun-compact-legend{grid-template-columns:minmax(0,1fr)}
+/* The reused Energy Community panel supplies inputs, not mirrored results. */
+body[data-layer="ecom-energy-btn"] #dashboard-section,#ecom-kpis,.ecom-sky-card,.ecom-story{display:none!important}
+body[data-layer="ecom-energy-btn"] #legend-section{order:0}body[data-layer="ecom-energy-btn"] #metadata-section{order:1}
+
+/* Light phone editor, including the shared ECOM controls. */
+:root{color-scheme:light;--ecom-line:#cbd5e1;--ecom-ink:#172b3a;--ecom-action:#dcefe9}
+body{background:#f5f7fa!important;color:#172b3a!important}
+#main-panel,.panel-section,.dashboard-card,#legend-content,#metadata-content{background:#fff!important;color:#172b3a!important;border-color:#cbd5e1!important}
+#main-panel h1,#main-panel h2,#main-panel h3,#main-panel h4,#main-panel label,#main-panel summary{color:#172b3a!important}
+#main-panel input,#main-panel select,#main-panel button,#main-panel textarea{color:#172b3a!important;background:#f1f5f9!important;border-color:#b6c5d3!important}
+#main-panel button:hover{background:#dcefe9!important}
+.ecom-ctl{--ecom-ink:#172b3a;--ecom-line:#cbd5e1;color:#172b3a}
+.ecom-ctl p,.ecom-ctl small{color:#526575!important}
+
+.ecom-ctl-status,.ecom-ctl-group,.ecom-ctl-section,.ecom-ctl-result>div,.ecom-ctl-offline code,.ecom-ctl-story,.ecom-ctl-link{background:#f1f5f9!important;color:#344c60!important;border-color:#cbd5e1!important}
+.ecom-ctl [class*="ecom-ctl-"]{border-color:#cbd5e1}
+.ecom-ctl-head,.ecom-ctl-field,.ecom-ctl-member,.ecom-ctl-param,.ecom-ctl-check,.ecom-ctl-title{color:#172b3a!important}
+.ecom-ctl-status--error,.ecom-ctl-error,.ecom-ctl-offline b{color:#a12e18!important}
+.ecom-ctl-status--ok{color:#086b57!important}.ecom-ctl-status--busy{color:#125b9c!important}
+.ecom-ctl-chip.is-on{background:#dcefe9!important;color:#075b49!important;border-color:#086b57!important}
+
+#main-panel p,#main-panel .ecom-ctl-hint,#main-panel .ecom-ctl-offline{color:#526575!important}
+.ecom-cp,.ecom-busy{background:#edf3f7!important;border-color:#cbd5e1!important;color:#172b3a!important}
+.ecom-cp-name,.ecom-roof.is-on,.ecom-ctl-sub,.ecom-pick,.ecom-ctl-head-icon{color:#172b3a!important}
+.ecom-ctl-group .ecom-ctl-head-icon{color:#086b57!important}
+.ecom-roof,.ecom-roof-area,.ecom-roof-kw,.ecom-when-legend,.ecom-legend-note,.ecom-ctl-param em,.ecom-ctl-member-owner,.ecom-ctl-empty{color:#526575!important}
+.ecom-roof.is-on .ecom-roof-kw,.ecom-roof-tag{color:#665500!important}.ecom-cp-kw{color:#086b57!important}
+.ecom-roofs,.ecom-roof,.ecom-ctl-members,.ecom-ctl-member{border-color:#cbd5e1!important}
+.ecom-roof input[type=range]{accent-color:#857000}

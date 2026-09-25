@@ -1,6 +1,6 @@
-# ACE MR Studio – Interactive Map
+# KultVis Lindholmen – Interactive Map
 
-Introduction
+Lindholmen now includes EPC and locally prepared thermal comfort, alongside the shared features from main. See [Lindholmen setup, data and verification](LINDHOLMEN.md) for branch-specific details. The original zoom introduction, logos, and Cultural Gravity are retained.
 
 An interactive mixed-reality urban visualisation platform built for the ACE MR Studio at Chalmers University of Technology. The application provides multiple data visualisation layers for urban planning, environmental analysis, and stakeholder engagement.
 
@@ -37,19 +37,151 @@ Real-time public transport overlay using the Västtrafik API. Displays live posi
 
 ### 🌬️ CFD Wind Simulation
 
-Real-time Lattice Boltzmann computational fluid dynamics simulation showing wind flow patterns around buildings. The simulation computes fluid dynamics on the fly and visualises velocity fields with colour-coded flow lines. Wind audio plays whilst the simulation is active.
+A qualitative **2D D2Q9/TRT** wind model around building footprints. Bright
+ribbons or lightweight particles show motion over a faint speed heatmap. The controller’s **Wind appearance**
+group provides shared palettes
+(**Classic**, **Ocean**, **Ember**, **Monochrome**) that color both the marks and heatmap
+in actual m/s, with selectable **0–5+, 0–10+, 0–20+, or 0–40+ m/s** legends. Wind audio plays while active.
 
 ![CFD Wind Simulation](./media/screenshots/cfd-simulation.png)
 
-**Additional capabilities:**
+- Defaults: Ribbons, Classic, 0–20+ m/s, 5 m/s wind, Medium visual density,
+  150 cells on the longer visible axis, and trees on.
+  Flow direction is clockwise on the display: 0° right, 90° down.
+- **Tracer playback** changes visualization speed only. Steady wind can settle
+  to a steady color field; white highlights continue revealing its motion.
+- **Ribbons** traces thin streamlines from stable seeds, refreshing paths at most
+  five times per second while smoothly interpolating their displayed shape on
+  every frame. Broad traveling highlights fade along continuous strokes.
+- **Particles** uses fine, short fading tails and small white tips. Particles
+  follow the computed field, including genuine reverse flow, and recycle at
+  obstacles without connecting old and new trails. Stable brightness variation
+  and a quieter heatmap keep the view light; no artificial gusts are added.
+- **Wind-impact glow** lights the original building edges in both styles,
+  including courtyard edges. Stronger approaching wind makes exposed faces
+  brighter; sheltered and parallel faces stay dim. The indicator samples the
+  incoming normal velocity just outside each edge and uses its square, with a
+  fixed visual exposure and smooth transitions. It is a qualitative impact
+  proxy, not surface pressure or [pressure coefficient Cp](https://www.grc.nasa.gov/www/winddocs/towne/plotc/plotc_p3d.html).
+  Probes stop at intervening buildings. Warm halos turn neutral in Monochrome.
+  Toggle it in Wind appearance; playback and the speed color range do not alter
+  its strength. Geometry changes rebuild the edges and probe locations.
+- **Visual density** adjusts ribbon seeds or the particle count. Color and density changes preserve
+  the worker, solver progress, and physical settings. Color ranges change colors
+  only. Selections survive stop/start in the page session.
+- `cfd_control` supports `set_visual_style` (`ribbons`, `particles`),
+  `set_color_palette` (`classic`, `ocean`, `ember`, `monochrome`),
+  `set_color_range` (5, 10, 20, 40), and `set_facade_glow` (boolean). `cfd_state` returns `visualStyle`, `palette`,
+  `colorMaxMps`, and `facadeGlow`. Existing density/playback messages remain compatible.
+- Buildings use halfway bounce-back; all visible MultiPolygon parts and courtyards
+  are preserved. The model includes complete footprints and canopies intersecting
+  the table; off-table city blocks are excluded from the far-field buffers.
+  Trees use approximate, resolution-scaled porous drag.
+- The solver uses constant lattice viscosity (default 0.03, range 0.02–0.15),
+  with a lattice inlet cap of 0.05 (0.025 for building masks, leaving headroom
+  for corner acceleration). Displayed m/s are calibrated
+  to the requested inlet speed, not to a validated atmospheric model.
+- Velocity inlets and pressure outlets use
+  [non-equilibrium extrapolation](https://doi.org/10.1088/1009-1963/11/4/310).
+  Parallel far-field sides are open. An absorbing layer in the invisible padding
+  suppresses reflected pressure waves; it never forces the visible flow. Invalid populations or excessive
+  density/speed stop the calculation visibly; numerical values are not clipped.
+- Obstacle cases start from rest with a smooth inlet ramp. Velocity snapshots are
+  interpolated over 0.25 seconds for smooth tracer motion, preserving real reverse flow.
+- A worker develops the flow independently of rendering. “Developing flow”
+  remains until at least one visible-domain flow-through and five stable field
+  comparisons; an unsteady solution may continue developing. Compatibility mode
+  uses short main-thread batches at 100-cell resolution if workers cannot load.
+- Geometry loads before simulation. Resize, calibration, and uploaded geometry
+  rebuild the field. Controller panels request authoritative settings on opening.
 
-- Trees can be loaded as porous obstacles to simulate wind attenuation by vegetation.
+This model illustrates wind **around footprints**, not over roofs. It does not
+provide validated wind-comfort, pedestrian-safety, or engineering predictions.
+
+Run the numerical, geometry, tracer, lifecycle, and supported-resolution checks:
+
+```bash
+node scripts/test_cfd_simulation.cjs
+node scripts/test_cfd_visuals.cjs
+# Extended campus stability and direction-reversal regression (8,000 steps per case):
+node scripts/test_cfd_simulation.cjs --campus-long
+```
+
+The tests include analytical channel flow, mass conservation, rotated obstacle
+wakes, wall exclusion, 30/60/120 FPS tracer parity, and stale asynchronous loads.
 
 ### 💧 Stormwater Flow
 
 Particle-based visualisation of stormwater drainage using the D8 flow direction algorithm. Flow direction and accumulation are computed dynamically from a Digital Elevation Model (DEM) GeoTIFF, showing how water would flow across the terrain. Glowing particles trace water paths, with pooling areas highlighted where water accumulates.
 
+The runoff layer uses `media/stormwater_dem.tif`, generated from the terrain and
+building footprints. Buildings act as barriers and particles are excluded from
+their footprints. The two-band file contains terrain with raised building cells
+and an explicit building mask; the original terrain file is preserved. This ports
+the building-barrier approach from `lindholmen` (`cf61923`, `7ab73a3`) to the current
+campus data. Cells at or below 0 m are treated as water outlets, following that
+branch's elevation fallback; this is a visualization, without roof drainage or a
+sewer-network model.
+
+After changing the terrain or footprints, regenerate the browser asset:
+
+```sh
+# Requires numpy and rasterio (or use the existing .venv/bin/python).
+python scripts/process_dem_flow.py --browser-only
+```
+
+Omit `--browser-only` to also export `flow_direction.tif`, `flow_accumulation.tif`,
+and `flow_data.json`. Defaults resolve relative to the repository, so the script
+also works from another directory. Use `--dem`, `--buildings`, and `--output` to
+process another dataset. Polygon and MultiPolygon footprints are reprojected to
+the DEM grid, with courtyards preserved. Both Python and browser calculations use
+strictly downhill D8 flow and count each upstream cell once. Rain particles spawn
+uniformly across all valid ground cells, including narrow passages; accumulation
+affects their downstream movement rather than biasing where rainfall starts.
+
 ![Stormwater Flow](./media/screenshots/stormwater.png)
+
+### 🌡️ Outdoor Thermal Comfort
+
+The CoolPaths layer serves processed PET rasters and street values for **15 July
+2026**, 08:00–20:00 Stockholm time. Click once on the map for an origin, twice
+for a destination, and a third time to start a new origin. The map shows both
+shortest and coolest walking routes. The controller compares distance, mean
+PET, cumulative heat exposure, and PET along each path. The cooler route can
+be up to 50% longer than the shortest.
+
+The local [`coolpaths/`](coolpaths/) pipeline follows the stages in
+[CoolPaths](https://github.com/deepankverma/coolpaths): OpenStreetMap walking
+paths and buildings, inferred building heights, Earth Engine canopy/NDVI/water/
+terrain, shadows and sky view factor, NASA POWER weather, irradiance, MRT,
+PET, and length-bounded routing. It uses a 2 m study grid and local
+raster shadows instead of the notebook's Colab/Drive exports and pybdshadow
+vectors. The map uses the published MEMI steady-state PET model and accounts
+for a standing person's projected solar exposure when computing MRT. The
+notebook's equal-PMV proxy remains available for comparison; it overstated
+ordinary summer conditions in our cross-check. Source and method metadata
+are included in the generated manifest.
+The PET GeoTIFFs and PNGs carry product/source tags, while each hourly street
+value file includes its date, hour, units, and sampling source.
+
+The same CoolPaths dashboard includes a six-step **How CoolPaths works** tour.
+Start playback or select any step to reveal buildings, canopy, vegetation,
+water, terrain, reflectivity, shadows, sky view, radiation, PET, or walking
+streets. The sun step advances through the prepared hours. The last step
+uses your selected walk, or computes a real example on the prepared graph.
+The projection's extent and camera never change during the tour.
+
+Select **Inspect** and click the map to sample PET, radiant temperature, air
+temperature, shade, sky view and canopy height in the dashboard. Inspection
+preserves route selections; **Route** or **Back to routing** restores normal
+three-click routing. The PET summary sits at the bottom of the map. The tour
+uses cached local inputs and requires no new Earth Engine preparation.
+
+The dashboard credits Deepank Verma, Olaf Mumm and Vanessa Miriam Carlow:
+*CoolPaths: Street-scale Physiological Equivalent Temperature (PET) mapping
+and cooler-routes planning using open data*. **City and Environment
+Interactions, 30**, 100349 (2026).
+[Publication](https://doi.org/10.1016/j.cacint.2026.100349).
 
 ### ☀️ Sun Study
 
@@ -129,6 +261,17 @@ A secondary controller screen provides a touch-friendly interface for operating 
 
 ## How to Run
 
+### Collaborative phone sessions
+
+Run `./start_services.sh` to coordinate the local MR Studio host, ECOM, CoolPaths,
+and SAM from one terminal. Open the main display through the launcher, then use
+**Session** on the dashboard for its QR, participants, four editing slots, and
+session logs. Phones use the GitHub Pages client and PeerJS; calibration stays local.
+**Apps** opens the shared layer drawer and **Canvas** adds collaborative annotations.
+
+See [the session guide](session/README.md) for port configuration, prerequisites,
+phone tools, host controls, networking, publishing, and verification.
+
 ### Launcher (recommended)
 
 Open the app using the launcher: [launcher.html](launcher.html). You can double-click the file in Finder or open it directly in your browser.
@@ -138,15 +281,89 @@ Open the app using the launcher: [launcher.html](launcher.html). You can double-
 ```bash
 # From the repository root (fallback only)
 # Use python3 on macOS/Linux, or python on Windows:
-python3 -m http.server 8000
+python3 -m http.server 8090
 
 # If python3 doesn't work, try:
-python -m http.server 8000
+python -m http.server 8090
 
-# Then open http://localhost:8000/launcher.html
+# Then open http://localhost:8090/launcher.html
 ```
 
-> **TODO:** Camera-based calibration is currently disabled—see [calibration/README.md](calibration/README.md) for notes. Re-enable when fixed.
+Manual calibration is available from the controller. Adjust the map, save named presets, or overwrite the default calibration there.
+
+### ECOM energy layer
+
+The map first shows the committed ECOM GeoJSON. Its live controls use the ECOM
+backend in this repository. Place the campus demand CSVs in
+`media/ecom/energy_data/` (kept out of Git), then start the API in a second
+terminal:
+
+```bash
+./launch_ecom_backend.sh
+```
+
+The controller can run from Live Server on port 5500–5599 or the static server
+on port 8090. Every ECOM connection follows `media/street-network.geojson`;
+the API reports an error if it cannot find a street route.
+
+### CoolPaths processing and live server
+
+The Earth Engine Cloud project is `mlrenovation-479515` (MLRenovation). Grant
+the service account `roles/serviceusage.serviceUsageConsumer` and
+`roles/earthengine.viewer` on that project, save its JSON
+key **outside this repository**, and set its absolute path locally. The public
+NASA POWER and OSM requests do not need API keys. The generated study files
+stay under ignored `coolpaths/data/`.
+
+```bash
+python3 -m venv coolpaths/.venv
+coolpaths/.venv/bin/python -m pip install -r coolpaths/requirements.txt
+export COOLPATHS_EE_KEY_FILE=/absolute/path/to/service-account.json
+coolpaths/.venv/bin/python -m coolpaths.prepare
+./launch_coolpaths_server.sh
+```
+
+Open the map through the launcher or a local static server. The CoolPaths API
+runs at `http://127.0.0.1:8001`; its `/api/coolpaths/status` endpoint reports
+whether the study is ready. Preparation downloads source data once and writes
+all 13 hourly PET products before making the manifest available. Re-run with
+`--force` after source changes. If the service account has not been configured
+or preparation fails, the map reports that data is unavailable; it does not
+display the old illustrative values.
+
+The irradiance stage follows the CoolPaths notebook's pvlib Ineichen clear-sky
+calculation. NASA POWER supplies daily aerosol, water vapor and ozone inputs,
+plus hourly air temperature, humidity and wind. If a daily atmospheric value
+is missing, preparation uses NASA POWER's July climatology for that field and
+records the substitution in `manifest.json`. The current prepared study uses
+July climatology for aerosol optical depth because POWER returned a missing
+daily value for 15 July 2026. The 2 m shadow and sky-view calculations are
+local raster adaptations of the notebook's geometry stages; building heights
+outside the local footprint area may be inferred from OSM levels or a 6 m
+default. PET is a modeled thermal comfort index, not the measured air
+temperature. Clear-sky irradiance may overstate exposure during cloudy hours.
+
+### EPC mode
+
+The controller's EPC button colors the map's buildings by energy class and
+shows a compact certificate summary when a building is clicked. The map uses
+the generated [media/building-footprints-epc.geojson](media/building-footprints-epc.geojson)
+artifact, so the EPC Browser does not need to run at presentation time.
+
+Regenerate the artifact from the EPC Browser's read-only DuckDB database after
+refreshing EPC data:
+
+```bash
+python3 scripts/export_epc_geojson.py \
+    --database ../chalmers_epc_browser/epc_sweden.duckdb
+```
+
+The exporter matches the map's `objektidentitet` values against the EPC
+Browser's enriched Gothenburg footprints and uses `FormularId` as the
+certificate identifier. The current export contains 788 map footprints, 455
+EPC-linked features, and 333 features without a match. The generated file
+contains summary fields and selected detail fields only; the full EPC
+database and any credentials must remain in the EPC Browser environment.
 
 ---
 
@@ -163,7 +380,10 @@ python -m http.server 8000
 ├── animations/            # Feature modules
 │   ├── bird-sounds.js     # Bird sound sensor visualisation
 │   ├── campus-demo.js     # Campus masterplan SVG slideshow
-│   ├── cfd-simulation.js  # Lattice Boltzmann wind simulation
+│   ├── cfd-core.js        # Testable Lattice Boltzmann solver and shared palettes
+│   ├── cfd-worker.js      # Solver scheduling and field snapshots
+│   ├── cfd-simulation.js  # Wind lifecycle, geometry, heatmap and controls
+│   ├── cfd-visuals.js     # Ribbons and lightweight particles
 │   ├── fcc-demo.js        # VR flythrough with isovist sync
 │   ├── grid-animation.js  # Holographic calibration grid
 │   ├── isovist.js         # Viewshed and visibility analysis
@@ -217,3 +437,112 @@ python -m http.server 8000
 
 This project is part of the ACE MR Studio research initiative at Chalmers University of Technology.
 
+## Shared frontend configuration and presentation layers
+
+[`app-config.js`](app-config.js) is the public configuration shared by the campus
+map, launcher, desktop controller and phone client. It contains branding, area
+bounds, Sun Study location, bird sensors, physical table dimensions, asset-path
+mappings, disabled layer IDs and transit settings. Change the **values** in the
+asset map to redirect existing modules to another dataset. Credentials remain in
+the ignored `trafik-config.json`; local service addresses remain in service
+configuration. Public configuration is included in the phone build.
+
+Calibration is resolved locally through `calibration-config.js`: the existing
+`map-calibration.json` supplies the project default, with the configured fallback
+used if that file is unavailable. A selected saved preset takes precedence; an
+overwritten default applies when no preset is selected. Choosing **Original
+Calibration** restores the project default. Existing storage keys and saved
+presets are retained, and their dimensions now also drive the display overlays.
+The calibration resolver, saved presets and calibration JSON are excluded from
+the published phone artifact.
+
+This is a campus-ready frontend foundation, not an area selector. Changing it
+does **not** regenerate CoolPaths products, EPC exports or ECOM backend datasets.
+Those still require their own preparation workflows.
+
+### Presenting map layers
+
+The slideshow retains its local slides and adds six enabled geographic context
+slides: current aerial imagery, infrared imagery, historical aerials around
+1960 and 1975, terrain hillshade and property boundaries. Slope, hydrography and
+two topographic styles are defined with `enabled: false` as optional additions.
+Edit `media/slideshow/slideshow-config.json` to enable or reorder them. Automatic
+slide advancement is off by default.
+
+WMS slides use `type: "wms"` and a `wms` object containing `url`, `layers`,
+`version` and `format`. ArcGIS slides use `type: "arcgis"` and an `arcgis` object
+containing the MapServer `url`, layer IDs in `layers`, and optional `format`.
+Both are rendered in EPSG:3857 without changing the calibrated camera. Put the
+source credit in `metadata.source`. Services must permit browser CORS requests.
+
+A raster slide waits up to 12 seconds for source content. Unavailable slides show
+an error with **Retry** and **Next**; they do not loop automatically through
+failing services. Navigating or stopping cancels pending loads and transitions.
+The curated services returned images with CORS enabled for the campus extent
+during this port; availability depends on the external providers.
+
+Styled GeoJSON slides reveal categories in the order of `metadata.style.colorMap`.
+They begin unrevealed and reset when re-entered. The desktop and phone controls
+provide **Previous category**, **Next category**, **Show all**, **Auto reveal**
+and **Pause reveal**, alongside separate slide navigation. Manual category input
+stops automatic reveal; reaching either end does not change slides.
+
+- **Left / Right:** categories on categorical slides, otherwise slides.
+- **Shift + Left / Right:** previous / next slide regardless of category progress.
+- **Escape:** stop. Shortcuts are ignored while typing.
+
+The host broadcasts authoritative category/progress, loading and playback state.
+Phones receive only compact control state for the open slideshow, retaining their
+input-only role and synchronizing again after reconnection. The existing
+`slideshow_control` actions remain supported; additional actions are `retry`,
+`category_next`, `category_previous`, `show_all`, `auto_reveal` and `pause_reveal`.
+
+### Ferries and transit updates
+
+Transit now enables buses, trams and ferries, polling every 10 seconds with one
+request in flight. Rate-limit responses honor `Retry-After` (seconds or HTTP date),
+with a 30-second fallback. Temporary failures preserve the last vehicles; stopping
+cancels the active request and prevents late results from restarting the layer.
+Explicit bounds in the local transit configuration still override the shared
+area bounds. The campus view is not expanded to include ferry routes.
+
+Ferries have time-based, curved wakes with subtle spreading arms and cross-ripples.
+Geographic history is sampled at 10 Hz, capped at 202 points and aged out after
+20 seconds. Wakes fade when stopped, reset across implausible jumps and track map
+zoom/bearing. Other vehicle trail styles are retained.
+
+### Port verification
+
+Run focused checks from the repository root:
+
+```sh
+node scripts/test_app_config.cjs
+node scripts/test_slideshow.cjs
+node scripts/test_slideshow_raster.cjs
+node scripts/test_transit.cjs
+node scripts/test_ferry_wake.cjs
+node scripts/test_session.cjs
+node scripts/test_session_connection.cjs
+python3 scripts/build_session_client.py
+```
+
+Phone controls require rebuilding and publishing the phone client to become
+available at its public URL; this port only builds that artifact locally.
+
+The existing CFD numerical/visual, DEM/stormwater, ECOM lifecycle and session
+server checks also cover the shared configuration changes. The browser suites
+use the same `MR_TEST_URL`, `MR_PLAYWRIGHT` and `MR_BROWSER` settings documented
+in the session guide. Run a real host (`python3 host_server.py 8093`) for session
+checks; a plain static server does not provide the invitation API.
+
+```sh
+MR_TEST_URL=http://127.0.0.1:8093 node scripts/test_presentation_browser.cjs
+# Optional external-service verification, requiring internet access:
+MR_TEST_URL=http://127.0.0.1:8093 node scripts/test_presentation_browser.cjs --live
+MR_TEST_URL=http://127.0.0.1:8093 MR_TEST_TRANSPORT=memory node scripts/test_session_browser.cjs
+```
+
+The presentation suite covers desktop categories, WMS/ArcGIS rendering, retry,
+unchanged camera and cleanup. The session suite includes phone reveals, automatic
+playback, reload synchronization and the existing multi-user flows. Ferry visual
+checks use synthetic tracks, avoiding reliance on live ferries entering campus.

@@ -53,15 +53,24 @@
   const BROADCAST_MIN_DISTANCE = 3; // minimum meters between broadcasts
   const BROADCAST_MIN_HEADING_CHANGE = 15; // minimum degrees before heading update
   
-  // Load Street View API key from project config
-  function loadStreetViewApiKey() {
-    const key = window.APP_CONFIG && window.APP_CONFIG.data && window.APP_CONFIG.data.apiKeys && window.APP_CONFIG.data.apiKeys.streetViewApiKey;
-    if (key) {
-      streetViewApiKey = key;
-      console.log('Isovist: Street View API key loaded from config');
-    } else {
-      console.warn('Isovist: No Street View API key in map_config.json (data.apiKeys.streetViewApiKey)');
+  // Load Street View API key
+  async function loadStreetViewApiKey() {
+    const paths = ['trafik-config.json', './trafik-config.json'];
+    for (const path of paths) {
+      try {
+        const response = await fetch(path);
+        if (response.ok) {
+          const config = await response.json();
+          const key = config.streetViewApiKey || config.googleMapsApiKey;
+          if (key) {
+            streetViewApiKey = key;
+            console.log('Isovist: Street View API key loaded');
+            return;
+          }
+        }
+      } catch (e) { /* try next */ }
     }
+    console.warn('Isovist: Could not load Street View API key');
   }
   loadStreetViewApiKey();
 
@@ -74,15 +83,15 @@
   let pendingAudioStart = false; // Track if we're waiting to start audio
   
   // Nature sounds (bird sounds)
-  const natureSounds = (window.APP_CONFIG && window.APP_CONFIG.data.sound.birds) || [
-    'media/sound/XC372879 - Thrush Nightingale - Luscinia luscinia.mp3',
-    'media/sound/XC647538 - European Pied Flycatcher - Ficedula hypoleuca.mp3',
-    'media/sound/XC900416 - Black Redstart - Phoenicurus ochruros.mp3'
+  const natureSounds = [
+    window.mrAsset('media/sound/XC372879 - Thrush Nightingale - Luscinia luscinia.mp3'),
+    window.mrAsset('media/sound/XC647538 - European Pied Flycatcher - Ficedula hypoleuca.mp3'),
+    window.mrAsset('media/sound/XC900416 - Black Redstart - Phoenicurus ochruros.mp3')
   ];
   
   // City/urban sounds
   const citySounds = [
-    (window.APP_CONFIG && window.APP_CONFIG.data.sound.city) || 'media/sound/city.mp3'
+    window.mrAsset('media/sound/city.mp3')
   ];
   
   // Active audio elements and gain nodes
@@ -1014,7 +1023,7 @@
 
   async function loadTreeObstacles() {
     try {
-      const response = await fetch((window.APP_CONFIG && window.APP_CONFIG.data.geojson.trees) || 'media/trees.geojson');
+      const response = await fetch(window.mrAsset('media/trees.geojson'));
       if (!response.ok) {
         console.warn('Trees file not found');
         return;
@@ -1038,14 +1047,9 @@
           const coords = feature.geometry.coordinates;
           const height = feature.properties.height || 10;
           
-          // Use crown_radius from GeoJSON if available, otherwise estimate from height
-          let radius;
-          if (feature.properties.crown_radius && feature.properties.crown_radius > 0) {
-            radius = feature.properties.crown_radius;
-          } else {
-            const randomVariation = (seededRandom(idx) - 0.5) * 2 * TREE_RADIUS_VARIATION;
-            radius = TREE_BASE_RADIUS + (height * TREE_HEIGHT_FACTOR) + randomVariation;
-          }
+          // Calculate radius based on height with random variation
+          const randomVariation = (seededRandom(idx) - 0.5) * 2 * TREE_RADIUS_VARIATION;
+          const radius = TREE_BASE_RADIUS + (height * TREE_HEIGHT_FACTOR) + randomVariation;
           
           // Calculate bbox for spatial filtering
           const radiusDeg = radius / 111000; // rough meters to degrees
@@ -1103,7 +1107,7 @@
 
   async function loadDefaultBuildings() {
     try {
-      const response = await fetch((window.APP_CONFIG && window.APP_CONFIG.data.geojson.buildingFootprints) || 'media/building-footprints.geojson');
+      const response = await fetch(window.mrAsset('media/building-footprints.geojson'));
       if (!response.ok) {
         throw new Error('Building footprints file not found');
       }
@@ -1141,6 +1145,7 @@
   }
 
   function onMapClick(e) {
+    if (window.MR_CANVAS_EDITING) return;
     if (!isDragging) {
       const clickPos = [e.lngLat.lng, e.lngLat.lat];
       viewerPosition = getValidPosition(clickPos);
@@ -1149,6 +1154,7 @@
   }
 
   function onMapMouseMove(e) {
+    if (window.MR_CANVAS_EDITING) return;
     if (isDragging && viewerPosition) {
       const newPos = [e.lngLat.lng, e.lngLat.lat];
       viewerPosition = getValidPosition(newPos);
@@ -1189,6 +1195,16 @@
       updateRequestId = null;
     });
   }
+
+  window.isovistSession = {
+    getState: () => ({active: isovistActive, position: viewerPosition, cursor: cursorPosition, radius: MAX_VIEW_DISTANCE, fov: HUMAN_FOV, follow: FOLLOW_CURSOR, humanFov: USE_HUMAN_FOV, trees: INCLUDE_TREES, ambientSound: ambientSoundEnabled}),
+    point(coordinate, headingOnly) {
+      if (!isovistActive) throw Error('Turn on Isovist first');
+      if (headingOnly) cursorPosition = coordinate;
+      else viewerPosition = getValidPosition(coordinate);
+      updateVisualization();
+    }
+  };
 
   function performUpdate() {
     if (!viewerPosition) return;

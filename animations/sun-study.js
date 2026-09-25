@@ -80,15 +80,13 @@ class SunStudy {
     this.falseColorMaterial = null;
     this.isFalseColorMode = false;
     
-    // Location from config (fallback to Gothenburg)
-    const cfg = window.APP_CONFIG || {};
-    const cal = cfg.calibration || {};
-    this.latitude = (cal.center && cal.center.lat) || 57.68839377903814;
-    this.longitude = (cal.center && cal.center.lng) || 11.977770568930168;
-    this.timezone = cal.timezone || 1; // CET = UTC+1 (standard time; DST not modelled)
+    // Sweden location (Gothenburg - matches map center)
+    this.latitude = window.APP_CONFIG.area.sunLocation.lat;
+    this.longitude = window.APP_CONFIG.area.sunLocation.lng;
+    this.timezone = window.APP_CONFIG.area.sunLocation.timezone; // CET = UTC+1 (standard time; DST not modelled)
     
     // Map bearing for alignment
-    this.mapBearing = cal.bearing || -92.58546386659737;
+    this.mapBearing = window.MR_CALIBRATION.current.bearing;
     
     // Time settings
     // Default to June 21st (Summer Solstice)
@@ -105,9 +103,9 @@ class SunStudy {
     
     // Manual adjustment offsets
     this.offsetX = 0;      // X position offset
-    this.offsetZ = -4;      // Z position offset (Y on screen in top-down)
+    this.offsetZ = window.APP_CONFIG.model.offsetZ;      // Z position offset (Y on screen in top-down)
     this.rotationOffset = 0; // Additional rotation in degrees
-    this.scaleMultiplier = 0.88; // Scale multiplier
+    this.scaleMultiplier = window.APP_CONFIG.model.scaleMultiplier; // Scale multiplier
     
     this.controlPanel = null;
     this.dependenciesLoaded = false;
@@ -150,125 +148,6 @@ class SunStudy {
     }
     
     window.addEventListener('resize', () => this.onResize());
-
-    // Hidden debug panel toggled with Shift+D
-    this._debugPanelVisible = false;
-    window.addEventListener('keydown', (e) => {
-      if (e.shiftKey && e.key === 'D' && this.isActive) {
-        this._debugPanelVisible = !this._debugPanelVisible;
-        if (this._debugPanel) {
-          this._debugPanel.style.display = this._debugPanelVisible ? 'block' : 'none';
-        } else if (this._debugPanelVisible) {
-          this.createDebugPanel();
-        }
-        this._setModelOpacity(this._debugPanelVisible ? 0.1 : 1.0);
-        this._toggleDebugFootprints(this._debugPanelVisible);
-      }
-    });
-  }
-
-  _toggleDebugFootprints(show) {
-    const map = window.map;
-    if (!map) return;
-
-    if (show) {
-      if (!map.getSource('debug-footprints')) {
-        const url = (window.APP_CONFIG && window.APP_CONFIG.data.geojson.buildingFootprints) || 'media/building-footprints.geojson';
-        map.addSource('debug-footprints', { type: 'geojson', data: url });
-        map.addLayer({
-          id: 'debug-footprints-fill',
-          type: 'fill',
-          source: 'debug-footprints',
-          paint: { 'fill-color': '#ff00ff', 'fill-opacity': 0.35 }
-        });
-        map.addLayer({
-          id: 'debug-footprints-line',
-          type: 'line',
-          source: 'debug-footprints',
-          paint: { 'line-color': '#ff00ff', 'line-width': 2, 'line-opacity': 0.9 }
-        });
-      } else {
-        map.setLayoutProperty('debug-footprints-fill', 'visibility', 'visible');
-        map.setLayoutProperty('debug-footprints-line', 'visibility', 'visible');
-      }
-    } else {
-      if (map.getLayer('debug-footprints-fill')) {
-        map.setLayoutProperty('debug-footprints-fill', 'visibility', 'none');
-        map.setLayoutProperty('debug-footprints-line', 'visibility', 'none');
-      }
-    }
-  }
-
-  _setModelOpacity(opacity) {
-    if (this.standardMaterial) {
-      this.standardMaterial.opacity = opacity;
-      this.standardMaterial.transparent = true;
-      this.standardMaterial.needsUpdate = true;
-    }
-    if (this.meshTrees) {
-      this.meshTrees.traverse((child) => {
-        if (child.isMesh && child.material) {
-          child.material.opacity = opacity;
-          child.material.transparent = true;
-          child.material.needsUpdate = true;
-        }
-      });
-    }
-    this.shadowMapsDirty = true;
-    this.needsRender = true;
-  }
-
-  createDebugPanel() {
-    const panel = document.createElement('div');
-    panel.id = 'sun-study-debug-panel';
-    panel.style.cssText = `
-      position: fixed; top: 10px; right: 10px; z-index: 10000;
-      background: rgba(0,0,0,0.85); color: #fff; padding: 16px;
-      border-radius: 8px; font-family: monospace; font-size: 13px;
-      min-width: 280px; pointer-events: auto;
-    `;
-    panel.innerHTML = `
-      <div style="margin-bottom:8px;font-weight:bold;font-size:14px;">3D Model Debug
-        <span id="debug-close" style="float:right;cursor:pointer;opacity:0.6;">✕</span>
-      </div>
-      <label>Offset X: <span id="dbg-ox-val">${this.offsetX}</span></label><br>
-      <input id="dbg-ox" type="range" min="-200" max="200" step="1" value="${this.offsetX}" style="width:100%"><br>
-      <label>Offset Z (Y on screen): <span id="dbg-oz-val">${this.offsetZ}</span></label><br>
-      <input id="dbg-oz" type="range" min="-200" max="200" step="1" value="${this.offsetZ}" style="width:100%"><br>
-      <label>Scale Multiplier: <span id="dbg-sc-val">${this.scaleMultiplier}</span></label><br>
-      <input id="dbg-sc" type="range" min="0.1" max="3" step="0.01" value="${this.scaleMultiplier}" style="width:100%"><br>
-      <label>Rotation Offset (°): <span id="dbg-ro-val">${this.rotationOffset}</span></label><br>
-      <input id="dbg-ro" type="range" min="-180" max="180" step="1" value="${this.rotationOffset}" style="width:100%"><br>
-      <div id="dbg-output" style="margin-top:10px;padding:8px;background:rgba(255,255,255,0.1);border-radius:4px;font-size:11px;white-space:pre;"></div>
-    `;
-    document.body.appendChild(panel);
-    this._debugPanel = panel;
-
-    const update = () => {
-      this.offsetX = parseFloat(document.getElementById('dbg-ox').value);
-      this.offsetZ = parseFloat(document.getElementById('dbg-oz').value);
-      this.scaleMultiplier = parseFloat(document.getElementById('dbg-sc').value);
-      this.rotationOffset = parseFloat(document.getElementById('dbg-ro').value);
-      document.getElementById('dbg-ox-val').textContent = this.offsetX;
-      document.getElementById('dbg-oz-val').textContent = this.offsetZ;
-      document.getElementById('dbg-sc-val').textContent = this.scaleMultiplier;
-      document.getElementById('dbg-ro-val').textContent = this.rotationOffset;
-      this.applyManualAdjustments();
-      this.fitCameraToModel();
-      document.getElementById('dbg-output').textContent =
-        `offsetX: ${this.offsetX}\noffsetZ: ${this.offsetZ}\nscaleMultiplier: ${this.scaleMultiplier}\nrotationOffset: ${this.rotationOffset}`;
-    };
-
-    ['dbg-ox','dbg-oz','dbg-sc','dbg-ro'].forEach(id => {
-      document.getElementById(id).addEventListener('input', update);
-    });
-    document.getElementById('debug-close').addEventListener('click', () => {
-      this._debugPanelVisible = false;
-      panel.style.display = 'none';
-      this._setModelOpacity(1.0);
-      this._toggleDebugFootprints(false);
-    });
-    update();
   }
 
   handleRemoteControl(data) {
@@ -1125,9 +1004,6 @@ class SunStudy {
       this.meshTrees.position.x = this.offsetX;
       this.meshTrees.position.z = this.offsetZ;
     }
-
-    this.shadowMapsDirty = true;
-    this.needsRender = true;
   }
   
 
@@ -1538,7 +1414,7 @@ class SunStudy {
     console.log('Loading STL model (buildings/terrain)...');
     
     loader.load(
-      (window.APP_CONFIG && window.APP_CONFIG.data.models3d.buildingsMesh) || './media/mesh.stl',
+      window.mrAsset('./media/mesh.stl'),
       (geometry) => {
         console.log('STL loaded, vertices:', geometry.attributes.position.count);
         
@@ -1593,8 +1469,8 @@ class SunStudy {
         this.modelSize = size;
 
         
-        // Initial setup (base -PI/2 for Rhino coords + PI/2 for CC 90° rotation)
-        this.baseRotation = -Math.PI/2 + Math.PI/2; 
+        // Initial setup
+        this.baseRotation = window.APP_CONFIG.model.rotation;
         this.meshBuildings.rotation.y = this.baseRotation;
         
         // Apply initial position offset
@@ -1652,7 +1528,7 @@ class SunStudy {
      */
     
     loader.load(
-      (window.APP_CONFIG && window.APP_CONFIG.data.models3d.treesInstanced) || './media/trees_instanced.glb',
+      window.mrAsset('./media/trees_instanced.glb'),
       (gltf) => {
         console.log('Trees GLB loaded');
         
@@ -1765,7 +1641,6 @@ class SunStudy {
         this.treesLoaded = true;
         this.treesVisible = true;
         this.shadowMapsDirty = true;
-        this.needsRender = true;
         
         // Hide trees if in false color mode
         if (this.isFalseColorMode) {
@@ -1781,7 +1656,7 @@ class SunStudy {
           });
         }
         
-        console.log('Trees GLB added —', mergedGeometry.attributes.position.count, 'vertices');
+        console.log('Trees GLB added with', this.meshTrees.children.length, 'meshes');
       },
       (progress) => {
         console.log('Loading trees GLB...', progress.loaded, 'bytes');

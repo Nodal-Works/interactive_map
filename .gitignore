@@ -25,6 +25,14 @@ dist/
 build/
 *.log
 
+# Local ECOM meter exports and source workbooks
+media/ecom/energy_data/
+Dashboard/backend/cache/
+coolpaths/data/
+coolpaths/.venv/
+**/__pycache__/
+**/.pytest_cache/
+
 # OS
 Thumbs.db
 .DS_Store
@@ -32,6 +40,9 @@ Thumbs.db
 # Temporary files
 *.tmp
 .cache/
+.runtime/
+sessions/
+services.local.json
 
 # Internal documentation
 theory/

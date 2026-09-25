@@ -12,33 +12,28 @@ class BirdSoundsLayer {
     this.isActive = false;
     this.audioContext = null;
     
-    // Sensor locations (inside configured table bounding box)
-    this.sensors = [
-      { id: 1, lat: 57.706300, lng: 11.936800 },
-      { id: 2, lat: 57.709200, lng: 11.942000 },
-      { id: 3, lat: 57.710400, lng: 11.948200 }
-    ];
+    // Sensor locations (around the center of the map)
+    this.sensors = window.APP_CONFIG.area.birdSensors.map(sensor => ({...sensor}));
 
     // Bird species configuration
-    const _birdSounds = (window.APP_CONFIG && window.APP_CONFIG.data.sound.birds) || [];
     this.birds = [
       { 
         name: 'Thrush Nightingale', 
-        file: _birdSounds[0] || 'media/sound/XC372879 - Thrush Nightingale - Luscinia luscinia.mp3', 
+        file: window.mrAsset('media/sound/XC372879 - Thrush Nightingale - Luscinia luscinia.mp3'),
         color: '#FFD700', // Gold
         image: 'https://upload.wikimedia.org/wikipedia/commons/9/93/Luscinia_luscinia_vogelartinfo_chris_romeiks_CHR3635.jpg',
         desc: 'Known for its powerful and melodious song, often heard at night. It breeds in dense damp thickets.'
       },
       { 
         name: 'European Pied Flycatcher', 
-        file: _birdSounds[1] || 'media/sound/XC647538 - European Pied Flycatcher - Ficedula hypoleuca.mp3', 
+        file: window.mrAsset('media/sound/XC647538 - European Pied Flycatcher - Ficedula hypoleuca.mp3'),
         color: '#00BFFF', // Deep Sky Blue
         image: 'https://upload.wikimedia.org/wikipedia/commons/5/53/Ficedula_hypoleuca_-Wood_of_Cree_Nature_Reserve%2C_Scotland_-male-8a.jpg',
         desc: 'A small passerine bird that breeds in most of Europe and western Asia. It is migratory, wintering in western Africa.'
       },
       { 
         name: 'Black Redstart', 
-        file: _birdSounds[2] || 'media/sound/XC900416 - Black Redstart - Phoenicurus ochruros.mp3', 
+        file: window.mrAsset('media/sound/XC900416 - Black Redstart - Phoenicurus ochruros.mp3'),
         color: '#FF4500', // Orange Red
         image: 'https://upload.wikimedia.org/wikipedia/commons/1/14/Hausrotschwanz_Brutpflege_2006-05-21-05.jpg',
         desc: 'A small passerine bird that has adapted to live in the heart of industrial and urban centers.'

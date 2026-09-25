@@ -145,7 +145,7 @@ const cycleRoutes = ['cycleway', 'path', 'residential', 'tertiary', 'secondary',
 function loadStreetLifeData() {
   if (streetLifeDataLoaded) return Promise.resolve();
   
-  return fetch((window.APP_CONFIG && window.APP_CONFIG.data.geojson.streetNetwork) || 'media/street-network.geojson')
+  return fetch(window.mrAsset('media/street-network.geojson'))
     .then(response => {
       if (!response.ok) throw new Error(`HTTP ${response.status}`);
       return response.json();
@@ -631,8 +631,7 @@ function updateStreetLifeEntities() {
   while (taxiCount < CONFIG.maxTaxis) { spawnTaxi(); taxiCount++; }
   while (busCount < CONFIG.maxBuses) { spawnBus(); busCount++; }
   while (bicycleCount < CONFIG.maxBicycles) { spawnBicycle(); bicycleCount++; }
-  let pedCount = pedestrians.length;
-  while (pedCount < CONFIG.maxPedestrians) { spawnPedestrian(); pedCount++; }
+  while (pedestrians.length < CONFIG.maxPedestrians) spawnPedestrian();
   
   // Update emergency vehicle
   if (emergencyVehicle) {
@@ -1150,7 +1149,7 @@ function drawStreetlights(ctx, width, height) {
 
 // Load building footprints for ambient glow
 function loadBuildingFootprints() {
-  fetch((window.APP_CONFIG && window.APP_CONFIG.data.geojson.buildingFootprints) || 'media/building-footprints.geojson')
+  fetch(window.mrAsset('media/building-footprints.geojson'))
     .then(response => {
       if (!response.ok) throw new Error(`HTTP ${response.status}`);
       return response.json();
@@ -1376,7 +1375,7 @@ function fadeInCitySound() {
   
   // Create audio if it doesn't exist
   if (!cityAmbientAudio) {
-    cityAmbientAudio = new Audio((window.APP_CONFIG && window.APP_CONFIG.data.sound.city) || 'media/sound/city.mp3');
+    cityAmbientAudio = new Audio(window.mrAsset('media/sound/city.mp3'));
     cityAmbientAudio.loop = true;
     cityAmbientAudio.volume = 0;
   }
@@ -1443,12 +1442,14 @@ function startStreetLifeAnimation() {
   if (isStreetLifeAnimating) return;
   
   loadStreetLifeData().then(() => {
+    if (isAnyVisualizationActive() || isStreetLifeAnimating) return;
     if (streetPaths.length === 0) {
       console.warn('Street Life: No paths available for animation');
       return;
     }
     
     isStreetLifeAnimating = true;
+    window.dispatchEvent(new Event('mr-street-life'));
     streetLifeCanvas.style.display = 'block';
     resizeStreetLifeCanvas();
     
@@ -1488,6 +1489,7 @@ function startStreetLifeAnimation() {
 // Stop animation
 function stopStreetLifeAnimation() {
   isStreetLifeAnimating = false;
+  window.dispatchEvent(new Event('mr-street-life'));
   streetLifeCanvas.style.display = 'none';
   stopSpawning();
   
@@ -1518,17 +1520,21 @@ function stopStreetLifeAnimation() {
 
 // Check if any visualization is active
 function isAnyVisualizationActive() {
+  if (window.MR_ADAPTER?.active['canvas-btn']) return true;
   // Check for active/toggled-on/toggled-off buttons
   const activeButtons = [
     'cfd-simulation-btn',
+    'canvas-btn',
+    'thermal-comfort-btn',
     'stormwater-btn', 
     'sun-study-btn',
     'slideshow-btn',
     'grid-animation-btn',
     'isovist-btn',
     'bird-sounds-btn',
-    'cultural-gravity-btn',
-    'fcc-demo-btn'
+    'fcc-demo-btn',
+    'ecom-energy-btn',
+    'epc-btn'
   ];
   
   for (const id of activeButtons) {
@@ -1598,6 +1604,8 @@ function setupVisibilityObserver() {
     observer.observe(canvas, { attributes: true, attributeFilter: ['class'] });
   });
 }
+
+window.addEventListener('mr-canvas-visibility', updateStreetLifeVisibility);
 
 // Initialize on load
 function initStreetLife() {

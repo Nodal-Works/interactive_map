@@ -6,7 +6,7 @@
     <title>Interactive Map — dtcc-table</title>
     <!-- Load Leaflet CSS from CDN (no SRI attribute to avoid integrity mismatch blocks) -->
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
-    <link rel="stylesheet" href="style.css" />
+    <link rel="stylesheet" href="style.css?v=20260922-tour-fixed-view" />
     <!-- Import map for Three.js ES modules -->
     <script type="importmap">
     {
@@ -16,12 +16,28 @@
       }
     }
     </script>
+    <script>
+    // Spacebar in main view triggers segmentation in controller via BroadcastChannel
+    (function() {
+      const channel = new BroadcastChannel('map_controller_channel');
+      document.addEventListener('keydown', (e) => {
+        if (e.code !== 'Space' && e.key !== ' ') return;
+        if (e.altKey || e.ctrlKey || e.metaKey || e.shiftKey) return;
+        const active = document.activeElement;
+        if (active && (active.tagName === 'INPUT' || active.tagName === 'TEXTAREA' || active.isContentEditable)) return;
+        e.preventDefault();
+        channel.postMessage({ type: 'sam_segment' });
+      });
+    })();
     </script>
-  </head>
+      <script src="app-config.js"></script>
+    <script src="app-config-runtime.js"></script>
+    <script src="calibration-config.js"></script>
+</head>
   <body>
     <!-- Left sidebar -->
     <div id="left-sidebar">
-      <img src="media/dtcc_logo.png" alt="DTCC" class="sidebar-logo logo-top" data-config-src="data.images.dtccLogo">
+      <img src="media/dtcc_logo.png" alt="DTCC" class="sidebar-logo logo-top">
       
       <!-- Left sidebar controls (top group) -->
       <div class="icon-controls icon-controls-top">
@@ -41,6 +57,14 @@
             <circle cx="15" cy="19" r="1" fill="currentColor"/>
           </svg>
         </button>
+
+        <button id="thermal-comfort-btn" class="icon-btn" title="Outdoor Thermal Comfort">
+          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M14 14.76V5a2 2 0 0 0-4 0v9.76a4 4 0 1 0 4 0Z"/>
+            <path d="M12 12V6"/>
+            <path d="M19 8h2M19 12h2M19 16h2"/>
+          </svg>
+        </button>
         
         <button id="slideshow-btn" class="icon-btn" title="Slideshow">
           <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -51,7 +75,7 @@
         </button>
       </div>
       
-      <div class="sidebar-title" data-config-text="app.title">ACE MR Studio</div>
+      <div class="sidebar-title">ACE MR Studio</div>
       
       <!-- Left sidebar controls (bottom group) -->
       <div class="icon-controls icon-controls-bottom">
@@ -63,6 +87,11 @@
             <rect x="3" y="14" width="7" height="7"/>
           </svg>
         </button>
+        <button id="ecom-energy-btn" class="icon-btn" title="ECOM Energy Community">
+          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M13 2 L4 14h7l-1 8 9-12h-7z"/>
+          </svg>
+        </button>
         
         <button id="isovist-btn" class="icon-btn" title="Interactive Isovist">
           <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -72,7 +101,32 @@
           </svg>
         </button>
         
+        <button id="fcc-demo-btn" class="icon-btn" title="FCC VR Demo">
+          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <rect x="2" y="4" width="20" height="14" rx="2"/>
+            <polygon points="10,8 10,14 15,11" fill="currentColor"/>
+            <path d="M6 20h12"/>
+            <path d="M12 18v2"/>
+          </svg>
+        </button>
         
+        <button id="street-view-btn" class="icon-btn" title="Google Street View">
+          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <circle cx="12" cy="8" r="3"/>
+            <path d="M12 11v5"/>
+            <circle cx="12" cy="20" r="2"/>
+            <path d="M5 12c0-3.9 3.1-7 7-7s7 3.1 7 7"/>
+          </svg>
+        </button>
+
+        <button id="epc-btn" class="icon-btn" title="EPC Building Energy Classes">
+          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M4 19V5h16v14H4Z"/>
+            <path d="M8 9h8M8 12h5M8 15h8"/>
+          </svg>
+        </button>
+        
+        <button id="cultural-gravity-btn" class="icon-btn" title="Cultural Gravity" aria-label="Cultural Gravity">◎</button>
         <button id="bird-sounds-btn" class="icon-btn" title="Bird Sounds">
           <svg width="24" height="24" viewBox="0 0 24 24" fill="currentColor" stroke="none">
             <path d="M21 5c-1.1 0.9-2.3 1.5-3.6 1.7 1.3-0.8 2.3-2 2.7-3.5-1.2 0.7-2.5 1.2-3.9 1.5-1.1-1.2-2.7-1.9-4.5-1.9-3.4 0-6.1 2.7-6.1 6.1 0 0.5 0.1 0.9 0.2 1.4-5.1-0.3-9.6-2.7-12.6-6.4-0.5 0.9-0.8 2-0.8 3.2 0 2.1 1.1 4 2.7 5.1-1 0-2-0.3-2.8-0.8 0 0 0 0.1 0 0.1 0 3 2.1 5.5 4.9 6.1-0.5 0.1-1 0.2-1.6 0.2-0.4 0-0.8 0-1.2-0.1 0.8 2.4 3.1 4.2 5.8 4.2-2.1 1.6-4.7 2.6-7.6 2.6-0.5 0-1 0-1.5-0.1 2.7 1.7 5.9 2.7 9.4 2.7 11.3 0 17.4-9.3 17.4-17.4 0-0.3 0-0.5 0-0.8 1.2-0.9 2.2-1.9 3-3.2z"/>
@@ -80,12 +134,12 @@
         </button>
       </div>
       
-      <img src="media/chalmers_logo.png" alt="Chalmers" class="sidebar-logo logo-bottom" data-config-src="data.images.chalmersLogo">
+      <img src="media/chalmers_logo.png" alt="Chalmers" class="sidebar-logo logo-bottom">
     </div>
 
     <!-- Right sidebar with icon controls -->
     <div id="right-sidebar">
-      <img src="media/chalmers_logo.png" alt="Chalmers" class="sidebar-logo logo-top" data-config-src="data.images.chalmersLogo">
+      <img src="media/chalmers_logo.png" alt="Chalmers" class="sidebar-logo logo-top">
       
       <!-- Right sidebar controls (top group) -->
       <div class="icon-controls icon-controls-top">
@@ -112,18 +166,6 @@
         </button>
         <input id="geojson-input" type="file" accept="application/geo+json,application/json,.geojson" style="display:none" />
         
-        <button id="cultural-gravity-btn" class="icon-btn" title="Cultural Gravity">
-          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <circle cx="12" cy="12" r="3"/>
-            <circle cx="12" cy="12" r="8" stroke-dasharray="4 3"/>
-            <path d="M12 1v3M12 20v3M1 12h3M20 12h3"/>
-            <circle cx="5" cy="5" r="1.5" fill="currentColor"/>
-            <circle cx="19" cy="5" r="1.5" fill="currentColor"/>
-            <circle cx="5" cy="19" r="1.5" fill="currentColor"/>
-            <circle cx="19" cy="19" r="1.5" fill="currentColor"/>
-          </svg>
-        </button>
-
         <button id="basemap-toggle" class="icon-btn" title="Switch Basemap">
           <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
             <path d="M3 7v10a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V7"/>
@@ -133,7 +175,7 @@
         </button>
       </div>
       
-      <div class="sidebar-title" data-config-text="app.title">ACE MR Studio</div>
+      <div class="sidebar-title">ACE MR Studio</div>
       
       <!-- Right sidebar controls (bottom group) -->
       <div class="icon-controls icon-controls-bottom">
@@ -144,7 +186,7 @@
         </button>
       </div>
       
-      <img src="media/dtcc_logo.png" alt="DTCC" class="sidebar-logo logo-bottom" data-config-src="data.images.dtccLogo">
+      <img src="media/dtcc_logo.png" alt="DTCC" class="sidebar-logo logo-bottom">
     </div>
 
     <!-- Start Overlay for Audio Context -->
@@ -154,6 +196,13 @@
     </div>
 
     <div id="map"></div>
+
+    <div id="thermal-comfort-hud" aria-live="polite" hidden>
+      <div class="thermal-hud-kicker">COOLPATHS · 15 JUL 2026</div>
+      <div class="thermal-hud-main"><span id="thermal-hud-pet">--</span><span>°C PET</span></div>
+      <div id="thermal-hud-air" class="thermal-hud-air">Modeled clear-sky comfort, not air temperature</div>
+      <div id="thermal-hud-caption">Connecting to PET data…</div>
+    </div>
 
     <!-- Laser pointer cursor -->
     <div id="laser-pointer"></div>
@@ -189,18 +238,46 @@
     <script src="https://unpkg.com/maplibre-gl@2.4.0/dist/maplibre-gl.js"></script>
     <!-- GeoTIFF.js for reading DEM files directly in browser -->
     <script src="https://unpkg.com/geotiff@2.1.0/dist-browser/geotiff.js"></script>
-    <script src="main.js"></script>
+    <script src="session/runtime.js"></script>
+    <script src="session/js/services.js"></script>
+    <script src="georeference.js"></script>
+    <script src="animations/introduction.js"></script>
+    <script src="main.js?v=20260922-ecom-presentation"></script>
     <script src="animations/grid-animation.js"></script>
     <script src="animations/street-glow-animation.js"></script>
     <script src="animations/isovist.js"></script>
+    <script src="animations/cultural-gravity.js"></script>
+    <script src="animations/street_view.js"></script>
+    <script src="animations/fcc-demo.js"></script>
+    <script src="animations/cfd-core.js"></script>
+    <script src="animations/cfd-visuals.js"></script>
     <script src="animations/cfd-simulation.js"></script>
     <script src="animations/stormwater-flow.js"></script>
+    <script src="animations/slideshow-raster.js"></script>
     <script src="animations/slideshow.js"></script>
     <script src="animations/bird-sounds.js"></script>
-    <script src="animations/cultural-gravity.js"></script>
-    <script src="animations/street-life.js"></script>
+    <script src="animations/street-life.js?v=20260925-lindholmen-1"></script>
+    <script src="animations/ferry-wake.js"></script>
     <script src="animations/trafik.js"></script>
+    <script src="animations/campus-demo.js"></script>
+    <script src="ecom-palette.js"></script>
+    <script src="animations/ecom-energy.js?v=20260925-lindholmen-1"></script>
+    <script src="animations/ecom-kpi-bars.js"></script>
+    <script src="animations/ecom-sound.js"></script>
+    <script src="animations/ecom-vehicles.js"></script>
+    <script src="animations/coolpaths-guide.js?v=20260922-tour-fixed-view"></script>
+    <script src="animations/thermal-comfort.js?v=20260922-tour-fixed-view"></script>
     <script type="module" src="animations/sun-study.js"></script>
+    <link rel="stylesheet" href="session/css/desktop.css?v=20260925-lindholmen-1">
+    <script src="https://unpkg.com/peerjs@1.5.5/dist/peerjs.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+    <script src="session/js/config.js"></script>
+    <script src="session/js/shared.js?v=20260925-lindholmen-1"></script>
+    <script src="session/js/map.js"></script>
+    <script src="session/js/adapter.js?v=20260925-lindholmen-1"></script>
+    <script src="session/js/phone-state.js"></script>
+    <script src="session/js/host.js?v=20260925-lindholmen-1"></script>
+    <script src="session/js/desktop.js?v=20260925-lindholmen-1"></script>
     
     <!-- Auto-fullscreen when launched from launcher -->
     <script>

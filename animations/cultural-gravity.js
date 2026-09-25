@@ -25,6 +25,16 @@
   // ── State ─────────────────────────────────────────────────────────────
   let animationFrame = null;
   let isActive = false;
+  const channel = new BroadcastChannel('map_controller_channel');
+  function publishState() {
+    document.getElementById('cultural-gravity-btn')?.classList.toggle('active', isActive);
+    channel.postMessage({type:'animation_state', animationId:'cultural-gravity-btn', isActive});
+    channel.postMessage({type:'cultural_gravity_state', isActive, sequenceStage, visibleSiteCount});
+  }
+  channel.onmessage = ({data}) => {
+    if (data.type === 'cultural_gravity_advance' || (data.type === 'cultural_gravity_control' && data.action === 'advance')) advanceSequence();
+    if (data.type === 'cultural_gravity_control' && data.action === 'request_state') publishState();
+  };
   let frameCount = 0;
   let sequenceStage = 0;      // 0: waiting reveal, 1: revealing, 2: waiting gravity, 3: ramping, 4: full
   let visibleSiteCount = 0;
@@ -365,6 +375,7 @@
     revealFrameCounter = 0;
     particleIntensity = 0;
     animate();
+    publishState();
     console.log('Cultural Gravity animation started. Press Right Arrow once to reveal locations, then again to start gravity flow.');
   }
 
@@ -381,6 +392,7 @@
     visibleSiteCount = 0;
     revealFrameCounter = 0;
     particleIntensity = 0;
+    publishState();
     console.log('Cultural Gravity animation stopped');
   }
 
@@ -395,9 +407,11 @@
       sequenceStage = 1;
       visibleSiteCount = 0;
       revealFrameCounter = 0;
+      publishState();
       console.log('Cultural Gravity: revealing locations one by one...');
     } else if (sequenceStage === 2) {
       sequenceStage = 3;
+      publishState();
       console.log('Cultural Gravity: ramping up gravity animation...');
     }
   }
@@ -430,7 +444,7 @@
         if (btn) {
           btn.addEventListener('click', () => {
             toggle();
-            btn.classList.toggle('active');
+
           });
         }
 
@@ -454,5 +468,6 @@
     toggle: toggle,
     advanceSequence: advanceSequence,
     isActive: () => isActive,
+    getState: () => ({isActive, sequenceStage, visibleSiteCount}),
   };
 })();

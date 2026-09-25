@@ -8,7 +8,6 @@
       "lng": 11.941012328565193,
       "lat": 57.707991890705784
     },
-    
     "zoom": 16.2299329163497,
     "bearing": -2.58546386659737
   },
@@ -73,9 +72,6 @@
       "chalmersLogo": "media/chalmers_logo.png",
       "dtccLogo": "media/dtcc_logo.png",
       "surveyQr": "media/survey_qr.png"
-    },
-    "apiKeys": {
-      "streetViewApiKey": "AIzaSyCEAOCjN57u5JJG9WmTORBlR34jBKHrJOU"
     },
     "other": {
       "treesGpkg": "media/trees.gpkg",

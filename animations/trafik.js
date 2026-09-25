@@ -26,8 +26,9 @@ let trafikAnimationFrame = null;
 let isTrafikAnimating = false;
 let vehicles = [];
 let lastFetchTime = 0;
-let nextFetchAllowedAt = 0;
 let updateInterval = null;
+let lastFrameTime = null;
+let nextFetchAllowedAt = 0, inFlight = false, starting = false, generation = 0, runController = null;
 
 // API Configuration - loaded from config file (not .env since this is client-side)
 let apiConfig = {
@@ -39,26 +40,22 @@ let apiConfig = {
 };
 
 // Configuration
-const _trafikBbox = window.APP_CONFIG && window.APP_CONFIG.table && window.APP_CONFIG.table.boundingBox;
-const _trafikBboxPadding = 0.003; // Slightly expand query area to include nearby routes (e.g., ferries)
 const CONFIG = {
   // API settings
   apiBaseUrl: 'https://ext-api.vasttrafik.se/pr/v4',
-  configPath: (window.APP_CONFIG && window.APP_CONFIG.data.other.trafikConfig) || 'trafik-config.json',
-  fetchInterval: 10000,              // Keep requests below the API rate limit
+  configPath: 'trafik-config.json',  // Local config file (gitignored)
+  fetchInterval: window.APP_CONFIG.transit.fetchInterval,               // Fetch every 3 seconds to avoid rate limiting
   tokenRefreshBuffer: 60000,          // Refresh token 1 minute before expiry
   positionsLimit: 200,                // Max vehicles per API call
   
   // Bounding box loaded from config, defaults to Gothenburg area
   boundingBox: {
-    minLng: _trafikBbox ? (_trafikBbox[0] - _trafikBboxPadding) : 11.936224,
-    minLat: _trafikBbox ? (_trafikBbox[1] - _trafikBboxPadding) : 57.677523,
-    maxLng: _trafikBbox ? (_trafikBbox[2] + _trafikBboxPadding) : 12.018278,
-    maxLat: _trafikBbox ? (_trafikBbox[3] + _trafikBboxPadding) : 57.699659
+    minLng: window.APP_CONFIG.area.bounds[0], minLat: window.APP_CONFIG.area.bounds[1],
+    maxLng: window.APP_CONFIG.area.bounds[2], maxLat: window.APP_CONFIG.area.bounds[3]
   },
   
   // Transport mode filter (only show these types)
-  transportModes: ['tram', 'bus', 'ferry'],
+  transportModes: window.APP_CONFIG.transit.transportModes,
   
   // Visual settings
   vehicleSize: 16,           // Larger icons
@@ -110,14 +107,15 @@ const vehicleHistory = new Map();
 // ===== API Functions =====
 
 // Load configuration from local file
-async function loadConfig() {
+async function loadConfig(signal) {
   try {
     console.log('Trafik: Loading config from', CONFIG.configPath);
-    const response = await fetch(CONFIG.configPath);
+    const response = await fetch(CONFIG.configPath, {signal});
     if (!response.ok) {
       throw new Error(`Config file not found: ${CONFIG.configPath} (status: ${response.status})`);
     }
     const config = await response.json();
+    if (signal?.aborted) return false;
     console.log('Trafik: Config JSON parsed:', Object.keys(config));
     
     // Store credentials in apiConfig
@@ -134,6 +132,17 @@ async function loadConfig() {
       hasAccessToken: !!apiConfig.accessToken
     });
     
+    // Load bounding box from config if provided [minLng, minLat, maxLng, maxLat]
+    if (config.bbox && Array.isArray(config.bbox) && config.bbox.length === 4) {
+      CONFIG.boundingBox = {
+        minLng: config.bbox[0],
+        minLat: config.bbox[1],
+        maxLng: config.bbox[2],
+        maxLat: config.bbox[3]
+      };
+      console.log(`✓ Trafik: Using custom bounding box: ${config.bbox.join(', ')}`);
+    }
+    
     console.log('✓ Trafik: Loaded API configuration');
     return true;
   } catch (err) {
@@ -144,7 +153,7 @@ async function loadConfig() {
 }
 
 // Refresh OAuth2 access token
-async function refreshAccessToken() {
+async function refreshAccessToken(signal) {
   // Can use either authenticationKey or clientId/clientSecret
   if (!apiConfig.authenticationKey && (!apiConfig.clientId || !apiConfig.clientSecret)) {
     console.warn('Trafik: Missing client credentials for token refresh', {
@@ -161,7 +170,7 @@ async function refreshAccessToken() {
     console.log('Trafik: Refreshing access token...');
     
     const response = await fetch('https://ext-api.vasttrafik.se/token', {
-      method: 'POST',
+      method: 'POST', signal,
       headers: {
         'Content-Type': 'application/x-www-form-urlencoded',
         'Authorization': `Basic ${authKey}`
@@ -174,6 +183,7 @@ async function refreshAccessToken() {
     }
     
     const data = await response.json();
+    if (signal?.aborted) return false;
     apiConfig.accessToken = data.access_token;
     apiConfig.tokenExpiry = Date.now() + (data.expires_in * 1000);
     
@@ -186,23 +196,23 @@ async function refreshAccessToken() {
 }
 
 // Check if token needs refresh
-async function ensureValidToken() {
+async function ensureValidToken(signal) {
   if (!apiConfig.accessToken) {
-    return await refreshAccessToken();
+    return await refreshAccessToken(signal);
   }
   
   if (Date.now() >= apiConfig.tokenExpiry - CONFIG.tokenRefreshBuffer) {
-    return await refreshAccessToken();
+    return await refreshAccessToken(signal);
   }
   
   return true;
 }
 
 // Fetch live vehicle positions from Västtrafik API
-async function fetchLivePositions() {
-  if (!await ensureValidToken()) {
+async function fetchLivePositions(signal, retried = false) {
+  if (!await ensureValidToken(signal)) {
     console.warn('Trafik: No valid access token');
-    return [];
+    return null;
   }
   
   try {
@@ -216,28 +226,25 @@ async function fetchLivePositions() {
     url.searchParams.set('limit', CONFIG.positionsLimit);
     
     const response = await fetch(url, {
+      signal,
       headers: {
         'Authorization': `Bearer ${apiConfig.accessToken}`,
         'Accept': 'application/json'
       }
     });
     
-    if (response.status === 401) {
-      // Token expired, refresh and retry
-      await refreshAccessToken();
-      return fetchLivePositions();
+    if (signal?.aborted) return null;
+    if (response.status === 429) {
+      const header=response.headers.get('Retry-After');
+      const seconds=Number(header), date=Date.parse(header);
+      const delay=header && Number.isFinite(seconds) && seconds>0 ? seconds*1000 : Number.isFinite(date) && date>Date.now() ? date-Date.now() : 30000;
+      nextFetchAllowedAt=Date.now()+delay;
+      return null;
+    }
+    if (response.status === 401 && !retried && await refreshAccessToken(signal)) {
+      return fetchLivePositions(signal,true);
     }
     
-    if (response.status === 429) {
-      const retryAfterSeconds = Number(response.headers.get('Retry-After'));
-      const retryDelay = Number.isFinite(retryAfterSeconds) && retryAfterSeconds > 0
-        ? retryAfterSeconds * 1000
-        : 30000;
-      nextFetchAllowedAt = Date.now() + retryDelay;
-      console.warn(`Trafik: Rate limited; retrying in ${Math.ceil(retryDelay / 1000)}s`);
-      return [];
-    }
-
     if (!response.ok) {
       throw new Error(`API error: ${response.status}`);
     }
@@ -246,8 +253,8 @@ async function fetchLivePositions() {
     return parseVehiclePositions(data);
     
   } catch (err) {
-    console.error('Trafik: Fetch error:', err);
-    return [];
+    if (!signal?.aborted) console.warn('Trafik: Position update unavailable:', err.message);
+    return null;
   }
 }
 
@@ -255,8 +262,8 @@ async function fetchLivePositions() {
 // Västtrafik /positions returns array of JourneyPositionApiModel
 function parseVehiclePositions(data) {
   if (!data || !Array.isArray(data)) {
-    console.warn('Trafik: Unexpected API response format', data);
-    return [];
+    console.warn('Trafik: Unexpected API response format');
+    return null;
   }
   
   return data
@@ -331,25 +338,6 @@ function isOnScreen(pos, padding = 50) {
          pos.y <= trafikCanvas.height + padding;
 }
 
-function hexToRgba(hex, alpha) {
-  if (!hex || typeof hex !== 'string' || hex[0] !== '#') {
-    return `rgba(255, 255, 255, ${alpha})`;
-  }
-
-  let normalized = hex.slice(1);
-  if (normalized.length === 3) {
-    normalized = normalized.split('').map(ch => ch + ch).join('');
-  }
-  if (normalized.length !== 6) {
-    return `rgba(255, 255, 255, ${alpha})`;
-  }
-
-  const r = parseInt(normalized.slice(0, 2), 16);
-  const g = parseInt(normalized.slice(2, 4), 16);
-  const b = parseInt(normalized.slice(4, 6), 16);
-  return `rgba(${r}, ${g}, ${b}, ${alpha})`;
-}
-
 // Draw a single vehicle - smooth gliding circle with line number and trail
 function drawVehicle(ctx, vehicle) {
   // Use interpolated position for smooth gliding
@@ -373,92 +361,30 @@ function drawVehicle(ctx, vehicle) {
   
   // Draw trail from position history
   const history = vehicle.positionHistory || [];
-  if (history.length > 1) {
+  if (vehicle.type === 'FERRY') {
+    window.MR_FERRY_WAKE.draw(ctx,vehicle.wake,projectToCanvas,Date.now());
+  } else if (history.length > 1) {
     ctx.lineCap = 'round';
     ctx.lineJoin = 'round';
-
-    // Ferries render a wake/ripple trail, while other modes keep the default line trail.
-    if (vehicle.type === 'FERRY') {
-      for (let i = 1; i < history.length; i++) {
-        const p1 = projectToCanvas(history[i - 1].lng, history[i - 1].lat);
-        const p2 = projectToCanvas(history[i].lng, history[i].lat);
-        const progress = i / history.length;
-        const dx = p2.x - p1.x;
-        const dy = p2.y - p1.y;
-        const len = Math.hypot(dx, dy) || 1;
-        const ux = dx / len;
-        const uy = dy / len;
-        const nx = -uy;
-        const ny = ux;
-
-        // Soft central wake line.
-        const wakeOpacity = 0.45 * progress;
-        ctx.strokeStyle = hexToRgba(bgColor, wakeOpacity);
-        ctx.lineWidth = CONFIG.trailWidth * (0.18 + 0.35 * progress);
-        ctx.beginPath();
-        ctx.moveTo(p1.x, p1.y);
-        ctx.lineTo(p2.x, p2.y);
-        ctx.stroke();
-
-        // Draw expanding ripple rings at intervals to suggest water disturbance.
-        if (i % 4 === 0) {
-          const age = 1 - progress;
-          const baseRadius = 3 + age * 9;
-          const rippleOpacity = 0.3 * progress;
-          ctx.strokeStyle = hexToRgba(bgColor, rippleOpacity);
-          ctx.lineWidth = 1.2;
-          ctx.beginPath();
-          ctx.arc(p2.x, p2.y, baseRadius, 0, Math.PI * 2);
-          ctx.stroke();
-          ctx.beginPath();
-          ctx.arc(p2.x, p2.y, baseRadius + 4, 0, Math.PI * 2);
-          ctx.stroke();
-        }
-
-        // Add gentle V-shaped wake arms behind the ferry.
-        if (i % 3 === 0) {
-          const age = 1 - progress;
-          const armLength = 6 + age * 12;
-          const armSpread = 2 + age * 6;
-          const anchorX = p2.x - ux * 4;
-          const anchorY = p2.y - uy * 4;
-          const leftX = anchorX - ux * armLength + nx * armSpread;
-          const leftY = anchorY - uy * armLength + ny * armSpread;
-          const rightX = anchorX - ux * armLength - nx * armSpread;
-          const rightY = anchorY - uy * armLength - ny * armSpread;
-
-          ctx.strokeStyle = hexToRgba(bgColor, 0.22 * progress);
-          ctx.lineWidth = 1;
-          ctx.beginPath();
-          ctx.moveTo(anchorX, anchorY);
-          ctx.lineTo(leftX, leftY);
-          ctx.stroke();
-          ctx.beginPath();
-          ctx.moveTo(anchorX, anchorY);
-          ctx.lineTo(rightX, rightY);
-          ctx.stroke();
-        }
-      }
-    } else {
-      // Draw trail segments with fading opacity
-      for (let i = 1; i < history.length; i++) {
-        const p1 = projectToCanvas(history[i - 1].lng, history[i - 1].lat);
-        const p2 = projectToCanvas(history[i].lng, history[i].lat);
-
-        // Calculate opacity based on position in trail (older = more faded)
-        const progress = i / history.length;
-        const opacity = CONFIG.trailFadeStart * progress;
-
-        // Gradient width (thinner at tail)
-        const width = CONFIG.trailWidth * (0.3 + 0.7 * progress);
-
-        ctx.strokeStyle = bgColor + Math.round(opacity * 255).toString(16).padStart(2, '0');
-        ctx.lineWidth = width;
-        ctx.beginPath();
-        ctx.moveTo(p1.x, p1.y);
-        ctx.lineTo(p2.x, p2.y);
-        ctx.stroke();
-      }
+    
+    // Draw trail segments with fading opacity
+    for (let i = 1; i < history.length; i++) {
+      const p1 = projectToCanvas(history[i - 1].lng, history[i - 1].lat);
+      const p2 = projectToCanvas(history[i].lng, history[i].lat);
+      
+      // Calculate opacity based on position in trail (older = more faded)
+      const progress = i / history.length;
+      const opacity = CONFIG.trailFadeStart * progress;
+      
+      // Gradient width (thinner at tail)
+      const width = CONFIG.trailWidth * (0.3 + 0.7 * progress);
+      
+      ctx.strokeStyle = bgColor + Math.round(opacity * 255).toString(16).padStart(2, '0');
+      ctx.lineWidth = width;
+      ctx.beginPath();
+      ctx.moveTo(p1.x, p1.y);
+      ctx.lineTo(p2.x, p2.y);
+      ctx.stroke();
     }
     
     // Draw line from last history point to current position
@@ -585,22 +511,21 @@ function drawLegend(ctx) {
 async function updateVehicles() {
   const now = Date.now();
   
-  // Fetch new positions at interval
-  if (now < nextFetchAllowedAt || now - lastFetchTime <= CONFIG.fetchInterval) {
-    return;
-  }
-
-  // Set this before awaiting so a slow request cannot overlap the next poll.
-  lastFetchTime = now;
-  if (now >= nextFetchAllowedAt) {
-    const newPositions = await fetchLivePositions();
-    if (newPositions.length > 0) {
+  if (!isTrafikAnimating || inFlight || now<nextFetchAllowedAt || now-lastFetchTime<CONFIG.fetchInterval) return;
+  const revision=generation, signal=runController.signal;
+  inFlight=true;lastFetchTime=now;
+  try {
+    const newPositions = await fetchLivePositions(signal);
+    if(revision!==generation || signal.aborted || !isTrafikAnimating)return;
+    if (newPositions !== null) {
       // Merge with existing vehicles for smooth interpolation
       const existingMap = new Map(vehicles.map(v => [v.id, v]));
       
       newPositions.forEach(v => {
         const existing = existingMap.get(v.id);
-        if (existing) {
+        const jump=existing && v.type==='FERRY' && window.MR_FERRY_WAKE.jumped(existing,v,v.timestamp-existing.timestamp);
+        if (existing && !jump) {
+          if(v.type==='FERRY')v.wake=existing.wake;
           // Preserve display position for interpolation
           v.displayLng = existing.displayLng ?? existing.lng;
           v.displayLat = existing.displayLat ?? existing.lat;
@@ -628,13 +553,17 @@ async function updateVehicles() {
       });
       
       vehicles = newPositions;
-      console.log(`Trafik: Updated ${vehicles.length} vehicle positions (tram/bus only)`);
+      console.log(`Trafik: Updated ${vehicles.length} vehicle positions`);
     }
+  } finally {
+    if(revision===generation)inFlight=false;
   }
 }
 
 // Smooth interpolation towards target position and record history
 function interpolateVehicles() {
+  const now=Date.now(),dt=lastFrameTime===null?1/60:Math.min(.25,Math.max(0,(now-lastFrameTime)/1000));
+  lastFrameTime=now;
   const speed = CONFIG.interpolationSpeed;
   vehicles.forEach(v => {
     if (v.displayLng !== undefined && v.displayLat !== undefined) {
@@ -643,8 +572,13 @@ function interpolateVehicles() {
       const prevLat = v.displayLat;
       
       // Lerp towards target
-      v.displayLng += (v.lng - v.displayLng) * speed;
-      v.displayLat += (v.lat - v.displayLat) * speed;
+      const factor=v.type==='FERRY' ? 1-Math.exp(-dt/2) : speed;
+      v.displayLng += (v.lng - v.displayLng) * factor;
+      v.displayLat += (v.lat - v.displayLat) * factor;
+      if(v.type==='FERRY') {
+        v.wake=window.MR_FERRY_WAKE.sample(v.wake,{lng:v.displayLng,lat:v.displayLat},now);
+        return;
+      }
       
       // Add to history frequently for smooth persistent trail
       if (!v.positionHistory) v.positionHistory = [];
@@ -683,38 +617,25 @@ function resizeTrafikCanvas() {
 // ===== Public API =====
 
 async function startTrafikAnimation() {
-  if (isTrafikAnimating) return;
-  
-  // Load config
-  const configLoaded = await loadConfig();
-  if (!configLoaded) {
-    console.warn('Trafik: Cannot start without valid configuration');
-    console.warn('Create trafik-config.json with your Västtrafik API credentials');
-    return;
-  }
-  
-  isTrafikAnimating = true;
-  trafikCanvas.style.display = 'block';
-  resizeTrafikCanvas();
-  
-  // Initial fetch
-  await updateVehicles();
-  
-  // Start update interval
-  updateInterval = setInterval(() => {
-    if (isTrafikAnimating) {
-      updateVehicles();
-    } else {
-      clearInterval(updateInterval);
-      updateInterval = null;
-    }
-  }, CONFIG.fetchInterval);
-  
-  animateTrafik();
-  console.log('✓ Trafik: Live transit animation started');
+  if (isTrafikAnimating || starting) return;
+  starting=true;
+  const revision=++generation;
+  runController=new AbortController();
+  try {
+    const loaded=await loadConfig(runController.signal);
+    if(revision!==generation || !loaded)return;
+    isTrafikAnimating=true;trafikCanvas.style.display='block';resizeTrafikCanvas();
+    lastFetchTime=-Infinity;nextFetchAllowedAt=0;
+    await updateVehicles();
+    if(revision!==generation || !isTrafikAnimating)return;
+    updateInterval=setInterval(updateVehicles,CONFIG.fetchInterval);
+    animateTrafik();
+  } finally {if(revision===generation)starting=false;}
 }
 
 function stopTrafikAnimation() {
+  lastFrameTime=null;
+  generation++;starting=false;inFlight=false;runController?.abort();
   isTrafikAnimating = false;
   trafikCanvas.style.display = 'none';
   

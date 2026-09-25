@@ -4,7 +4,11 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Map Controller</title>
-    <link rel="stylesheet" href="style.css" />
+    <script src="session/runtime.js"></script>
+    <script src="session/js/services.js"></script>
+    <script src="session/js/dashboard-bridge.js?v=20260925-lindholmen-1"></script>
+    <link rel="stylesheet" href="style.css?v=20260922-tour-fixed-view" />
+    <link rel="stylesheet" href="controller/ecom-controls.css" />
     <link href="https://fonts.googleapis.com/icon?family=Material+Icons" rel="stylesheet">
     <style>
         *, *::before, *::after {
@@ -15,12 +19,12 @@
             background: #1a1a1a;
             color: #e0e0e0;
             display: grid;
-            grid-template-columns: 120px 1fr 120px;
+            grid-template-columns: 88px 1fr 88px;
             grid-template-rows: auto 1fr;
             height: 100vh;
             overflow: hidden;
             font-family: system-ui, -apple-system, sans-serif;
-            font-size: 1.25rem;
+            font-size: 0.9rem;
             margin: 0;
             padding: 0;
         }
@@ -28,23 +32,23 @@
         header {
             grid-column: 1 / -1;
             background: #242424;
-            padding: 1.5rem 2rem;
+            padding: 0.8rem 1rem;
             border-bottom: 1px solid #3a3a3a;
             display: flex;
             justify-content: space-between;
             align-items: center;
         }
 
-        h1 { margin: 0; font-size: 1.8rem; color: #f0f0f0; }
+        h1 { margin: 0; font-size: 1.35rem; color: #f0f0f0; }
 
         #controls-panel, #right-panel {
             background: #242424;
             border-right: 1px solid #3a3a3a;
-            padding: 1.5rem 0.75rem;
+            padding: 0.9rem 0.5rem;
             overflow-y: auto;
             display: flex;
             flex-direction: column;
-            gap: 2rem;
+            gap: 1rem;
             align-items: center;
         }
 
@@ -54,12 +58,12 @@
         }
 
         #main-panel {
-            padding: 1.5rem;
+            padding: 0.8rem;
             overflow-y: auto;
             display: grid;
             grid-template-columns: 1fr 1fr;
-            grid-template-rows: 1.55fr 0.45fr;
-            gap: 1.5rem;
+            grid-template-rows: minmax(0, 1fr) 148px;
+            gap: 0.8rem;
             background: #1a1a1a;
             position: relative;
         }
@@ -74,8 +78,8 @@
 
         .panel-section {
             background: #2a2a2a;
-            padding: 1.5rem;
-            border-radius: 10px;
+            padding: 0.8rem;
+            border-radius: 6px;
             box-shadow: 0 2px 4px rgba(0,0,0,0.3);
             border: 1px solid #3a3a3a;
             overflow: auto;
@@ -84,7 +88,7 @@
         .control-group {
             display: flex;
             flex-direction: column;
-            gap: 0.75rem;
+            gap: 0.45rem;
             align-items: center;
             width: 100%;
         }
@@ -94,12 +98,12 @@
         }
 
         button.control-btn {
-            width: 70px;
-            height: 70px;
+            width: 52px;
+            height: 52px;
             padding: 0;
             border: 2px solid #4a4a4a;
             background: #333;
-            border-radius: 10px;
+            border-radius: 7px;
             cursor: pointer;
             display: flex;
             align-items: center;
@@ -110,7 +114,7 @@
         }
 
         button.control-btn .material-icons {
-            font-size: 32px;
+            font-size: 25px;
         }
 
         button.control-btn:hover {
@@ -181,7 +185,7 @@
             height: 100%;
         }
         
-        h2 { margin-top: 0; font-size: 1.4rem; border-bottom: 1px solid #3a3a3a; padding-bottom: 0.75rem; color: #f0f0f0; }
+        h2 { margin-top: 0; font-size: 1rem; border-bottom: 1px solid #3a3a3a; padding-bottom: 0.45rem; color: #f0f0f0; }
 
         .metadata-item {
             margin-bottom: 0.75rem;
@@ -220,14 +224,6 @@
             width: auto;
             object-fit: contain;
             filter: brightness(0.9);
-        }
-
-        #welcome-logo-1 {
-            height: 60px;
-        }
-
-        #welcome-logo-4 {
-            height: 96px;
         }
 
         .welcome-title {
@@ -437,6 +433,8 @@
             color: #d0d0d0;
             box-shadow: 0 1px 2px rgba(0,0,0,0.2);
         }
+
+        .slideshow-categories .modern-btn:disabled { opacity: 0.4; cursor: not-allowed; }
 
         .modern-btn:hover {
             background: #444;
@@ -805,7 +803,11 @@
                 grid-template-columns: 1fr;
             }
         }
-    </style>
+    #welcome-logo-4 {height:96px;}
+</style>
+    <script src="app-config.js"></script>
+    <script src="app-config-runtime.js"></script>
+    <script src="calibration-config.js"></script>
 </head>
 <body>
     <header>
@@ -813,7 +815,7 @@
             <button id="home-btn" style="background: none; border: none; cursor: pointer; font-size: 2rem; padding: 0; display: flex; align-items: center;" title="Home">
                 <span class="material-icons" style="font-size: 32px;">home</span>
             </button>
-            <h1 id="header-title">MR Studio Dashboard</h1>
+            <h1>MR Studio Dashboard</h1>
         </div>
         <div style="font-size: 1.2rem;">
             <span id="connection-status" class="status-indicator" style="width: 14px; height: 14px;"></span>
@@ -833,6 +835,9 @@
             <button class="control-btn animation-btn" data-action="click" data-target="sun-study-btn" title="Sun Study">
                 <span class="material-icons">wb_sunny</span>
             </button>
+            <button class="control-btn animation-btn" data-action="click" data-target="thermal-comfort-btn" title="Outdoor Thermal Comfort">
+                <span class="material-icons">thermostat</span>
+            </button>
         </div>
 
         <div class="control-group">
@@ -846,16 +851,13 @@
             <button class="control-btn animation-btn" data-action="click" data-target="isovist-btn" title="Interactive Isovist">
                 <span class="material-icons">visibility</span>
             </button>
-            <button class="control-btn animation-btn" data-action="click" data-target="bird-sounds-btn" title="Bird Sounds">
+            <button class="control-btn" data-target="cultural-gravity-btn" data-action="click" title="Cultural Gravity" aria-label="Cultural Gravity">◎</button>
+<button class="control-btn animation-btn" data-action="click" data-target="bird-sounds-btn" title="Bird Sounds">
                 <svg width="24" height="24" viewBox="0 0 24 24" fill="currentColor" stroke="none" style="width: 24px; height: 24px;">
                     <path d="M21 5c-1.1 0.9-2.3 1.5-3.6 1.7 1.3-0.8 2.3-2 2.7-3.5-1.2 0.7-2.5 1.2-3.9 1.5-1.1-1.2-2.7-1.9-4.5-1.9-3.4 0-6.1 2.7-6.1 6.1 0 0.5 0.1 0.9 0.2 1.4-5.1-0.3-9.6-2.7-12.6-6.4-0.5 0.9-0.8 2-0.8 3.2 0 2.1 1.1 4 2.7 5.1-1 0-2-0.3-2.8-0.8 0 0 0 0.1 0 0.1 0 3 2.1 5.5 4.9 6.1-0.5 0.1-1 0.2-1.6 0.2-0.4 0-0.8 0-1.2-0.1 0.8 2.4 3.1 4.2 5.8 4.2-2.1 1.6-4.7 2.6-7.6 2.6-0.5 0-1 0-1.5-0.1 2.7 1.7 5.9 2.7 9.4 2.7 11.3 0 17.4-9.3 17.4-17.4 0-0.3 0-0.5 0-0.8 1.2-0.9 2.2-1.9 3-3.2z"/>
                 </svg>
             </button>
-            <button class="control-btn animation-btn" data-action="click" data-target="cultural-gravity-btn" title="Cultural Gravity">
-                <span class="material-icons">my_location</span>
-            </button>
         </div>
-        
         <div class="control-group">
             <h3>Map Controls</h3>
              <button class="control-btn function-btn" id="reset-view-btn" title="Reset View">
@@ -880,7 +882,7 @@
     <main id="main-panel">
         <div id="welcome-screen">
             <canvas id="bg-canvas"></canvas>
-            <h1 class="welcome-title" id="welcome-title">Welcome to the ACE MR Studio</h1>
+            <h1 class="welcome-title">Welcome to the ACE MR Studio</h1>
             
             <div id="tour-info" class="tour-info" style="position: relative; z-index: 2;">
                 <div id="tour-title" class="tour-title"></div>
@@ -900,7 +902,39 @@
             <div id="legend-content">
                 <p>Select a simulation to view its legend.</p>
             </div>
-
+            <!-- Campus Demo Legend (hidden by default) -->
+            <div id="campus-demo-legend" style="display: none;">
+                <div class="legend-phase" data-phase="boundary" style="display:none;">
+                    <div class="legend-item"><div class="legend-color" style="background: linear-gradient(90deg, hsl(205, 50%, 70%), hsl(255, 50%, 70%));"></div><div class="legend-label">Project Boundary</div></div>
+                </div>
+                <div class="legend-phase" data-phase="living-primary" style="display:none;">
+                    <div class="legend-item"><div class="legend-color" style="background: rgb(219, 87, 19);"></div><div class="legend-label">Living Campus - Primary Routes</div></div>
+                </div>
+                <div class="legend-phase" data-phase="living-secondary" style="display:none;">
+                    <div class="legend-item"><div class="legend-color" style="background: rgba(219, 87, 19, 0.7);"></div><div class="legend-label">Living Campus - Secondary Routes</div></div>
+                </div>
+                <div class="legend-phase" data-phase="living-points" style="display:none;">
+                    <div class="legend-item"><div class="legend-color" style="background: rgb(237, 192, 6); border-radius: 50%;"></div><div class="legend-label">Living Campus - Points</div></div>
+                </div>
+                <div class="legend-phase" data-phase="living-asterix" style="display:none;">
+                    <div class="legend-item"><div class="legend-color" style="background: radial-gradient(circle, #e6a832 30%, transparent 70%);"></div><div class="legend-label">Living Campus - Activity Nodes</div></div>
+                </div>
+                <div class="legend-phase" data-phase="health-primary" style="display:none;">
+                    <div class="legend-item"><div class="legend-color" style="background: rgb(86, 130, 0);"></div><div class="legend-label">Health Campus - Primary Routes</div></div>
+                </div>
+                <div class="legend-phase" data-phase="health-secondary" style="display:none;">
+                    <div class="legend-item"><div class="legend-color" style="background: rgba(86, 130, 0, 0.7);"></div><div class="legend-label">Health Campus - Secondary Routes</div></div>
+                </div>
+                <div class="legend-phase" data-phase="health-tertiary" style="display:none;">
+                    <div class="legend-item"><div class="legend-color" style="background: rgb(226, 144, 77);"></div><div class="legend-label">Health Campus - Tertiary Routes</div></div>
+                </div>
+                <div class="legend-phase" data-phase="health-points" style="display:none;">
+                    <div class="legend-item"><div class="legend-color" style="background: rgb(183, 179, 99); border-radius: 50%;"></div><div class="legend-label">Health Campus - Points</div></div>
+                </div>
+                <div class="legend-phase" data-phase="green-spaces" style="display:none;">
+                    <div class="legend-item"><div class="legend-color" style="background: rgb(140, 186, 99); border-radius: 30%;"></div><div class="legend-label">Green Meeting Spaces</div></div>
+                </div>
+            </div>
         </section>
 
 
@@ -909,11 +943,20 @@
             <div id="dashboard-content">
                 <p>No active data.</p>
             </div>
-
+            <!-- SAM Segmentation Section (only for Street View) -->
+            <div id="sam-segmentation-section" style="display:none; margin-top:2rem;">
+                <h3 style="margin-bottom:0.5rem; color:#60a5fa;">Street View Segmentation</h3>
+                    <button id="sam-segment-btn" type="button" class="modern-btn primary" style="margin-bottom:1rem;">Segment Street View</button>
+                <div id="sam-server-status" style="font-size:1rem; color:#aaa; margin-bottom:0.5rem;"></div>
+                <div id="sam-mask-container" style="margin-bottom:0.5rem;"></div>
+                <div id="sam-pie-chart" style="margin-bottom:0.5rem;"></div>
+                <div id="sam-class-table"></div>
+            </div>
         </section>
 
         <section id="metadata-section" class="panel-section" style="grid-column: 1 / -1; grid-row: 2;">
-            <h2>Metadata</h2>
+            <h2 id="metadata-title">Metadata</h2>
+            <div id="ecom-groups" class="ecom-groups" style="display: none;"></div>
             <div id="metadata-content">
                 <div class="metadata-item">
                     <div class="metadata-label">Current View</div>
@@ -932,32 +975,50 @@
     </main>
 
     <aside id="right-panel">
+        <div class="control-group">
+            <h3>Demos</h3>
+            <button class="control-btn animation-btn" data-action="click" data-target="fcc-demo-btn" title="FCC VR Demo">
+                <span class="material-icons">videocam</span>
+            </button>
+            <button class="control-btn animation-btn" data-action="click" data-target="campus-demo-btn" title="Chalmers Campus Vision">
+                <span class="material-icons">school</span>
+            </button>
+            <button class="control-btn animation-btn" data-action="click" data-target="street-view-btn" title="Google Street View">
+                <span class="material-icons">streetview</span>
+            </button>
+            <button class="control-btn animation-btn" data-action="click" data-target="epc-btn" title="EPC Building Energy Classes">
+                <span class="material-icons">energy_savings_leaf</span>
+            </button>
+        </div>
+        <div class="control-group">
+            <h3>Energy</h3>
+            <button class="control-btn animation-btn" data-action="click" data-target="ecom-energy-btn" title="ECOM Energy Community">
+                <span class="material-icons">bolt</span>
+            </button>
+        </div>
     </aside>
-
-    <!-- Load global config -->
-    <script>
-    (function() {
-        try {
-            var xhr = new XMLHttpRequest();
-            xhr.open('GET', 'map_config.json', false);
-            xhr.send(null);
-            if (xhr.status === 200) {
-                window.APP_CONFIG = JSON.parse(xhr.responseText);
-            }
-        } catch (e) {
-            console.warn('Could not load map_config.json:', e);
-        }
-    })();
-    </script>
 
     <script src="controller/sun-study-ui.js"></script>
     <script src="controller/isovist-dashboard.js"></script>
     <script src="controller/bird-dashboard.js"></script>
+    <script src="controller/campus-demo-legend.js"></script>
     <script src="controller/slideshow-dashboard.js"></script>
-    <script src="controller/auto-calibration.js"></script>
+    <script src="controller/street-view.js"></script>
+    <script src="controller/fcc-demo-dashboard.js"></script>
+    <script src="controller/manual-calibration.js"></script>
+    <script src="controller/epc-dashboard.js"></script>
     <script src="controller/tour.js"></script>
     <script src="controller/bg-animation.js"></script>
-    <script src="controller.js"></script>
+    <script src="ecom-palette.js"></script>
+    <script src="controller/ecom-controls.js?v=20260925-lindholmen-1"></script>
+    <script src="controller/ecom-dashboard.js"></script>
+    <script src="animations/coolpaths-guide.js?v=20260922-tour-fixed-view"></script>
+    <script src="animations/cfd-core.js"></script>
+    <script src="animations/cfd-visuals.js"></script>
+    <script src="controller.js?v=20260925-lindholmen-1"></script>
+    <link rel="stylesheet" href="session/css/desktop.css?v=20260925-lindholmen-1">
+    <script src="session/js/shared.js?v=20260925-lindholmen-1"></script>
+    <script src="session/js/desktop.js?v=20260925-lindholmen-1"></script>
     
     <!-- Auto-fullscreen when launched from launcher -->
     <script>

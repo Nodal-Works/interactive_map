@@ -65,6 +65,7 @@ function updateSlideshowDashboard() {
     }
     
     const meta = slideshowState.metadata || {};
+    const safe = value => String(value || '').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
     const slideNum = slideshowState.currentIndex + 1;
     const totalSlides = slideshowState.totalSlides;
     
@@ -81,13 +82,25 @@ function updateSlideshowDashboard() {
                         <span class="material-icons">chevron_left</span> Previous
                     </button>
                     <div style="padding: 0 1rem; text-align: center;">
-                        <div style="font-size: 1.5rem; font-weight: 600; color: #1f2937;">${slideNum} / ${totalSlides}</div>
+                        <div style="font-size: 1.5rem; font-weight: 600; color: inherit;">${slideNum} / ${totalSlides}</div>
                         <div style="font-size: 0.75rem; color: #6b7280;">Slide</div>
                     </div>
                     <button id="slideshow-next-btn" class="modern-btn" style="flex: 1;">
                         Next <span class="material-icons">chevron_right</span>
                     </button>
                 </div>
+                ${slideshowState.categoryCount ? `
+                <div class="slideshow-categories">
+                  <p aria-live="polite"><strong>${safe(slideshowState.category || 'Ready to reveal')}</strong> · ${slideshowState.categoryIndex + 1} / ${slideshowState.categoryCount} categories</p>
+                  <div class="action-grid">
+                    <button class="modern-btn" data-reveal="category_previous" ${slideshowState.categoryIndex < 0 ? 'disabled' : ''}>Previous category</button>
+                    <button class="modern-btn" data-reveal="category_next" ${slideshowState.categoryIndex >= slideshowState.categoryCount - 1 ? 'disabled' : ''}>Next category</button>
+                    <button class="modern-btn" data-reveal="show_all">Show all</button>
+                    <button class="modern-btn" data-reveal="${slideshowState.autoReveal ? 'pause_reveal' : 'auto_reveal'}">${slideshowState.autoReveal ? 'Pause reveal' : 'Auto reveal'}</button>
+                  </div>
+                </div>` : ''}
+                <p role="status" aria-live="polite">${slideshowState.status === 'loading' ? 'Loading slide…' : slideshowState.status === 'error' ? safe(slideshowState.error) : ''}</p>
+                ${slideshowState.status === 'error' ? '<button id="slideshow-retry-btn" class="modern-btn">Retry</button>' : ''}
                 <div style="text-align: center;">
                     <button id="slideshow-stop-btn" class="modern-btn" style="background: #fef2f2; border-color: #fecaca; color: #dc2626;">
                         <span class="material-icons">stop</span> Stop Slideshow
@@ -95,7 +108,7 @@ function updateSlideshowDashboard() {
                 </div>
                 <div style="margin-top: 1rem; padding: 0.75rem; background: #f3f4f6; border-radius: 8px; text-align: center; color: #6b7280; font-size: 0.85rem;">
                     <span class="material-icons" style="font-size: 14px; vertical-align: middle;">keyboard</span>
-                    Use <kbd style="background: #e5e7eb; padding: 2px 6px; border-radius: 4px;">←</kbd> <kbd style="background: #e5e7eb; padding: 2px 6px; border-radius: 4px;">→</kbd> arrow keys to navigate
+                    Use <kbd style="background: #e5e7eb; padding: 2px 6px; border-radius: 4px;">←</kbd> <kbd style="background: #e5e7eb; padding: 2px 6px; border-radius: 4px;">→</kbd> arrows for categories; Shift + arrows for slides
                 </div>
             </div>
 
@@ -104,14 +117,16 @@ function updateSlideshowDashboard() {
                     <span class="material-icons" style="font-size: 18px;">info</span>
                     Current Slide
                 </div>
-                ${meta.title ? `<div style="font-size: 1.1rem; font-weight: 600; color: #1f2937; margin-bottom: 0.5rem;">${meta.title}</div>` : ''}
+                ${meta.title ? `<div style="font-size: 1.1rem; font-weight: 600; color: inherit; margin-bottom: 0.5rem;">${meta.title}</div>` : ''}
                 ${meta.description ? `<p class="info-text" style="margin-bottom: 0.75rem;">${meta.description}</p>` : ''}
-                ${meta.source ? `<p style="font-size: 0.8rem; color: #9ca3af; font-style: italic;"><span class="material-icons" style="font-size: 12px; vertical-align: middle;">public</span> ${meta.source}</p>` : ''}
-                ${slideshowState.slideType ? `<div style="margin-top: 0.5rem;"><span style="background: ${(slideshowState.slideType === 'wms' || slideshowState.slideType === 'arcgis') ? '#dbeafe' : '#e5e7eb'}; color: ${(slideshowState.slideType === 'wms' || slideshowState.slideType === 'arcgis') ? '#1d4ed8' : 'inherit'}; padding: 2px 8px; border-radius: 4px; font-size: 0.75rem; text-transform: uppercase;">${slideshowState.slideType === 'wms' ? 'WMS Layer' : slideshowState.slideType === 'arcgis' ? 'ArcGIS Layer' : slideshowState.slideType}</span></div>` : ''}
+                ${meta.source ? `<p style="font-size: 0.8rem; color: #9ca3af; font-style: italic;">Source: ${meta.source}</p>` : ''}
+                ${slideshowState.slideType ? `<div style="margin-top: 0.5rem;"><span style="background: #244256; color: #d8edfb; padding: 2px 8px; border-radius: 4px; font-size: 0.75rem; text-transform: uppercase;">${slideshowState.slideType}</span></div>` : ''}
             </div>
         </div>
     `;
     
+    dashboardContent.querySelectorAll('[data-reveal]').forEach(button => button.addEventListener('click', () => channel.postMessage({type:MSG_TYPES.SLIDESHOW_CONTROL,action:button.dataset.reveal})));
+    document.getElementById('slideshow-retry-btn')?.addEventListener('click', () => channel.postMessage({type:MSG_TYPES.SLIDESHOW_CONTROL,action:'retry'}));
     // Build legend from slide metadata
     if (meta.legend && meta.legend.items && meta.legend.items.length > 0) {
         // Build reverse color map (color -> property value) for highlighting
@@ -152,6 +167,7 @@ function updateSlideshowDashboard() {
         `;
     }
     
+    highlightControllerLegendItem(slideshowState.category);
     // Attach event listeners for navigation buttons
     const prevBtn = document.getElementById('slideshow-prev-btn');
     const nextBtn = document.getElementById('slideshow-next-btn');
