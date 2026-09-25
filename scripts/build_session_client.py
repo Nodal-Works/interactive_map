@@ -35,6 +35,9 @@ def build():
     controller = re.sub(r'\s*<script src="calibration-config\.js"></script>', '', controller)
     controller = re.sub(r'\s*<script src="(?:controller/manual-calibration|session/js/desktop|session/runtime)\.js(?:\?[^"]*)?"></script>', '', controller)
     controller = re.sub(r'<button[^>]*data-target="calibrate-btn".*?</button>', '', controller, flags=re.S)
+    # Exhibit placement/audio administration belongs only to the local controller.
+    controller = re.sub(r'\s*<link[^>]+href="museum-controller\.css(?:\?[^\"]*)?"[^>]*>', '', controller)
+    controller = re.sub(r'\s*<script src="museum-presentation\.js(?:\?[^\"]*)?"></script>', '', controller)
     assert not re.search(r'<script[^>]+(?:session/js/desktop|session/runtime|controller/manual-calibration)\.js', controller), 'Host-only script leaked into phone HTML'
     (OUT / 'controller.html').write_text(version_assets(controller))
     client = (ROOT / 'session/client.html').read_text().replace('href="css/', 'href="session/css/').replace('src="js/', 'src="session/js/').replace('src="../app-config', 'src="app-config')

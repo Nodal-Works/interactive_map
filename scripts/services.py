@@ -26,8 +26,6 @@ def configuration(path=None):
     ports = [config[name] for name in ('host', 'ecom', 'coolpaths', 'sam')]
     if any(type(port) is not int or not 1024 <= port <= 65535 for port in ports) or len(set(ports)) != 4:
         raise ValueError('Service ports must be distinct integers between 1024 and 65535')
-    if config['client_url'] == 'https://nodal-works.github.io/interactive_map/client.html':
-        config['client_url'] = 'https://nodal-works.github.io/interactive_map/dev/client.html'
     return config
 
 

@@ -39,9 +39,9 @@ report an unavailable study in the layer dashboard.
 
 ## Phone controls
 
-The public phone interface is:
+The public phone interface for this branch is:
 
-https://nodal-works.github.io/interactive_map/client.html
+https://nodal-works.github.io/interactive_map/universeum/client.html
 
 Scan the host panel's QR to include the current invitation. During idle Street Life,
 a larger QR appears at the bottom right of the calibrated table, with the Street Life
@@ -138,20 +138,54 @@ separately. There is no cross-session restore or timeline player in this release
 
 ## Publishing
 
-GitHub Pages uses the `Publish MR Studio phone client` Actions workflow on `main`.
-It runs protocol/server checks, builds an explicit file allowlist, and deploys
-`dist/session-client`. The host/admin scripts, calibration module, local settings,
-backend code, credentials and session logs are excluded from that artifact.
+One GitHub Actions workflow builds and tests `main`, `lindholmen`, and `universeum`
+on every push to any of those branches, then deploys one complete Pages artifact.
+A failed branch build prevents publication; each client retains its own release,
+configuration, assets, and dashboard. Local worktrees are not deployment sources:
+commit and push the matching branch before using an updated host with phones.
+
+| Host branch | Public phone client |
+| --- | --- |
+| main | https://nodal-works.github.io/interactive_map/client.html |
+| lindholmen | https://nodal-works.github.io/interactive_map/lindholmen/client.html |
+| universeum | https://nodal-works.github.io/interactive_map/universeum/client.html |
+
+`/dev/client.html` redirects to Universeum, preserving invitation parameters and
+fragments. `deployment-manifest.json` at the Pages root records each branch,
+commit, release, and client path. Check it against the host checkout after rollout.
+
+Each branch's `services.example.json` and `session/js/config.js` specify its public
+URL. An explicit `client_url` in `services.local.json` (or `--config`) overrides
+the service default. Preserve custom operator URLs; update old main/dev/local
+URLs when moving a host to its matching client. No service rewrites URLs silently.
+
+To build the combined artifact from three checkouts:
 
 ```sh
-python3 scripts/build_session_client.py
+python3 scripts/build_pages_site.py --main /path/to/main \
+  --lindholmen /path/to/lindholmen --universeum /path/to/universeum
 ```
 
-Public files retain the prototype's `session/js` and `session/css` structure.
-`client.html` is at the Pages root; the reusable dashboard is `controller.html`.
-Update `MR.RELEASE`, the version query strings in `session/client.html`, and the
-public artifact together when the protocol changes. Reload the host and scan the
-new invitation after deployment. Existing incompatible invitations are rejected.
+The output is `dist/pages`. Each input uses its own allowlisted client builder;
+host/admin scripts, calibration, local settings, credentials and session logs stay
+out of the public artifact. Local HTML asset references are checked before upload.
+The workflow runs protocol, lifecycle, server and artifact tests for every branch,
+plus Lindholmen's Cultural Gravity checks. Use GitHub Actions as the Pages source
+and allow `main`, `lindholmen`, and `universeum` in the `github-pages` environment.
+Keep this publishing workflow and combined builder synchronized across branches.
+
+For the initial migration, disable the existing publishing workflow, let any
+active deployment finish, land all three coordinated branch updates, then enable
+it and dispatch a run from main. Later pushes rebuild all three clients together.
+To roll back, revert the affected branch commit and rebuild the complete site.
+
+When changing the protocol, update that branch's `MR.RELEASE` and client asset
+versions together. Preserve release matching; never bypass the invitation check.
+After deployment succeeds and the public manifest matches, restart the local
+host at a convenient break, reload the display, and scan its fresh QR. Existing
+sessions are not restarted automatically. Verify joining, layer control and
+reconnect on real phones on the presentation network; deterministic tests cannot
+prove WebRTC connectivity through that network's firewall.
 
 ## Verification
 
