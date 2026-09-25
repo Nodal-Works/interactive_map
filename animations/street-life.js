@@ -275,8 +275,17 @@ function getPointAlongPath(path, progress) {
   return {
     lng: p1[0] + (p2[0] - p1[0]) * segmentProgress,
     lat: p1[1] + (p2[1] - p1[1]) * segmentProgress,
-    angle: path.segmentAngles[i] // Pre-calculated angle - zero computation!
+    angle: path.segmentAngles[i], // Pre-calculated geographic angle
+    segmentIndex: i
   };
+}
+
+// Use the projected road tangent so headlights follow travel under calibration,
+// map rotation and pitch. The vehicle renderers point forward along local +X.
+function getScreenPathAngle(path, point) {
+  const start = map.project(path.coords[point.segmentIndex]);
+  const end = map.project(path.coords[point.segmentIndex + 1]);
+  return Math.atan2(end.y - start.y, end.x - start.x);
 }
 
 // Spawn a new car - with smart spawning based on road hierarchy
@@ -468,10 +477,10 @@ function drawGeographicVehicle(ctx,pos,angle,color,type,direction=1) {
   const dimensions={car:[4.5,1.8,3],taxi:[4.5,1.8,3],bus:[12,2.5,5],bicycle:[1.8,.6,2]};
   const [length,width,minimum]=dimensions[type] || dimensions.car;
   const size=window.MR_TABLE.symbol(length,width,minimum*(window.mrTableScale?.() ?? 1),symbolPixelsPerMetre);
-  ctx.save();ctx.translate(pos.x,pos.y);ctx.rotate(direction===1?angle+Math.PI:angle);
+  ctx.save();ctx.translate(pos.x,pos.y);ctx.rotate(angle+(direction<0?Math.PI:0));
   ctx.fillStyle=color;ctx.fillRect(-size.length/2,-size.width/2,size.length,size.width);
-  // A short halo follows the same scale as the body, rather than a fixed 25–60 px beam.
-  ctx.globalAlpha=.22;ctx.fillRect(-size.length,-size.width/3,size.length/2,size.width*2/3);
+  // Keep the headlamp halo ahead of the body, using the same geographic scale.
+  ctx.globalAlpha=.22;ctx.fillRect(size.length/2,-size.width/3,size.length/2,size.width*2/3);
   ctx.restore();
 }
 
@@ -481,7 +490,7 @@ function drawEmergencyVehicle(ctx, pos, angle, vehicle) {
   ctx.save();
   ctx.translate(pos.x, pos.y);
   
-  const finalAngle = vehicle.direction === 1 ? angle + Math.PI : angle;
+  const finalAngle = angle + (vehicle.direction < 0 ? Math.PI : 0);
   ctx.rotate(finalAngle);
   
   // Determine which light is on (alternating red/blue)
@@ -1039,7 +1048,7 @@ function drawStreetLife() {
     
     if (!isOnScreen(pos, width, height)) return;
     
-    const screenAngle = -point.angle + mapBearing;
+    const screenAngle = getScreenPathAngle(v.path, point);
     
     if(geographicSymbols){
       drawGeographicVehicle(streetLifeCtx,pos,screenAngle,v.colors.body || v.colors.frame,v.type,v.direction);
@@ -1060,7 +1069,7 @@ function drawStreetLife() {
     if (ePoint) {
       const ePos = projectToStreetLifeCanvas(ePoint.lng, ePoint.lat);
       if (isOnScreen(ePos, width, height)) {
-        const eAngle = -ePoint.angle + mapBearing;
+        const eAngle = getScreenPathAngle(emergencyVehicle.path, ePoint);
         drawEmergencyVehicle(streetLifeCtx, ePos, eAngle, emergencyVehicle);
       }
     }
@@ -1278,7 +1287,7 @@ function drawFastLight(ctx, pos, angle, color, length, width, direction = 1) {
   ctx.save();
   ctx.translate(pos.x, pos.y);
   
-  const finalAngle = direction === 1 ? angle + Math.PI : angle;
+  const finalAngle = angle + (direction < 0 ? Math.PI : 0);
   ctx.rotate(finalAngle);
   
   // Headlight Beam (single gradient cone — replaces halo + beam)
