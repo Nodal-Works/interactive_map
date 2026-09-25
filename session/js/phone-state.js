@@ -16,6 +16,10 @@
     const entry=settings[focus?.layer];
     if(entry){const[name,keys]=entry;result[name]=pick(state[name],keys.split(' '));
       if(name==='thermal'&&result.thermal.tour)result.thermal.tour=pick(result.thermal.tour,['open','playing','step','layer']);}
+    if(focus?.layer==='slideshow-btn') {
+      const slide=(state.messages || []).find(m=>m.type==='slideshow_update');
+      if(slide) result.slideshow={...pick(slide,['isActive','currentIndex','totalSlides','status','error','categoryIndex','categoryCount','category','autoReveal']),title:slide.metadata?.title || ''};
+    }
     if(focus?.layer==='ecom-energy-btn'&&focus.tab==='controls'){
       result.messages=(state.messages||[]).filter(m=>['ecom_ui_state','ecom_pong','ecom_sound_state','ecom_applied'].includes(m.type)).map(m=>{
         if(m.type==='ecom_ui_state')return pick(m,['type','editorId','ui']);

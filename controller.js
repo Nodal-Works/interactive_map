@@ -1783,6 +1783,7 @@ channel.onmessage = (event) => {
             totalSlides: data.totalSlides,
             metadata: data.metadata,
             status: data.status, error: data.error,
+            categoryIndex: data.categoryIndex, categoryCount: data.categoryCount, category: data.category, autoReveal: data.autoReveal,
             slideType: data.slideType
         };
         // Update dashboard if slideshow is the active layer
@@ -2065,15 +2066,16 @@ startTour();
 
 // Keyboard controls for slideshow navigation when slideshow is active
 document.addEventListener('keydown', (e) => {
+    if (e.repeat || e.target?.closest?.('input,textarea,select,[contenteditable="true"]')) return;
     // Check if slideshow button is active
     const slideshowBtn = document.querySelector('.control-btn[data-target="slideshow-btn"]');
     if (slideshowBtn && slideshowBtn.classList.contains('active') && slideshowState.isActive) {
-        if (e.key === 'ArrowRight' || e.key === ' ') {
+        if (e.key === 'ArrowRight') {
             e.preventDefault();
-            channel.postMessage({ type: MSG_TYPES.SLIDESHOW_CONTROL, action: 'next' });
+            channel.postMessage({ type: MSG_TYPES.SLIDESHOW_CONTROL, action: slideshowState.categoryCount && !e.shiftKey ? 'category_next' : 'next' });
         } else if (e.key === 'ArrowLeft') {
             e.preventDefault();
-            channel.postMessage({ type: MSG_TYPES.SLIDESHOW_CONTROL, action: 'previous' });
+            channel.postMessage({ type: MSG_TYPES.SLIDESHOW_CONTROL, action: slideshowState.categoryCount && !e.shiftKey ? 'category_previous' : 'previous' });
         } else if (e.key === 'Escape') {
             e.preventDefault();
             channel.postMessage({ type: MSG_TYPES.SLIDESHOW_CONTROL, action: 'stop' });

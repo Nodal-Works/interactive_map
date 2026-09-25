@@ -89,6 +89,16 @@ function updateSlideshowDashboard() {
                         Next <span class="material-icons">chevron_right</span>
                     </button>
                 </div>
+                ${slideshowState.categoryCount ? `
+                <div class="slideshow-categories">
+                  <p aria-live="polite"><strong>${safe(slideshowState.category || 'Ready to reveal')}</strong> · ${slideshowState.categoryIndex + 1} / ${slideshowState.categoryCount} categories</p>
+                  <div class="action-grid">
+                    <button class="modern-btn" data-reveal="category_previous" ${slideshowState.categoryIndex < 0 ? 'disabled' : ''}>Previous category</button>
+                    <button class="modern-btn" data-reveal="category_next" ${slideshowState.categoryIndex >= slideshowState.categoryCount - 1 ? 'disabled' : ''}>Next category</button>
+                    <button class="modern-btn" data-reveal="show_all">Show all</button>
+                    <button class="modern-btn" data-reveal="${slideshowState.autoReveal ? 'pause_reveal' : 'auto_reveal'}">${slideshowState.autoReveal ? 'Pause reveal' : 'Auto reveal'}</button>
+                  </div>
+                </div>` : ''}
                 <p role="status" aria-live="polite">${slideshowState.status === 'loading' ? 'Loading slide…' : slideshowState.status === 'error' ? safe(slideshowState.error) : ''}</p>
                 ${slideshowState.status === 'error' ? '<button id="slideshow-retry-btn" class="modern-btn">Retry</button>' : ''}
                 <div style="text-align: center;">
@@ -98,7 +108,7 @@ function updateSlideshowDashboard() {
                 </div>
                 <div style="margin-top: 1rem; padding: 0.75rem; background: #f3f4f6; border-radius: 8px; text-align: center; color: #6b7280; font-size: 0.85rem;">
                     <span class="material-icons" style="font-size: 14px; vertical-align: middle;">keyboard</span>
-                    Use <kbd style="background: #e5e7eb; padding: 2px 6px; border-radius: 4px;">←</kbd> <kbd style="background: #e5e7eb; padding: 2px 6px; border-radius: 4px;">→</kbd> arrow keys to navigate
+                    Use <kbd style="background: #e5e7eb; padding: 2px 6px; border-radius: 4px;">←</kbd> <kbd style="background: #e5e7eb; padding: 2px 6px; border-radius: 4px;">→</kbd> arrows for categories; Shift + arrows for slides
                 </div>
             </div>
 
@@ -115,6 +125,7 @@ function updateSlideshowDashboard() {
         </div>
     `;
     
+    dashboardContent.querySelectorAll('[data-reveal]').forEach(button => button.addEventListener('click', () => channel.postMessage({type:MSG_TYPES.SLIDESHOW_CONTROL,action:button.dataset.reveal})));
     document.getElementById('slideshow-retry-btn')?.addEventListener('click', () => channel.postMessage({type:MSG_TYPES.SLIDESHOW_CONTROL,action:'retry'}));
     // Build legend from slide metadata
     if (meta.legend && meta.legend.items && meta.legend.items.length > 0) {
@@ -156,6 +167,7 @@ function updateSlideshowDashboard() {
         `;
     }
     
+    highlightControllerLegendItem(slideshowState.category);
     // Attach event listeners for navigation buttons
     const prevBtn = document.getElementById('slideshow-prev-btn');
     const nextBtn = document.getElementById('slideshow-next-btn');

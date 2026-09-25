@@ -23,7 +23,7 @@
     isovist_control: 'request_state set_radius set_fov toggle_360 toggle_follow toggle_trees toggle_ambient_sound set_ambient_volume',
     sun_control: 'request_state set_date set_time set_opacity toggle_animation set_speed toggle_false_color toggle_trees get_memory',
     bird_control: 'set_volume stop_all request_status',
-    slideshow_control: 'next previous stop retry request_status',
+    slideshow_control: 'next previous stop retry request_status category_next category_previous show_all auto_reveal pause_reveal',
     campus_demo_control: 'autoplay next previous stop',
     fcc_demo_control: 'play pause seek set_speed set_video_duration toggle'
   };

@@ -38,7 +38,7 @@
       ['comfort-streets','Show streets on table','checkbox','showStreets','show_streets',true]
     ],actions:[['Clear route','clear_route'],['Play tour','tour_play'],['Pause tour','tour_pause'],['Previous','tour_back'],['Next','tour_next'],['End tour','tour_end']]},
     'bird-sounds-btn':{type:'bird_control',fields:[['bird-volume','Volume','range','volume','set_volume',0,1,.1,.5,'']],actions:[['Stop sounds','stop_all']]},
-    'slideshow-btn':{type:'slideshow_control',actions:[['Previous','previous'],['Next','next'],['Stop','stop']]},
+    'slideshow-btn':{state:'slideshow',type:'slideshow_control',actions:[['Previous slide','previous'],['Next slide','next'],['Previous category','category_previous'],['Next category','category_next'],['Show all','show_all'],['Auto reveal','auto_reveal'],['Pause reveal','pause_reveal'],['Retry','retry'],['Stop','stop']]},
     'campus-demo-btn':{type:'campus_demo_control',actions:[['Play','autoplay'],['Previous','previous'],['Next','next'],['Stop','stop']]},
     'fcc-demo-btn':{type:'fcc_demo_control',fields:[['fcc-progress','Position','range','progress','seek',0,1,.01,0,''],['fcc-speed','Speed','range','speed','set_speed',.25,2,.25,1,'×']],actions:[['Play','play'],['Pause','pause']]}
   };
@@ -47,6 +47,7 @@
     open(layer){
       this.definition=definitions[layer.id]||{};this.layer=layer.id;this.inputs=[];this.element.replaceChildren();
       const lead=document.createElement('p');lead.className='control-note';lead.textContent=layer.tool?'Use Map to place your input. See the result on the table.':'See and hear the result on the table.';this.element.append(lead);
+      if(this.layer==='slideshow-btn'){this.slideStatus=document.createElement('p');this.slideStatus.setAttribute('role','status');this.element.append(this.slideStatus);}
       const advanced=document.createElement('details'),summary=document.createElement('summary');summary.textContent='More settings';advanced.append(summary);
       for(const field of this.definition.fields||[]){
         const[id,label,kind,key,action,...options]=field,wrapper=document.createElement('label'),caption=document.createElement('span'),input=document.createElement(kind==='select'?'select':'input'),value=document.createElement('output');
@@ -65,7 +66,7 @@
       }
       if(advanced.children.length>1)this.element.append(advanced);
       if(this.definition.actions){const actions=document.createElement('div');actions.className='actions';
-        for(const[label,action]of this.definition.actions){const button=document.createElement('button');button.textContent=label;button.onclick=()=>this.send({type:'control',message:{type:this.definition.type,action}});actions.append(button);}this.element.append(actions);}
+        for(const[label,action]of this.definition.actions){const button=document.createElement('button');button.textContent=label;button.dataset.action=action;button.onclick=()=>this.send({type:'control',message:{type:this.definition.type,action}});actions.append(button);}this.element.append(actions);}
     }
     update(state,canEdit){
       const values=state?.[this.definition?.state]||{};
@@ -76,6 +77,16 @@
         input.disabled=!canEdit||(input.id==='isovist-fov'&&values.humanFov===false);
       }
       for(const button of this.element.querySelectorAll('button'))button.disabled=!canEdit;
+      if(this.layer==='slideshow-btn') {
+        this.slideStatus.textContent=[values.title,values.totalSlides ? `Slide ${values.currentIndex+1} / ${values.totalSlides}` : '',values.status==='loading'?'Loading…':values.error || '',values.categoryCount?`${values.category || 'Ready to reveal'} · ${values.categoryIndex+1} / ${values.categoryCount} categories`:''].filter(Boolean).join(' · ');
+        for(const button of this.element.querySelectorAll('[data-action]')) {
+          const action=button.dataset.action,category=['category_previous','category_next','show_all','auto_reveal','pause_reveal'].includes(action);
+          button.hidden=category?!values.categoryCount:action==='retry'?values.status!=='error':false;
+          if(action==='auto_reveal')button.hidden ||= !!values.autoReveal;
+          if(action==='pause_reveal')button.hidden ||= !values.autoReveal;
+          button.disabled ||= category && (values.status!=='ready' || action==='category_previous' && values.categoryIndex<0 || action==='category_next' && values.categoryIndex>=values.categoryCount-1);
+        }
+      }
     }
   }
   window.MR_CONTROLS=Controls;

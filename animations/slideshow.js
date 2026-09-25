@@ -21,6 +21,7 @@ let transitionProgress = 0;
 let transitionAnimationFrame = null;
 
 let slideStatus = 'idle', slideError = null;
+let reveal = null, revealTimer = null;
 let slideJob = null, startRevision = 0;
 const rasterSlides = new window.MR_RASTER_SLIDES.RasterSlides(map);
 
@@ -307,7 +308,9 @@ function broadcastSlideshowState(slide) {
     totalSlides: total,
     metadata: slide?.metadata || null,
     slideType: slide?.type || null,
-    status: slideStatus, error: slideError
+    status: slideStatus, error: slideError,
+    categoryIndex: reveal?.index ?? -1, categoryCount: reveal?.values.length || 0,
+    category: reveal?.values[reveal.index] || null, autoReveal: !!reveal?.automatic
   });
 }
 
@@ -338,195 +341,73 @@ function getUniquePropertyValues(geojson, propertyName) {
   return Array.from(values);
 }
 
-// Animate GeoJSON by sequentially highlighting each unique attribute value
-async function animateGeoJSONByProperty(geojson, slide) {
-  const style = slide.metadata?.style || {};
-  const colorProperty = style.colorProperty;
-  
-  if (!colorProperty || !style.colorMap) {
-    // No property-based animation, just display normally
-    return;
+// Presenter state changes immediately; visual interpolation cannot block controls.
+function paintReveal(progress = 1) {
+  if(!reveal)return;
+  const {style,values,index}=reveal, visible=values.slice(0,index+1);
+  const filter=visible.length?['in',['get',style.colorProperty],['literal',visible]]:['==',1,0];
+  const opacity=max=>index<0?0:['case',['==',['get',style.colorProperty],values[index]],max*progress,max];
+  for(const [id,geometry,property,alpha] of [
+    ['slideshow-fill','Polygon','fill-opacity',style.fillOpacity ?? .5],
+    ['slideshow-line','LineString','line-opacity',style.strokeOpacity ?? .8],
+    ['slideshow-polygon-outline','Polygon','line-opacity',1],
+    ['slideshow-point','Point','circle-opacity',1]]) {
+    if(map.getLayer(id)){map.setFilter(id,['all',['==',['geometry-type'],geometry],filter]);map.setPaintProperty(id,property,opacity(alpha));}
   }
-  
-  geojsonAnimationActive = true;
-  const uniqueValues = Object.keys(style.colorMap);
-  
-  // Animation parameters
-  const glowDuration = 800; // Duration of glow effect in ms
-  const fillDuration = 400; // Duration of fill effect in ms
-  const pauseBetween = 200; // Pause between attributes
-  
-  for (let i = 0; i < uniqueValues.length && geojsonAnimationActive; i++) {
-    const value = uniqueValues[i];
-    const color = style.colorMap[value];
-    
-    // Highlight current legend item
-    highlightLegendItem(slide, value);
-    
-    // Phase 1: Intense glow outline
-    await animateGlow(value, color, glowDuration, colorProperty);
-    
-    // Phase 2: Fill/stroke appears
-    if (geojsonAnimationActive) {
-      await animateFill(value, color, fillDuration, colorProperty, style.fillOpacity || 0.5, style.strokeOpacity || 0.8, uniqueValues, style.colorMap);
-    }
-    
-    // Small pause before next attribute
-    if (i < uniqueValues.length - 1 && geojsonAnimationActive) {
-      await new Promise(resolve => setTimeout(resolve, pauseBetween));
-    }
-  }
-  
-  // Broadcast clear highlight to controller
-  slideshowChannel.postMessage({
-    type: 'slideshow_legend_highlight',
-    highlightValue: null
-  });
-  
-  // Return true if animation completed successfully
-  return geojsonAnimationActive;
 }
-
-// Animate glowing outline for a specific property value
-function animateGlow(propertyValue, color, duration, propertyName) {
-  return new Promise((resolve) => {
-    const startTime = performance.now();
-    
-    // Add glow layer if it doesn't exist
-    if (!map.getLayer('slideshow-glow')) {
-      map.addLayer({
-        id: 'slideshow-glow',
-        type: 'line',
-        source: 'slideshow-geojson',
-        paint: {
-          'line-color': color,
-          'line-width': 0,
-          'line-blur': 0,
-          'line-opacity': 0
-        }
-      });
-    }
-    
-    function animate(currentTime) {
-      if (!geojsonAnimationActive) {
-        resolve();
-        return;
-      }
-      
-      const elapsed = currentTime - startTime;
-      const progress = Math.min(elapsed / duration, 1);
-      
-      // Glow effect: pulse from 0 to max and back
-      const glowProgress = progress < 0.5 ? progress * 2 : (1 - progress) * 2;
-      const maxWidth = 8;
-      const maxBlur = 10;
-      const maxOpacity = 1;
-      
-      map.setPaintProperty('slideshow-glow', 'line-width', glowProgress * maxWidth);
-      map.setPaintProperty('slideshow-glow', 'line-blur', glowProgress * maxBlur);
-      map.setPaintProperty('slideshow-glow', 'line-opacity', glowProgress * maxOpacity);
-      map.setPaintProperty('slideshow-glow', 'line-color', color);
-      map.setFilter('slideshow-glow', ['==', ['get', propertyName], propertyValue]);
-      
-      if (progress < 1) {
-        geojsonAnimationFrame = requestAnimationFrame(animate);
-      } else {
-        resolve();
-      }
-    }
-    
-    geojsonAnimationFrame = requestAnimationFrame(animate);
-  });
-}
-
-// Animate fill/stroke for a specific property value
-function animateFill(propertyValue, color, duration, propertyName, targetFillOpacity, targetStrokeOpacity, allValues, colorMap) {
-  return new Promise((resolve) => {
-    const startTime = performance.now();
-    const currentIndex = allValues.indexOf(propertyValue);
-    const previousValues = allValues.slice(0, currentIndex);
-    
-    function animate(currentTime) {
-      if (!geojsonAnimationActive) {
-        resolve();
-        return;
-      }
-      
-      const elapsed = currentTime - startTime;
-      const progress = Math.min(elapsed / duration, 1);
-      
-      // Show all values up to and including current one
-      const visibleValues = allValues.slice(0, currentIndex + 1);
-      
-      // Build match expression with opacity per feature for fills
-      const fillOpacityExpression = ['match', ['get', propertyName]];
-      previousValues.forEach(val => {
-        fillOpacityExpression.push(val, targetFillOpacity);
-      });
-      const currentFillOpacity = progress * targetFillOpacity;
-      fillOpacityExpression.push(propertyValue, currentFillOpacity);
-      fillOpacityExpression.push(0);
-      
-      // Build match expression with opacity per feature for lines/strokes
-      const strokeOpacityExpression = ['match', ['get', propertyName]];
-      previousValues.forEach(val => {
-        strokeOpacityExpression.push(val, targetStrokeOpacity);
-      });
-      const currentStrokeOpacity = progress * targetStrokeOpacity;
-      strokeOpacityExpression.push(propertyValue, currentStrokeOpacity);
-      strokeOpacityExpression.push(0);
-      
-      // Build color match expression
-      const colorExpression = ['match', ['get', propertyName]];
-      visibleValues.forEach(val => {
-        colorExpression.push(val, colorMap[val]);
-      });
-      colorExpression.push('#cccccc'); // default color
-      
-      const multiFilter = ['any', ...visibleValues.map(v => ['==', ['get', propertyName], v])];
-      
-      // Update fill layer (for polygons)
-      if (map.getLayer('slideshow-fill')) {
-        map.setFilter('slideshow-fill', ['all', ['==', ['geometry-type'], 'Polygon'], multiFilter]);
-        map.setPaintProperty('slideshow-fill', 'fill-opacity', fillOpacityExpression);
-        map.setPaintProperty('slideshow-fill', 'fill-color', colorExpression);
-      }
-      
-      // Update line layer (for LineStrings like streets)
-      if (map.getLayer('slideshow-line')) {
-        map.setFilter('slideshow-line', ['all', ['==', ['geometry-type'], 'LineString'], multiFilter]);
-        map.setPaintProperty('slideshow-line', 'line-opacity', strokeOpacityExpression);
-        map.setPaintProperty('slideshow-line', 'line-color', colorExpression);
-      }
-      
-      if (progress < 1) {
-        geojsonAnimationFrame = requestAnimationFrame(animate);
-      } else {
-        resolve();
-      }
-    }
-    
-    geojsonAnimationFrame = requestAnimationFrame(animate);
-  });
-}
-
-// Stop GeoJSON animation
 function stopGeoJSONAnimation() {
-  geojsonAnimationActive = false;
-  if (geojsonAnimationFrame) {
-    cancelAnimationFrame(geojsonAnimationFrame);
-    geojsonAnimationFrame = null;
+  clearTimeout(revealTimer);revealTimer=null;
+  if(reveal)reveal.automatic=false;
+  geojsonAnimationActive=false;
+  if(geojsonAnimationFrame)cancelAnimationFrame(geojsonAnimationFrame);
+  geojsonAnimationFrame=null;
+  if(map.getLayer('slideshow-glow'))map.removeLayer('slideshow-glow');
+}
+function animateReveal() {
+  if(!reveal || reveal.index<0)return;
+  const state=reveal,started=performance.now(),value=state.values[state.index];
+  map.addLayer({id:'slideshow-glow',type:'line',source:'slideshow-geojson',
+    filter:['==',['get',state.style.colorProperty],value],
+    paint:{'line-color':state.style.colorMap[value],'line-width':0,'line-blur':3,'line-opacity':0}});
+  const frame=now=>{
+    if(reveal!==state || !isSlideShowActive || !map.getLayer('slideshow-glow'))return;
+    const progress=Math.min(1,(now-started)/800),glow=Math.sin(progress*Math.PI);
+    paintReveal(Math.min(1,progress*2));
+    map.setPaintProperty('slideshow-glow','line-width',glow*6);
+    map.setPaintProperty('slideshow-glow','line-opacity',glow*.8);
+    if(progress<1)geojsonAnimationFrame=requestAnimationFrame(frame);
+    else {map.removeLayer('slideshow-glow');geojsonAnimationFrame=null;}
+  };
+  geojsonAnimationFrame=requestAnimationFrame(frame);
+}
+function categoryControl(action) {
+  if(!isSlideShowActive || slideStatus!=='ready' || !reveal)return;
+  stopGeoJSONAnimation();paintReveal();
+  if(action==='category_next')reveal.index=Math.min(reveal.values.length-1,reveal.index+1);
+  if(action==='category_previous')reveal.index=Math.max(-1,reveal.index-1);
+  if(action==='show_all')reveal.index=reveal.values.length-1;
+  if(action==='auto_reveal') {
+    if(reveal.index>=reveal.values.length-1)reveal.index=-1;
+    reveal.automatic=true;
   }
-  
-  // Remove glow layer
-  if (map.getLayer('slideshow-glow')) {
-    map.removeLayer('slideshow-glow');
+  if(action==='category_next')animateReveal();else paintReveal();
+  function publish(){broadcastSlideshowState(slideshowConfig.slides[currentSlideIndex]);highlightLegendItem(null,reveal?.values[reveal.index] || null);}
+  function nextAuto(){
+    if(!reveal?.automatic)return;
+    const next=reveal.index+1;
+    stopGeoJSONAnimation();reveal.index=next;paintReveal();animateReveal();
+    reveal.automatic=next<reveal.values.length-1;
+    publish();
+    if(reveal.automatic)revealTimer=setTimeout(nextAuto,1400);
   }
+  publish();
+  if(reveal.automatic)nextAuto();
 }
 
 // Remove all slideshow GeoJSON layers from the map
 function removeGeoJSONLayers() {
   stopGeoJSONAnimation();
+  reveal=null;
   
   if (map.getSource('slideshow-geojson')) {
     ['slideshow-fill', 'slideshow-line', 'slideshow-polygon-outline', 'slideshow-point', 'slideshow-glow'].forEach(id => {
@@ -639,27 +520,15 @@ async function displayGeoJSON(geojson, slide) {
     }
   });
   
-  // Start the sequential animation
-  let animationCompleted = false;
-  if (style.colorProperty && style.colorMap) {
-    animationCompleted = await animateGeoJSONByProperty(geojson, slide);
-    
-    // After animation completes, set final state
-    if (geojsonAnimationActive) {
-      const strokeOpacity = style.strokeOpacity || 0.8;
-      map.setPaintProperty('slideshow-fill', 'fill-opacity', fillOpacity);
-      map.setPaintProperty('slideshow-line', 'line-opacity', strokeOpacity);
-      map.setPaintProperty('slideshow-polygon-outline', 'line-opacity', 1);
-    }
+  if (style.colorProperty && Object.keys(style.colorMap || {}).length) {
+    reveal={style,values:Object.keys(style.colorMap),index:-1,automatic:false};
+    paintReveal();
   } else {
-    // No animation, show immediately
-    const strokeOpacity = style.strokeOpacity || 0.8;
-    map.setPaintProperty('slideshow-fill', 'fill-opacity', fillOpacity);
-    map.setPaintProperty('slideshow-line', 'line-opacity', strokeOpacity);
-    map.setPaintProperty('slideshow-polygon-outline', 'line-opacity', 1);
+    reveal=null;
+    map.setPaintProperty('slideshow-fill','fill-opacity',fillOpacity);
+    map.setPaintProperty('slideshow-line','line-opacity',style.strokeOpacity ?? .8);
+    map.setPaintProperty('slideshow-polygon-outline','line-opacity',1);
   }
-  
-  return animationCompleted;
 }
 
 // Bound asynchronous work to the current slide, including legacy media loads.
@@ -681,7 +550,7 @@ function cancelSlide() {
 }
 async function displaySlide(index) {
   if(!isSlideShowActive || !slideshowConfig?.slides[index]) return;
-  cancelSlide();
+  cancelSlide();reveal=null;
   const job=new AbortController();slideJob=job;
   const slide=slideshowConfig.slides[index];
   slideStatus='loading';slideError=null;displayMetadata(slide);
@@ -715,7 +584,7 @@ async function displaySlide(index) {
     }
     if(job.signal.aborted) return;
     slideStatus='ready';displayMetadata(slide);
-    if(slideshowConfig.settings.autoAdvance) slideshowTimer=setTimeout(advanceSlide,slide.duration || 5000);
+    if(slideshowConfig.settings.autoAdvance && !reveal) slideshowTimer=setTimeout(advanceSlide,slide.duration || 5000);
   } catch(error) {
     if(job.signal.aborted) return;
     slideStatus='error';slideError=error.message;
@@ -764,12 +633,13 @@ map.on('style.load',()=>{
 });
 document.addEventListener('keydown',event=>{
   if(!isSlideShowActive || event.repeat || event.target?.closest?.('input,textarea,select,[contenteditable="true"]'))return;
-  if(event.key==='ArrowRight'){event.preventDefault();navigateSlide(1);}
-  if(event.key==='ArrowLeft'){event.preventDefault();navigateSlide(-1);}
+  if(event.key==='ArrowRight'){event.preventDefault();reveal && !event.shiftKey ? categoryControl('category_next') : navigateSlide(1);}
+  if(event.key==='ArrowLeft'){event.preventDefault();reveal && !event.shiftKey ? categoryControl('category_previous') : navigateSlide(-1);}
   if(event.key==='Escape'){event.preventDefault();stopSlideshow();}
 });
 slideshowChannel.addEventListener('message',({data})=>{
   if(data.type!=='slideshow_control')return;
+  if(['category_next','category_previous','show_all','auto_reveal','pause_reveal'].includes(data.action))categoryControl(data.action);
   if(data.action==='next')navigateSlide(1);
   if(data.action==='previous')navigateSlide(-1);
   if(data.action==='stop')stopSlideshow();
