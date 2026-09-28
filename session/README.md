@@ -81,6 +81,7 @@ Isovist supports placement/movement and a look-toward tool. CoolPaths uses its
 existing Route/Inspect mode and origin/destination behaviour. EPC, ECOM and Street
 View accept targeted selections. CFD's polygon tool creates additional solid
 footprints, preserving the base buildings and trees; no height is requested.
+Open Wind controls and tap **Draw wind obstacle** to enter the map with that tool selected.
 Tap **Finish shape** after at least three corners to commit it and rebuild the flow. Select/move and Edit corners
 modify it. Changing the host calibration cancels unfinished phone gestures.
 

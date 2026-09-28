@@ -30,6 +30,19 @@
   function unmercator(p) {
     return {lng:p.x/512*360-180,lat:Math.atan(Math.sinh(Math.PI*(1-2*p.y/512)))*180/Math.PI};
   }
+  function gridCorners(points) {
+    // The configured polygon is ordered around the table. Find its visible top
+    // edge so cell labels keep reading left-to-right after a table flip.
+    const topLeft=points.reduce((best,p,i)=>p.x+p.y<points[best].x+points[best].y?i:best,0);
+    const next=(topLeft+1)%4,previous=(topLeft+3)%4;
+    const topRight=points[next].x>points[previous].x?next:previous;
+    return [points[topLeft],points[topRight],points[(topLeft+2)%4],points[topRight===next?previous:next]];
+  }
+  function gridPoint(corners,u,v) {
+    const [tl,tr,br,bl]=corners;
+    return {x:(1-u)*(1-v)*tl.x+u*(1-v)*tr.x+u*v*br.x+(1-u)*v*bl.x,
+      y:(1-u)*(1-v)*tl.y+u*(1-v)*tr.y+u*v*br.y+(1-u)*v*bl.y};
+  }
   function fit(corners, target, mapSize, flip=false) {
     const points=corners.map(mercator);
     // Source corners are SW, SE, NE, NW. Align source north toward screen left.
@@ -56,5 +69,5 @@
     // Existing ornament dimensions use an 8 px/cm design basis: 24 px icon = 3 cm.
     return {scale:pixelsPerCm/8,rail:positive(d.sidebarWidth,7.5)*rect.w/d.tableWidth};
   }
-  root.MR_TABLE={grid,rectangle,fit,mercator,pixelsPerMetre,symbol,presentation};
+  root.MR_TABLE={grid,rectangle,fit,mercator,gridCorners,gridPoint,pixelsPerMetre,symbol,presentation};
 })(typeof window==='undefined'?globalThis:window);

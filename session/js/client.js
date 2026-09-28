@@ -44,6 +44,7 @@
     $('layer-title').textContent=layer.name;$('layer-icon').textContent=layer.icon;
     $('layer-enabled').checked=!!state?.layers[layer.id];$('layer-enabled').disabled=!canEdit();
     $('canvas-controls').hidden=layer.id!=='canvas-btn';
+    $('wind-controls').hidden=layer.id!=='cfd-simulation-btn';
     controls.open(layer);controls.update(state,canEdit());
     $('map-tab').disabled=!layer.tool;
     $('map-tab').textContent=layer.tool?'Map':'Map · no inputs';
@@ -141,6 +142,7 @@
   renderCatalog();
   $('apps').onclick=()=>{exitExpandedMap();unloadDashboard();document.body.classList.remove('map-open');$('workspace').hidden=true;$('drawer').hidden=false;if(mapView)mapView.cancel();send({type:'focus',layer:layer.id,tab:'controls'});};
   $('controls-tab').onclick=()=>selectTab('controls');$('map-tab').onclick=()=>selectTab('map');$('start-drawing').onclick=()=>selectTab('map');
+  $('start-wind-obstacle').onclick=()=>selectTab('map');
   $('layer-enabled').onchange=e=>send({type:'layer',layer:layer.id,enabled:e.target.checked});
   $('tool').onchange=e=>mapView?.setTool(e.target.value);$('color').oninput=e=>{if(mapView)mapView.color=e.target.value;};$('width').onchange=e=>{if(mapView)mapView.width=Number(e.target.value);};
   function exitExpandedMap(){

@@ -16,6 +16,10 @@
 .embedded .standalone-links,.embedded .standalone-links+br{display:none}
 .embedded .admin{padding:24px;max-width:1250px}
 /* Phone controllers contain inputs only; results stay on the table. */
+#wind-controls{margin:4px 18px 22px;padding:18px;border:1px solid var(--line);border-radius:14px;background:var(--panel)}
+#wind-controls h2{margin:0 0 8px;font-size:17px}
+#wind-controls p{font-size:13px;line-height:1.45}
+#wind-controls button{width:100%;min-height:44px;background:var(--accent);color:#fff;border-color:var(--accent)}
 #phone-controls{padding:0 18px 28px;max-width:600px;margin:auto}
 .control-note{font-size:12px;margin:6px 0 18px}
 .phone-control{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:9px;align-items:center;padding:14px 0;border-bottom:1px solid var(--line);font-size:14px}

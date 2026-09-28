@@ -6,9 +6,6 @@ const gridCtx = gridCanvas.getContext('2d');
 const gridBtn = document.getElementById('grid-animation-btn');
 const gridChannel = new BroadcastChannel('map_controller_channel');
 
-// Table physical dimensions
-let TABLE_WIDTH_CM = window.MR_CALIBRATION.dimensions.tableWidth;
-let TABLE_HEIGHT_CM = window.MR_CALIBRATION.dimensions.tableHeight;
 const gridDimensions = () => window.MR_TABLE.grid(window.MR_CALIBRATION.dimensions);
 let COLS = gridDimensions().columns;
 let ROWS = gridDimensions().rows;
@@ -18,34 +15,45 @@ let isAnimating = false, gridStopTimer = null;
 window.MR_GRID_HOLD = false;
 
 function resizeGridCanvas() {
-  TABLE_WIDTH_CM = window.MR_CALIBRATION.dimensions.tableWidth;
-  TABLE_HEIGHT_CM = window.MR_CALIBRATION.dimensions.tableHeight;
   COLS = gridDimensions().columns;
   ROWS = gridDimensions().rows;
-  // Use the same calculation as table overlay
-  const s = computeOverlayPixelSize();
-  gridCanvas.width = s.w;
-  gridCanvas.height = s.h;
-  gridCanvas.style.width = s.w + 'px';
-  gridCanvas.style.height = s.h + 'px';
+  gridCanvas.width = innerWidth;
+  gridCanvas.height = innerHeight;
+  gridCanvas.style.width = innerWidth + 'px';
+  gridCanvas.style.height = innerHeight + 'px';
 }
 
 function drawGlowingGrid(time) {
   const scale = (window.mrTableScale?.() ?? 1);
   const width = gridCanvas.width;
   const height = gridCanvas.height;
+  const rect = map.getContainer().getBoundingClientRect();
+  const corners = window.MR_TABLE.gridCorners(window.APP_CONFIG.area.corners.map(geo => {
+    const p = map.project(geo);
+    return {x: p.x + rect.left, y: p.y + rect.top};
+  }));
+  const point = (u,v) => window.MR_TABLE.gridPoint(corners,u,v);
+  const points = Array.from({length: ROWS + 1}, (_, row) =>
+    Array.from({length: COLS + 1}, (_, col) => point(col / COLS, row / ROWS)));
+  const centers = Array.from({length: ROWS}, (_, row) =>
+    Array.from({length: COLS}, (_, col) => point((col + .5) / COLS, (row + .5) / ROWS)));
+  const trace = (axis, index) => {
+    gridCtx.beginPath();
+    for (let i = 0; i <= (axis === 'column' ? ROWS : COLS); i++) {
+      const p = axis === 'column' ? points[i][index] : points[index][i];
+      if (i === 0) gridCtx.moveTo(p.x, p.y);
+      else gridCtx.lineTo(p.x, p.y);
+    }
+  };
   
   gridCtx.clearRect(0, 0, width, height);
   
-  // Calculate tile size in pixels
-  const tileWidth = width / COLS;
-  const tileHeight = height / ROWS;
-  
   if(window.MR_GRID_HOLD){
     gridCtx.shadowBlur=0;gridCtx.strokeStyle='#ffffff';gridCtx.lineWidth=1;
-    gridCtx.beginPath();for(let x=0;x<=COLS;x++){gridCtx.moveTo(x*tileWidth,0);gridCtx.lineTo(x*tileWidth,height);}for(let y=0;y<=ROWS;y++){gridCtx.moveTo(0,y*tileHeight);gridCtx.lineTo(width,y*tileHeight);}gridCtx.stroke();
+    for(let x=0;x<=COLS;x++){trace('column',x);gridCtx.stroke();}
+    for(let y=0;y<=ROWS;y++){trace('row',y);gridCtx.stroke();}
     gridCtx.font='600 18px system-ui';gridCtx.textAlign='center';gridCtx.textBaseline='middle';
-    for(let row=0;row<ROWS;row++)for(let col=0;col<COLS;col++){const x=(col+.5)*tileWidth,y=(row+.5)*tileHeight;gridCtx.fillStyle='#07111ecc';gridCtx.fillRect(x-25,y-16,50,32);gridCtx.fillStyle='#fff';gridCtx.fillText(String.fromCharCode(65+row)+(col+1),x,y);}return;
+    for(let row=0;row<ROWS;row++)for(let col=0;col<COLS;col++){const {x,y}=centers[row][col];gridCtx.fillStyle='#07111ecc';gridCtx.fillRect(x-25,y-16,50,32);gridCtx.fillStyle='#fff';gridCtx.fillText(String.fromCharCode(65+row)+(col+1),x,y);}return;
   }
   // Sci-fi glow effect parameters
   const baseAlpha = 0.3 + Math.sin(time * 0.002) * 0.15;
@@ -54,7 +62,6 @@ function drawGlowingGrid(time) {
   
   // Draw vertical lines
   for (let i = 0; i <= COLS; i++) {
-    const x = i * tileWidth;
     const phase = i * 0.5;
     const pulse = Math.sin(time * pulseSpeed + phase) * 0.5 + 0.5;
     const wave = Math.sin(time * waveSpeed + phase * 2) * 0.3 + 0.7;
@@ -66,16 +73,13 @@ function drawGlowingGrid(time) {
       gridCtx.shadowBlur = (15 + layer * 10) * scale;
       gridCtx.shadowColor = `rgba(0, 255, 255, ${pulse * 0.8})`;
       
-      gridCtx.beginPath();
-      gridCtx.moveTo(x, 0);
-      gridCtx.lineTo(x, height);
+      trace('column', i);
       gridCtx.stroke();
     }
   }
   
   // Draw horizontal lines
   for (let i = 0; i <= ROWS; i++) {
-    const y = i * tileHeight;
     const phase = i * 0.5 + COLS * 0.5; // Offset from vertical lines
     const pulse = Math.sin(time * pulseSpeed + phase) * 0.5 + 0.5;
     const wave = Math.sin(time * waveSpeed + phase * 2) * 0.3 + 0.7;
@@ -87,9 +91,7 @@ function drawGlowingGrid(time) {
       gridCtx.shadowBlur = (15 + layer * 10) * scale;
       gridCtx.shadowColor = `rgba(0, 255, 255, ${pulse * 0.8})`;
       
-      gridCtx.beginPath();
-      gridCtx.moveTo(0, y);
-      gridCtx.lineTo(width, y);
+      trace('row', i);
       gridCtx.stroke();
     }
   }
@@ -97,8 +99,7 @@ function drawGlowingGrid(time) {
   // Draw corner nodes with pulsing effect
   for (let row = 0; row <= ROWS; row++) {
     for (let col = 0; col <= COLS; col++) {
-      const x = col * tileWidth;
-      const y = row * tileHeight;
+      const {x,y} = points[row][col];
       const phase = (row + col) * 0.3;
       const pulse = Math.sin(time * pulseSpeed * 1.5 + phase) * 0.5 + 0.5;
       
@@ -169,7 +170,8 @@ window.MR_LAYERS?.register('grid-animation-btn',{getEnabled:()=>isAnimating,enab
 
 // Resize canvas on window resize
 window.addEventListener('resize', () => {
-  if (isAnimating) resizeGridCanvas();
+  if (isAnimating) {resizeGridCanvas();if(window.MR_GRID_HOLD)drawGlowingGrid(performance.now());}
 });
 
 window.addEventListener('mr-grid-mode',()=>{if(isAnimating)animateGrid();});
+map.on('move',()=>{if(isAnimating && window.MR_GRID_HOLD)drawGlowingGrid(performance.now());});

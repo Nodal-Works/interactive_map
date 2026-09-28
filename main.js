@@ -15,7 +15,7 @@ window.updateTablePresentation();
 function clipTableLayers() {
   const active=window.MR_CALIBRATION.dimensions.layoutMode !== 'legacy';
   const t=window.getTableLayout();
-  for (const el of document.querySelectorAll('#map, #sun-study-canvas, #sun-study-overlay, #stormwater-canvas, #cfd-simulation-canvas, #street-life-canvas, #trafik-canvas, #slideshow-canvas, #grid-animation-canvas, #bird-sounds-canvas, #street-animation-canvas, .mr-map-overlay.desktop')) {
+  for (const el of document.querySelectorAll('#map, #sun-study-canvas, #sun-study-overlay, #stormwater-canvas, #cfd-simulation-canvas, #street-life-canvas, #trafik-canvas, #slideshow-canvas, #bird-sounds-canvas, #street-animation-canvas, .mr-map-overlay.desktop')) {
     const r=el.getBoundingClientRect();
     if (!r.width || !r.height) continue;
     el.style.clipPath=active ? `inset(${Math.max(0,t.top-r.top)}px ${Math.max(0,r.right-t.left-t.w)}px ${Math.max(0,r.bottom-t.top-t.h)}px ${Math.max(0,t.left-r.left)}px)` : '';

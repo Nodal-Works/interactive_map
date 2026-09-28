@@ -21,13 +21,26 @@ for(const [width,height] of [[1280,720],[1920,1080],[720,1280],[2560,1440]]) {
  assert.ok(Math.abs(presentation.rail/t.w*d.tableWidth-7.5)<1e-12);
  assert.ok(t.left-presentation.rail>=-1e-8 && t.left+t.w+presentation.rail<=width+1e-8);
  assert.ok(Math.abs(t.w/8-t.h/6)<1e-10,'Tiles stay square');
- for(const flip of [false,true]) {
+  for(const flip of [false,true]) {
   const camera=MR_TABLE.fit(corners,t,r,flip),points=corners.map(p=>project(p,camera,r));
   for(const p of points){assert.ok(p.x>=t.mapLeft-1e-6&&p.x<=t.mapLeft+t.w+1e-6);assert.ok(p.y>=t.mapTop-1e-6&&p.y<=t.mapTop+t.h+1e-6);}
   const xs=points.map(p=>p.x),ys=points.map(p=>p.y);
   assert.ok((t.w-(Math.max(...xs)-Math.min(...xs)))/2<2);
   assert.ok((t.h-(Math.max(...ys)-Math.min(...ys)))/2<2);
   assert.equal(points[3].x<points[0].x,!flip,'North left, reversed after flip');
+ }
+ for(const pan of [0,70]) {
+  const camera=MR_TABLE.fit(corners,t,r);
+  const projected=corners.map(c=>{const p=project(c,camera,r);return {x:p.x,y:p.y+pan};});
+  const ordered=MR_TABLE.gridCorners(projected);
+  for(const [i,[u,v]] of [[0,0],[1,0],[1,1],[0,1]].entries()) {
+   const p=MR_TABLE.gridPoint(ordered,u,v);
+   assert.ok(Math.hypot(p.x-ordered[i].x,p.y-ordered[i].y)<1e-8,
+    'Grid corner matches the geographic table marker');
+  }
+  const center=MR_TABLE.gridPoint(ordered,.5,.5);
+  assert.ok(Math.abs(center.y-(ordered[0].y+ordered[2].y)/2)<2,
+   'Grid center follows the projected table after calibration');
  }
 }
 const physical=MR_TABLE.rectangle({...d,layoutMode:'projector',screenWidth:400,screenHeight:300},{width:1600,height:1200},{left:60,top:0,width:1480,height:1200});
