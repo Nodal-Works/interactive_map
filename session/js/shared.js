@@ -1,6 +1,6 @@
 (function(root) {
   'use strict';
-  const RELEASE = '20260928-lindholmen-artwork-8';
+  const RELEASE = '20260928-lindholmen-coolpaths-inputs-1';
   const LAYERS = [
     ['cfd-simulation-btn', 'Wind · CFD', 'Environment', '🌬', 'obstacle'],
     ['stormwater-btn', 'Stormwater', 'Environment', '💧'],
