@@ -992,11 +992,11 @@
   }
   
   // Initialize when map is ready
-  if (window.map && window.map.loaded()) {
+  if (window.map && (window.MR_MAP_READY || window.map.loaded())) {
     initFCCDemo();
   } else {
     const checkMap = setInterval(() => {
-      if (window.map && window.map.loaded()) {
+      if (window.map && (window.MR_MAP_READY || window.map.loaded())) {
         clearInterval(checkMap);
         initFCCDemo();
       }

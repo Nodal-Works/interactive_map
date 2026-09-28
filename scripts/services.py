@@ -168,7 +168,9 @@ def main():
     config = configuration(args.config)
     if args.check:
         for name in ('host', 'ecom', 'coolpaths', 'sam'):
-            print(f'{name:10} :{config[name]} ' + ('ready' if probe(name, config[name]) else 'not running / not ready'))
+            health=service_health(name,config[name])
+            state='ready' if health['ready'] else 'data-missing' if health['live'] else 'not running'
+            print(f'{name:10} :{config[name]} {state}' + (f" — {health.get('message')}" if health.get('message') else ''))
         return
     RUNTIME.mkdir(exist_ok=True)
     lock = (RUNTIME / 'supervisor.lock').open('a+')

@@ -61,3 +61,19 @@ for (let i = 0; i < 20000; i++) {
 }
 assert.ok(Math.abs(births[0] / 20000 - .5) < .02, `Rainfall biased by accumulation: ${births}`);
 console.log(`Uniform rain in narrow passages passed: ${births.join(' / ')} births despite 1:10000 accumulation`);
+
+// Calibrated DEM coordinates preserve collisions and rainfall under pan,
+// rotation and scale, independently of the legacy rotated export format.
+const {affine}=require('../table-layout.js');
+for(const angle of [0,.4,Math.PI/2])for(const scale of [.5,2]){
+  const project=(x,y)=>({x:230+scale*(x*Math.cos(angle)-y*Math.sin(angle)),y:-180+scale*(x*Math.sin(angle)+y*Math.cos(angle))});
+  a.demTransform=affine([[0,0],[800,0],[800,100],[0,100]].map(p=>project(...p)),8,1);
+  a.scaleFlowToScreen();
+  for(const point of a.flowData.start_points_screen)assert.equal(a.isBlockedCell(a.screenToCell(point.x,point.y)),false);
+  for(let i=0;i<200;i++){
+    const p=a.createParticle();assert.equal(a.isBlockedCell(a.screenToCell(p.x,p.y)),false);
+  }
+  const from=a.cellToScreen(.5,1.5),to=a.cellToScreen(.5,3.5);
+  assert.equal(a.crossesBarrier(from.x,from.y,to.x,to.y),true);
+}
+console.log('PASS calibrated DEM debug points, rainfall and barriers under pan/rotation/scale');

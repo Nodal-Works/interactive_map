@@ -3358,7 +3358,7 @@
         });
     }
 
-    if (window.map && window.map.loaded()) {
+    if (window.map && (window.MR_MAP_READY || window.map.loaded())) {
         initEcomLayer();
     } else if (window.map) {
         window.map.on('load', initEcomLayer);
@@ -3366,7 +3366,7 @@
         const waitForMap = setInterval(function () {
             if (!window.map) return;
             clearInterval(waitForMap);
-            if (window.map.loaded()) {
+            if ((window.MR_MAP_READY || window.map.loaded())) {
                 initEcomLayer();
             } else {
                 window.map.on('load', initEcomLayer);

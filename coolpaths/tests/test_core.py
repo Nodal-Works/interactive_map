@@ -124,6 +124,8 @@ class ApiTests(unittest.TestCase):
                 with self.assertRaises(api.HTTPException) as caught:
                     api.route(api.RouteRequest(origin=[11, 57], destination=[11.001, 57.001], hour=14))
                 self.assertEqual(caught.exception.status_code, 400)
+                (folder / "pet_14.png").unlink()
+                self.assertFalse(api.status()["ready"], 'Removed products invalidate readiness without restarting')
 
 
 if __name__ == "__main__":

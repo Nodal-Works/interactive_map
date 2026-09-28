@@ -11,6 +11,7 @@ class BirdSoundsLayer {
     this.ctx = this.canvas.getContext('2d');
     this.isActive = false;
     this.frameId=null;
+    this.sensorPositions=null;
     this.invalidate=()=>{if(this.isActive && this.frameId===null)this.frameId=(window.MR_FRAMES ? window.MR_FRAMES.request('birds',this.animate) : requestAnimationFrame(this.animate));};
     this.audioContext = null;
     this.buffers=new Map(); this.loadingSound=false; this.generation=0;
@@ -71,7 +72,7 @@ class BirdSoundsLayer {
     window.addEventListener('resize', this.resize);
     
     // Map events to redraw
-    map.on('move', this.invalidate);
+    map.on('move', () => {this.sensorPositions=null;this.invalidate();});
     map.on('moveend', this.invalidate);
     map.on('zoom', this.invalidate);
 
@@ -121,11 +122,13 @@ class BirdSoundsLayer {
   }
 
   projectSensor(sensor) {
-    const p=this.map.project([sensor.lng,sensor.lat]),rect=this.map.getContainer().getBoundingClientRect();
-    return {x:p.x+rect.left,y:p.y+rect.top};
+    if(!this.sensorPositions){const rect=this.map.getContainer().getBoundingClientRect();
+      this.sensorPositions=new Map(this.sensors.map(s=>{const p=this.map.project([s.lng,s.lat]);return [s.id,{x:p.x+rect.left,y:p.y+rect.top}];}));}
+    return this.sensorPositions.get(sensor.id);
   }
 
   resize() {
+    this.sensorPositions=null;
     this.canvas.width = window.innerWidth;
     this.canvas.height = window.innerHeight;
   }
@@ -176,16 +179,8 @@ class BirdSoundsLayer {
   stopAll() {
     this.generation++; this.loadingSound=false;
     clearTimeout(this.nextPlayTimeout);this.nextPlayTimeout=null;
-    this.activeSounds.slice().forEach(sound => {
-      try {
-        sound.source.onended=null; sound.source?.stop?.();
-        sound.audio?.pause();
-        sound.source?.disconnect();sound.gainNode?.disconnect();sound.analyser?.disconnect?.();
-        window.MR_AUDIO?.release(sound.audio);
-      } catch (e) {
-        console.warn('Error stopping sound', e);
-      }
-    });
+    this.activeSounds.slice().forEach(sound => this.disposeSound(sound));
+    document.getElementById('audio-unlock-overlay')?.remove();
     this.activeSounds = [];
     this.broadcastActiveBirds();
   }
@@ -225,7 +220,8 @@ class BirdSoundsLayer {
       source.connect(gainNode);gainNode.connect(analyser);analyser.connect(this.audioContext.destination);
       const sound={bird,sensor,source,gainNode,analyser,dataArray:new Uint8Array(analyser.frequencyBinCount),startTime:Date.now(),lastWaveTime:0,waves:[]};
       source.onended=()=>this.removeSound(sound);
-      this.activeSounds.push(sound);source.start();this.broadcastActiveBirds();this.invalidate();
+      try { source.start(); } catch (error) { this.disposeSound(sound); throw error; }
+      this.activeSounds.push(sound);this.broadcastActiveBirds();this.invalidate();
     }catch(error){
       if(generation===this.generation){console.warn('Bird audio failed:',error);window.showToast?.('Bird sound could not load: '+bird.name);}
     }finally{if(generation===this.generation)this.loadingSound=false;}
@@ -263,9 +259,9 @@ class BirdSoundsLayer {
       overlay.appendChild(btn);
       document.body.appendChild(overlay);
       
-      const unlock = () => {
+      const unlock = async () => {
           if (this.audioContext && this.audioContext.state === 'suspended') {
-              this.audioContext.resume();
+              try { await this.audioContext.resume(); } catch { return; }
           }
           overlay.remove();
           // Try to play a bird immediately to confirm
@@ -276,16 +272,21 @@ class BirdSoundsLayer {
       overlay.addEventListener('click', unlock);
   }
 
-  removeSound(soundObj) {
-    const index = this.activeSounds.indexOf(soundObj);
-    if (index > -1) {
-      this.activeSounds.splice(index, 1);
-      try {
-        soundObj.source.onended=null;soundObj.source?.stop?.();soundObj.audio?.pause();soundObj.source?.disconnect();soundObj.gainNode?.disconnect();soundObj.analyser?.disconnect?.();
-        window.MR_AUDIO?.release(soundObj.audio);
-      } catch (e) {}
-      this.broadcastActiveBirds();
+  disposeSound(sound) {
+    if (sound.source) sound.source.onended=null;
+    // A completed source can reject stop(); all other nodes must still disconnect.
+    try { sound.source?.stop(); } catch {}
+    for (const node of [sound.source,sound.gainNode,sound.analyser]) {
+      try { node?.disconnect(); } catch {}
     }
+  }
+
+  removeSound(soundObj) {
+    const index=this.activeSounds.indexOf(soundObj);
+    if(index<0)return;
+    this.activeSounds.splice(index,1);
+    this.disposeSound(soundObj);
+    this.broadcastActiveBirds();
   }
 
   animate(now=performance.now()) {
@@ -429,20 +430,10 @@ class BirdSoundsLayer {
   }
 }
 
-// Initialize when map is ready
-// Assuming 'map' is available globally from main.js
-if (typeof map !== 'undefined') {
-  // Wait for map load if needed, or just init
-  if (map.loaded()) {
-     new BirdSoundsLayer(map);
-  } else {
-     map.on('load', () => new BirdSoundsLayer(map));
-  }
-} else {
-  // Fallback if script loads before main.js (shouldn't happen based on index.html order)
-  window.addEventListener('load', () => {
-    if (typeof map !== 'undefined') {
-       new BirdSoundsLayer(map);
-    }
-  });
-}
+// Projection and audio setup do not depend on map tiles finishing. map.loaded()
+// can become false again after the one-time load event, especially on a busy
+// display; waiting for a second load event would leave the button unbound.
+if (typeof map !== 'undefined') new BirdSoundsLayer(map);
+else window.addEventListener('load', () => {
+  if (typeof map !== 'undefined') new BirdSoundsLayer(map);
+}, {once:true});

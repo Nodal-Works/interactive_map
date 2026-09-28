@@ -411,7 +411,7 @@
     try {
       const status = await requestJson('/status');
       if (!status.ready) throw new Error(status.message || 'Study data is not prepared');
-      await (map.loaded() ? Promise.resolve() : new Promise(resolve => map.once('load', resolve)));
+      await ((window.MR_MAP_READY || map.loaded()) ? Promise.resolve() : new Promise(resolve => map.once('load', resolve)));
       if (!state.active || activation !== requestNumber) return;
       state.status = status;
       state.ready = true;

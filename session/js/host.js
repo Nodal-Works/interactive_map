@@ -4,6 +4,7 @@
   if (!adapter) return;
   const admin = new BroadcastChannel('mr_session_admin');
   const people = new Map(), slots = [null,null,null,null], events = [], objects = [];
+  const retention={bytes:0,sizes:[],omitted:0};
   const undo = new Map(), redo = new Map(), drafts = new Map();
   let peer, invite = '', sessionId = MR.id(), token = MR.id(), startedAt = new Date().toISOString();
   let endedAt = null, paused = false, revision = 0, saveStatus = 'Local canvas', saveTimer, broadcastTimer, saving = false, dirty = false;
@@ -22,7 +23,7 @@
   function summary() {
     const {messages,cfd,thermal,isovist,sun,...state}=snapshot();
     return {...state, type:'admin-state', invite, peerStatus, saveStatus, services:runtime.services,
-      events:events.slice(-150).reverse().map(({seq,timestamp,actor,kind,details})=>({seq,timestamp,actor,kind,details})), eventCount:events.length, startedAt};
+      events:events.slice(-150).reverse().map(({seq,timestamp,actor,kind,details})=>({seq,timestamp,actor,kind,details})), eventCount:revision, startedAt};
   }
   function sendPhoneState(person,state,reset=false) {
     const compact=MR_PHONE_STATE.project(state,person.focus),signature=JSON.stringify(compact);
@@ -49,7 +50,7 @@
   }
   function documentLog() {
     return {schemaVersion:2, sessionId, startedAt, endedAt, updatedAt:new Date().toISOString(),revision,
-      release:MR.RELEASE, table:adapter.table(), participants:roster(), finalState:logState(), events};
+      release:MR.RELEASE, table:adapter.table(), participants:roster(), finalState:logState(), eventCount:revision, omittedEvents:retention.omitted, events};
   }
   async function save() {
     if (!local || saving || !dirty) return;
@@ -65,9 +66,9 @@
   }
   function record(kind, actor, details) {
     revision++;
-    events.push({seq:events.length+1,timestamp:new Date().toISOString(),elapsedMs:Date.now()-Date.parse(startedAt),
+    MR.appendEvent(events,{seq:revision,timestamp:new Date().toISOString(),elapsedMs:Date.now()-Date.parse(startedAt),
       actor:actor ? {id:actor.id,name:actor.name,avatar:actor.avatar,color:actor.color,slot:slots.indexOf(actor.id)+1 || null}:null,
-      kind,details,stateAfter:logState(),participantsAfter:roster(),slotsAfter:[...slots]});
+      kind,details,stateAfter:logState(),participantsAfter:roster(),slotsAfter:[...slots]},retention);
     dirty = true; clearTimeout(saveTimer); saveTimer = setTimeout(save, 250); publish();
   }
   function renderObjects() {
@@ -95,7 +96,7 @@
       if (!['create','update','delete'].includes(action.operation)) throw Error('Unknown canvas action');
       const change = MR.editObject(objects,actor,action);
       if (!undo.has(actor.id)) undo.set(actor.id,[]);
-      undo.get(actor.id).push(structuredClone(change)); redo.set(actor.id,[]);
+      undo.get(actor.id).push(structuredClone(change)); if(undo.get(actor.id).length>100)undo.get(actor.id).shift(); redo.set(actor.id,[]);
       record('canvas.'+action.operation,actor,{objectId:(change.after||change.before).id,tool:(change.after||change.before).tool});
     }
     drafts.delete(actor.id); renderObjects(); window.dispatchEvent(new Event('cfd-geometry-changed')); publish();
@@ -182,7 +183,7 @@
         resultActors.set(message.layer==='thermal-comfort-btn'?'thermal':message.layer==='epc-btn'?'epc':message.layer==='ecom-energy-btn'?'ecom':'isovist',person);
         const c=adapter.gesture(message);
         window.dispatchEvent(new CustomEvent('mr-pointer',{detail:{...person,coordinate:c}}));
-        if (message.phase === 'move') {seen.add(key);return;}
+        if (message.phase === 'move') {seen.add(key);if(seen.size>10000)seen.delete(seen.values().next().value);return;}
       } else if (message.type === 'canvas') {
         if(['create','update'].includes(message.operation)){
           if(message.transform!==adapter.table().revision)throw Error('Table alignment changed. Try this drawing again.');

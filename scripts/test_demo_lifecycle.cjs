@@ -1,0 +1,21 @@
+const assert=require('node:assert/strict'),fs=require('node:fs'),vm=require('node:vm');
+(async()=>{
+const source=fs.readFileSync('main.js','utf8'),events={},popups=[];
+let selected=null;const canvas={style:{cursor:'pointer'}};
+const map={getLayer:()=>true,setLayoutProperty(){},getCanvas:()=>canvas,getSource:()=>({setData:data=>selected=data}),addSource(){},addLayer(){},on:(event,layer,fn)=>events[event]=fn};
+const context=vm.createContext({console,map,window:{mrAsset:p=>p},document:{getElementById:()=>({classList:{toggle(){}}})},epcChannel:{postMessage(){}},EPC_CLASS_COLORS:{A:'green'},fetch:async()=>({ok:true,json:async()=>({features:[]})}),maplibregl:{Popup:class{constructor(){this.removed=false;popups.push(this);}setLngLat(){return this;}setHTML(){return this;}addTo(){return this;}remove(){this.removed=true;}}}});
+vm.runInContext(source.slice(source.indexOf('let epcPopup'),source.indexOf('// Navigation controls hidden')),context);
+await context.loadEpcBuildings();context.setEpcMode(true);
+const feature={properties:{energy_class:'A'},geometry:{type:'Polygon',coordinates:[]}};
+events.click({features:[feature],lngLat:[12,57]});events.click({features:[feature],lngLat:[12,57]});
+assert.equal(popups.length,2);assert.equal(popups[0].removed,true);assert.equal(popups[1].removed,false);
+context.setEpcMode(false);assert.equal(popups[1].removed,true);assert.equal(canvas.style.cursor,'');assert.equal(selected.features.length,0);
+events.click({features:[feature],lngLat:[12,57]});assert.equal(popups.length,2,'Inactive selection must not recreate a popup');
+console.log('PASS EPC replaces its popup and clears popup, selection and cursor on close');
+const adapter=fs.readFileSync('session/js/adapter.js','utf8');let basemap='satellite';const changes=[];
+const c=vm.createContext({active:{'canvas-btn':false},canvasBasemap:null,document:{getElementById:()=>null},CustomEvent:class{},window:{defaultDarkBasemap:'dark',getBasemap:()=>basemap,setBasemap:v=>{changes.push(v);basemap=v;},dispatchEvent(){}}});
+vm.runInContext(adapter.slice(adapter.indexOf('  function setLayer('),adapter.indexOf('  function gesture(')),c);
+c.setLayer('canvas-btn',true);assert.equal(basemap,'dark');c.setLayer('canvas-btn',true);assert.equal(changes.length,1);
+c.setLayer('canvas-btn',false);assert.equal(basemap,'satellite');c.setLayer('canvas-btn',true);basemap='other';c.setLayer('canvas-btn',false);assert.equal(basemap,'other','A manual basemap change must survive closing Canvas');
+console.log('PASS Canvas uses the main dark basemap and restores only its own basemap change');
+})().catch(e=>{console.error(e);process.exitCode=1;});

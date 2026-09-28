@@ -1,0 +1,81 @@
+# Main demo repair validation — 28 September 2026
+
+## Delivery state
+
+Code repairs are implemented and regression-tested. This is **not yet a fully validated working installation**: ECOM demand data and the prepared CoolPaths campus study have not been recovered, and the four-hour soak is pending. No synthetic demand or substitute thermal study has been introduced.
+
+Checkpoints: `d2e49d2` geographic alignment; `6d13fb6` audio/EPC; `4a91890` dataset readiness and supervisor; `11b8fb2` presentation, Canvas and invitations. Later validation fixes include bird initialization after map load, the calibration preview, Sun Study camera orientation, audio cleanup, stale runoff frames and bounded session history.
+
+## Measured display performance
+
+Windows hardware reports an i7-10875H, Intel UHD and Quadro RTX 3000. The test browser actually uses **Intel UHD / ANGLE D3D11**. These are 30-second requestAnimationFrame samples at 1920×1080, device pixel ratio 1, without autoplay bypass flags. They do not prove projector alignment or performance in a different browser/GPU configuration.
+
+| Run | Frame rate | Mean frame interval | p95 interval | JS heap start → end |
+| --- | ---: | ---: | ---: | ---: |
+| Original Street Life + transit | 57.17 FPS | 17.49 ms | 17.0 ms | 16.56 → 20.70 MB |
+| Updated Street Life + transit | 60.00 FPS | 16.67 ms | 16.8 ms | 24.29 → 25.66 MB |
+| Original wind | 6.23 FPS | 160.57 ms | 183.4 ms | 21.60 → 21.92 MB |
+| Updated wind, calibrated full footprint | 4.03 FPS | 247.92 ms | 283.2 ms | 23.15 → 22.77 MB |
+| Original runoff | 10.00 FPS | 99.99 ms | 133.4 ms | 42.83 → 69.80 MB |
+| Updated runoff, calibrated full footprint | 8.62 FPS | 116.01 ms | 133.4 ms | 137.28 → 45.23 MB |
+
+Wind/runoff canvas submission rates were about 6.2/9.4 Hz. Neither meets 60 FPS. The corrected geographic footprint is larger than the previous centered rectangle (about 2283×1368 at the test calibration), so the before/after wind comparison includes the necessary alignment correction. Wind main-thread callbacks averaged about 0.11 ms and runoff about 9.26 ms; neither sample contained a main-thread long task. GPU/compositing and worker work remain limiting factors. Heap differences across short samples include garbage collection and are not leak measurements.
+
+Particle counts, simulation resolution, drawing resolution and effects are unchanged. Cached bird projections and Street Life path angles avoid repeated geometry work. Worker bitmaps use direct presentation where supported; no extra 2D display copy is required. The 2D compatibility path remains available. Session history retains up to 2,000 events within an estimated 8 MiB, records omitted counts, and keeps the final state. Undo retains 100 edits per participant. Service logs rotate at 5 MiB with two backups.
+
+## Validation evidence
+
+- Geometry tests: affine projection/inverse, translation, rotation, scale; calibrated DEM rainfall and barrier collisions, plus independent Python/browser D8 parity.
+- Lifecycle tests: bird audio completion, pending-download cancellation and autoplay prompt; EPC popup replacement/cleanup; Canvas basemap restoration; single Sun Study initialization and cancellation; worker stale-frame revision and transfer/buffer recycling.
+- Existing suites: CFD numerical/geometry/worker/lifecycle/resolution/campus cases, visual fidelity, Street Life 1,440 orientation cases, shared scheduler, slideshow category/raster lifecycle, ECOM lifecycle, CoolPaths phone controls, session protocol and Pages client checks.
+- Backend suites: ECOM demand path/input validation, CoolPaths core/explore/readiness (including file removal), supervisor portability/readiness, session server and Pages builder tests.
+- Browser: all three bird recordings appeared as active after Start, controller toggles worked, the generated campus invitation reached the published GitHub Pages client, Controller 1 joined, and its bird command reached the display.
+- Browser: table/grid/slideshow CSS transforms and dimensions match after upward movement and rotation. A satellite image slide loaded at that transformed footprint. Sun Study was visually checked after correcting camera orientation. Physical projection against the printed model is not remotely verifiable.
+
+Reproducible diagnostics: `python scripts/benchmark_demo.py --ref working --port 8095`, with the usual Windows services running. Use the Start gesture and measurement/soak buttons. Baseline uses `--ref 8861426898f33d0da1e358bf3373c5f316f7b4ff --port 8094`. Set `MR_GIT` if Git is not on PATH. Results are local `.runtime/benchmarks/*.jsonl`. Keep the measured display tab visible; samples with hidden frames are invalid. Diagnostics are not injected into the normal launcher.
+
+## Missing real data
+
+Restore the Mac's `interactive_map/media/ecom/energy_data` into the same ignored directory on Windows, or set `ECOM_DEMAND_DIR` to its local directory. Spaces and accented filenames are supported. The campus definition requires the following files:
+
+- `07.01_Fysik_origo_2022.csv`
+- `07.05_IT_2022.csv`
+- `07.21_HC_2022.csv`
+- `07.22_HA_2022.csv`
+- `07.23_SB2_2022.csv`
+- `07.24_Edit_2022.csv`
+- `07.25_HB_2022.csv`
+- `07.26_SB1_2022.csv`
+- `07.27_SB3_2022.csv`
+- `07.28_Maskinteknik_2022.csv`
+- `07.40_Gamla_matte_2022.csv`
+- `07.44_AWL_2022.csv`
+- `07.888_Lokalkontor_2022.csv`
+- `CA-Huset_2022.csv`
+- `CSB_Chabo_2022.csv`
+- `CSB_Gibraltarvallen_guesthouse_2022.csv`
+- `CSB_Holtermansgatan_2022.csv`
+- `Elkraftteknik_2022.csv`
+- `Emils_kårhus_2022.csv`
+- `JSP_2022.csv`
+- `Kårhus_entré_2022.csv`
+- `Kårresturangen_2022.csv`
+- `MC2_2022.csv`
+- `Nya_Matte_2022.csv`
+- `Reaktorfysik_2022.csv`
+- `Teknikparken_2022.csv`
+- `Vasa_10_2022.csv`
+- `Vasa_11_2022.csv`
+- `Vasa_12_2022.csv`
+- `Vasa_13_2022.csv`
+- `Vasa_15_2022.csv`
+- `Vasa_1_2022.csv`
+- `Vasa_4_2022.csv`
+- `Vasa_7_2022.csv`
+- `Vasa_8_2022.csv`
+- `Vasa_9_2022.csv`
+- `electricity_2022.csv`
+
+Restore the Mac's complete `interactive_map/coolpaths/data` directory, including the campus date folder and its manifest, graph, hourly PET edge JSON/PNG/TIFF products, MRT, shade, direct/diffuse radiation, buildings and terrain/canopy/NDVI/water/albedo/SVF rasters. The API reports the exact missing products together. Preparing a replacement through the existing pipeline currently stops because `COOLPATHS_EE_KEY_FILE` is not configured. Real routing, hourly inspection, tour and ECOM calculation remain blocked until those inputs arrive.
+
+The Windows Taildrop receiver is waiting in `.runtime/transfers`; no files have arrived. SSH reaches the Mac through Tailscale but requires interactive authentication. No password was requested in chat. Private data and credentials must remain outside Git.

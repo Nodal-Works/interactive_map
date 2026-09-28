@@ -289,9 +289,17 @@ function getPointAlongPath(path, progress) {
 // Use the projected road tangent so headlights follow travel under calibration,
 // map rotation and pitch. The vehicle renderers point forward along local +X.
 function getScreenPathAngle(path, point) {
+  const cache=getScreenPathAngle.cache;
+  let angles;
+  if(cache){
+    angles=cache.get(path);
+    if(!angles){angles=new Map();cache.set(path,angles);}
+    if(angles.has(point.segmentIndex))return angles.get(point.segmentIndex);
+  }
   const start = map.project(path.coords[point.segmentIndex]);
   const end = map.project(path.coords[point.segmentIndex + 1]);
-  return Math.atan2(end.y - start.y, end.x - start.x);
+  const angle=Math.atan2(end.y-start.y,end.x-start.x);
+  angles?.set(point.segmentIndex,angle);return angle;
 }
 
 // Spawn a new car - with smart spawning based on road hierarchy
@@ -1008,6 +1016,10 @@ function renderStaticLayer(width, height) {
 
 // Main draw function — optimized for lower-end GPUs
 function drawStreetLife() {
+  if(map.getZoom){
+    const center=map.getCenter(),key=[center.lng,center.lat,map.getZoom(),map.getBearing(),(map.getPitch?.()||0)].join(',');
+    if(getScreenPathAngle.camera!==key){getScreenPathAngle.camera=key;getScreenPathAngle.cache=new WeakMap();}
+  }
   streetLifeRects = {mapRect: document.getElementById('map').getBoundingClientRect(),
     canvasRect: streetLifeCanvas.getBoundingClientRect()};
   try {

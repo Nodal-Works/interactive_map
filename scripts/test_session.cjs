@@ -17,3 +17,11 @@ const n=context.window.MR_MAP.normalized;
 const table={corners:[[11.978,57.69],[11.978,57.68],[11.968,57.68],[11.968,57.69]]};
 for(const[c,expected]of [[table.corners[0],[0,0]],[table.corners[1],[1,0]],[table.corners[2],[1,1]],[table.corners[3],[0,1]]]){const p=n(c,table);assert.ok(Math.abs(p.x-expected[0])<1e-8&&Math.abs(p.y-expected[1])<1e-8);}
 console.log('PASS: layer registry, command boundary, annotation ownership/validation, rotated table coordinates');
+
+const retained=[],budget={bytes:0,sizes:[],omitted:0};
+for(let seq=1;seq<=5000;seq++)MR.appendEvent(retained,{seq,state:'test'},budget);
+assert.equal(retained.length,2000);assert.equal(retained[0].seq,3001);assert.equal(budget.omitted,3000);
+for(let seq=5001;seq<=5050;seq++)MR.appendEvent(retained,{seq,state:'x'.repeat(100000)},budget);
+assert.ok(budget.bytes<=8*1024*1024);assert.equal(retained.at(-1).seq,5050);
+assert.equal(budget.bytes,budget.sizes.reduce((a,b)=>a+b,0));
+console.log('PASS session history count/byte limits and monotonic retained sequence');

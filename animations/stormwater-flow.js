@@ -10,7 +10,9 @@ class StormwaterFlowAnimation {
   constructor(map, canvas) {
     this.map = map;
     this.canvas = canvas;
-    this.ctx = canvas.getContext('2d');
+    this.bitmapContext = typeof OffscreenCanvas !== 'undefined' && typeof Worker !== 'undefined'
+      ? canvas.getContext('bitmaprenderer') : null;
+    this.ctx = this.bitmapContext ? null : canvas.getContext('2d');
     this.isActive = false;
     this.animationFrame = null;
     
@@ -553,13 +555,13 @@ class StormwaterFlowAnimation {
     channel.postMessage({ type: 'animation_state', animationId: 'stormwater-btn', isActive: true });channel.close();
     
     this.handleResize();
-    if(typeof OffscreenCanvas!=='undefined' && typeof createImageBitmap==='function'){
+    if(typeof OffscreenCanvas!=='undefined' && typeof Worker==='function'){
       this.renderWorker=new Worker('animations/stormwater-render-worker.js');this.renderReady=false;this.renderBusy=false;
       this.renderWorker.onmessage=({data})=>{
         if(!this.isActive || generation!==this.startGeneration){data.bitmap?.close();return;}
         if(data.type==='error'){window.MR_LAYERS?.fail('stormwater-btn','Runoff drawing failed: '+data.message);return;}
         if(data.type==='ready')this.renderReady=true;
-        if(data.type==='frame'){this.renderBusy=false;this.renderBuffer=data.values;this.ctx.clearRect(0,0,this.canvas.width,this.canvas.height);this.ctx.drawImage(data.bitmap,0,0);data.bitmap.close();window.MR_FRAMES?.recordRender?.('stormwater');}
+        if(data.type==='frame'){this.renderBusy=false;this.renderBuffer=data.values;if(data.revision!==this.renderRevision){data.bitmap.close();return;}if(this.bitmapContext)this.bitmapContext.transferFromImageBitmap(data.bitmap);else{this.ctx.clearRect(0,0,this.canvas.width,this.canvas.height);this.ctx.drawImage(data.bitmap,0,0);}data.bitmap.close();window.MR_FRAMES?.recordRender?.('stormwater');}
       };
       this.renderWorker.onerror=()=>{if(this.isActive && generation===this.startGeneration)window.MR_LAYERS?.fail('stormwater-btn','Runoff drawing worker could not start.');};
       this.renderWorker.postMessage({type:'init',width:this.canvas.width,height:this.canvas.height,settings:{glowSpriteSize:this.glowSpriteSize,particleLifetime:this.particleLifetime,glowIntensity:this.glowIntensity,poolingGlowIntensity:this.poolingGlowIntensity}});
@@ -594,23 +596,19 @@ class StormwaterFlowAnimation {
     this.maxAccumulation = Math.max(1, ...accValues);
     this.logMaxAcc = Math.log10(this.maxAccumulation + 1);
     
-    // Scale flow lines from normalized (0-1) to pixel coordinates
-    this.flowData.flow_lines_screen = this.flowData.flow_lines.map(line => ({
-      from_x: line.from_x_norm * width,
-      from_y: line.from_y_norm * height,
-      to_x: line.to_x_norm * width,
-      to_y: line.to_y_norm * height,
-      accumulation: line.accumulation,
-      direction: line.direction
+    // Exported normalized points use the legacy rotated orientation. Recover
+    // DEM row/column coordinates before applying the calibrated projection.
+    const project=(x,y)=>this.demTransform
+      ? this.cellToScreen((1-x)*this.demHeight,y*this.demWidth)
+      : {x:x*width,y:y*height};
+    this.flowData.flow_lines_screen=this.flowData.flow_lines.map(line=>{
+      const from=project(line.from_x_norm,line.from_y_norm),to=project(line.to_x_norm,line.to_y_norm);
+      return {from_x:from.x,from_y:from.y,to_x:to.x,to_y:to.y,accumulation:line.accumulation,direction:line.direction};
+    });
+    this.flowData.start_points_screen=this.flowData.start_points.map(point=>({
+      ...project(...point.position_norm),weight:point.weight
     }));
-    
-    // Scale start points from normalized (0-1) to pixel coordinates
-    this.flowData.start_points_screen = this.flowData.start_points.map(point => ({
-      x: point.position_norm[0] * width,
-      y: point.position_norm[1] * height,
-      weight: point.weight
-    }));
-    
+
     console.log(`Scaled ${this.flowData.flow_lines_screen.length} flow lines to ${width}x${height}px`);
   }
   
@@ -709,7 +707,8 @@ class StormwaterFlowAnimation {
     window.removeEventListener('resize', this.handleResize);
     this.map.off('moveend',this.handleResize);
     
-    this.ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
+    if(this.bitmapContext)this.bitmapContext.transferFromImageBitmap(null);
+    else this.ctx.clearRect(0,0,this.canvas.width,this.canvas.height);
     this.particles = [];
     
     console.log('Stormwater flow animation stopped');
@@ -724,6 +723,7 @@ class StormwaterFlowAnimation {
   }
   
   handleResize() {
+    this.renderRevision=(this.renderRevision||0)+1;
     const s = window.MR_TABLE ? MR_TABLE.place(this.canvas) : computeOverlayPixelSize();
     this.canvas.width = s.w; this.canvas.height = s.h;
     this.canvas.style.width=s.w+'px';this.canvas.style.height=s.h+'px';
@@ -988,7 +988,7 @@ class StormwaterFlowAnimation {
    * Draw particles
    */
   drawParticles() {
-    if(this.renderWorker && this.renderReady && !this.debugFlowLines){
+    if(this.renderWorker && this.renderReady){
       if(!this.renderBusy){
         const count=this.particles.length*23,values=this.renderBuffer?.length===count?this.renderBuffer:new Float32Array(count);
         this.renderBuffer=null;
@@ -996,10 +996,11 @@ class StormwaterFlowAnimation {
           const p=this.particles[i],n=i*23;values[n]=p.x;values[n+1]=p.y;values[n+2]=p.age;values[n+3]=p.size;values[n+4]=p.poolingIntensity;values[n+5]=p.isPooling?1:0;values[n+6]=p.trail.length;
           for(let j=0;j<p.trail.length;j++){values[n+7+j*2]=p.trail[j].x;values[n+8+j*2]=p.trail[j].y;}
         }
-        this.renderBusy=true;this.renderWorker.postMessage({type:'frame',values,width:this.canvas.width,height:this.canvas.height,scale:window.mrTableScale?.()??1},[values.buffer]);
+        this.renderBusy=true;this.renderWorker.postMessage({type:'frame',revision:this.renderRevision,debugLines:this.debugFlowLines?this.flowData?.flow_lines_screen:null,values,width:this.canvas.width,height:this.canvas.height,scale:window.mrTableScale?.()??1},[values.buffer]);
       }
       return;
     }
+    if(!this.ctx)return; // Worker initialization is still pending.
     this.ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
     
     // Debug: Draw flow direction arrows

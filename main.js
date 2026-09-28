@@ -14,7 +14,7 @@ document.addEventListener('DOMContentLoaded', () => {
   const overlay = document.getElementById('start-overlay');
   if (overlay) {
     overlay.addEventListener('click', () => {
-      // Resume any existing audio contexts or create a dummy one to unlock
+      // Unlock the same context used for bird playback.
       window.MR_AUDIO_CONTEXT ||= new (window.AudioContext || window.webkitAudioContext)();
       window.MR_AUDIO_CONTEXT.resume().catch(error=>console.warn('Audio unlock failed',error));
       window.dispatchEvent(new Event('mr-audio-unlock'));
@@ -265,6 +265,7 @@ const defaultBasemap = mapboxToken ? 'mapboxDark' : 'cartoDark';
 
 // When map loads, add raster sources and layers
 map.on('load', () => {
+  window.MR_MAP_READY=true; // Tile refreshes must not make late layer initialization wait for another load event.
   // Add each source and show the configured Mapbox dark layer when available.
   Object.keys(basemaps).forEach(key => {
     const bm = basemaps[key];
@@ -399,8 +400,13 @@ function addUserGeo(geojson) {
   // No line or point layers for cleaner building visualization
 }
 
-// Calibration overlay (DOM rectangle centered on screen)
+// Calibration overlay follows the configured geographic table footprint.
 const tableOverlay = document.getElementById('table-overlay');
+function showOverlay() {
+  if(!tableOverlay)return;
+  window.MR_TABLE?.place(tableOverlay,true);
+  tableOverlay.style.display='block';
+}
 
 // Hide overlay by default
 if (tableOverlay) tableOverlay.style.display = 'none';
@@ -585,18 +591,8 @@ controllerChannel.onmessage = (event) => {
         const action = data.action;
         
         if (action === 'show_overlay') {
-            const { sw, sh, tw, th } = data.params;
-            const px = window.innerWidth / parseFloat(sw);
-            const w = Math.round(parseFloat(tw) * px);
-            const h = Math.round(parseFloat(th) * px);
-            
-            const tableOverlay = document.getElementById('table-overlay');
-            if (tableOverlay) {
-                tableOverlay.style.width = w + 'px';
-                tableOverlay.style.height = h + 'px';
-                tableOverlay.style.display = 'block';
-            }
-            
+            showOverlay();
+
         } else if (action === 'hide_overlay') {
             const tableOverlay = document.getElementById('table-overlay');
             if (tableOverlay) tableOverlay.style.display = 'none';

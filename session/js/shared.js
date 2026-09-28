@@ -137,7 +137,16 @@
     };
   }
 
-  const MR = {RELEASE, LAYERS, ACTIONS, ECOM, AVATARS, COLORS, id, validControl, point, validObject, editObject, wire};
+  // Keep long-running exhibition sessions within a fixed history budget.
+  function appendEvent(events,event,retention) {
+    const bytes=JSON.stringify(event).length*2; // Conservative UTF-16 storage estimate.
+    events.push(event);retention.sizes.push(bytes);retention.bytes+=bytes;
+    while(events.length>2000 || retention.bytes>8*1024*1024){
+      events.shift();retention.bytes-=retention.sizes.shift();retention.omitted++;
+    }
+  }
+
+  const MR = {RELEASE, LAYERS, ACTIONS, ECOM, AVATARS, COLORS, id, validControl, point, validObject, editObject, wire, appendEvent};
   root.MR = MR;
   if (typeof module !== 'undefined') module.exports = MR;
 })(typeof window === 'undefined' ? globalThis : window);

@@ -142,7 +142,7 @@ function geometryAndTracerTests() {
   assert.deepEqual(C.speedColor(20),C.speedColor(30));assert.notDeepEqual(C.speedColor(5),C.speedColor(10));
   console.log('PASS geometry/tracers: polygon parts, holes, passages, projected trees, frame rates, walls, trails, inlet flux');
 }
-function makeAppHarness() {
+function makeAppHarness(bitmapMode=false) {
   let now=0, sequence=0, frame=null, strokeCount=0;
   const timers=new Map(), events={}, mapEvents={}, messages=[], workers=[], requests=[];
   const context2d={clearRect(){},drawImage(){},putImageData(){},beginPath(){},moveTo(){},lineTo(){},stroke(){strokeCount++;},
@@ -150,7 +150,7 @@ function makeAppHarness() {
   const element=()=>({style:{},classList:{add(){},remove(){}},addEventListener(type,fn){this[type]=fn;},
     getContext(){return context2d;},getBoundingClientRect(){return {left:0,top:0};},
     insertAdjacentElement(){},setAttribute(){}});
-  const canvas=element(),button=element();button.id='cfd-simulation-btn';
+  const presented=[];const canvas=element(),button=element();if(bitmapMode)canvas.getContext=()=>({transferFromImageBitmap:bitmap=>presented.push(bitmap)});button.id='cfd-simulation-btn';
   const map={getSource(){return null;},getContainer(){return canvas;},project(c){return {x:c[0],y:c[1]};},
     on(type,fn){mapEvents[type]=fn;}};
   class Worker {constructor(){workers.push(this);}postMessage(data){this.init=data;}terminate(){this.terminated=true;}}
@@ -163,8 +163,9 @@ function makeAppHarness() {
     Audio:function(){this.play=()=>Promise.resolve();this.pause=()=>{};},
     BroadcastChannel:function(){channel=this;this.postMessage=d=>messages.push(d);},
     fetch(url){return new Promise(resolve=>requests.push({url,resolve}));}};
+  if(bitmapMode)sandbox.OffscreenCanvas=class{};
   vm.runInNewContext(fs.readFileSync(path.join(__dirname,'../animations/cfd-simulation.js'),'utf8'),sandbox);
-  return {button,workers,requests,messages,events,mapEvents,channel,
+  return {button,workers,requests,messages,events,mapEvents,channel,presented,
     render(time){now=time;strokeCount=0;frame?.(time);return strokeCount;},
     runTimers(){const jobs=[...timers.values()];timers.clear();jobs.forEach(f=>f());},
     resolveRequests(){requests.splice(0).forEach(r=>r.resolve({ok:true,json:async()=>({features:[]})}));},
@@ -173,6 +174,12 @@ function makeAppHarness() {
 }
 async function lifecycleTests() {
   const flush=async()=>{for(let i=0;i<12;i++)await Promise.resolve();};
+  const direct=makeAppHarness(true);direct.button.click();direct.resolveRequests();await flush();
+  const drawing=direct.workers[0];let closed=0;const bitmap={close(){closed++;}};
+  drawing.onmessage({data:{type:'ready'}});drawing.onmessage({data:{type:'frame',bitmap}});
+  assert.equal(direct.presented.at(-1),bitmap,'Worker frames are presented without a 2D copy');
+  direct.button.click();assert.equal(direct.presented.at(-1),null,'Stopped wind clears the bitmap surface');
+  drawing.onmessage({data:{type:'frame',bitmap}});assert.equal(closed,2,'Late transferred frames are closed without displaying');
   const h=makeAppHarness();h.button.click();assert.equal(h.requests.length,2);
   h.button.click();h.resolveRequests();await flush();assert.equal(h.workers.length,0,'Stopped loads cannot start worker');
   h.button.click();await flush();assert.equal(h.workers.length,1,'Geometry cache reused');

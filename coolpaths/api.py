@@ -59,15 +59,23 @@ def current_study() -> tuple[dict, dict]:
         if not manifest.get("hours"):
             raise HTTPException(503,"Prepared CoolPaths study has no hours")
         for hour in manifest["hours"]:
-            h=int(hour)
+            try: h=int(hour)
+            except (TypeError, ValueError) as error:
+                raise HTTPException(503,"Prepared CoolPaths study has an invalid hour") from error
+            if not 8 <= h <= 20: raise HTTPException(503,"Prepared CoolPaths study hour is outside 08–20")
             required.update({f"pet_{h:02d}.png",f"edge_pet_{h:02d}.json"})
             required.update(f"{name}_{h:02d}.tif" for name in ("pet","mrt","shade","direct","diffuse"))
         missing=sorted(name for name in required if not (folder/name).is_file())
         if missing:raise HTTPException(503,"Prepared CoolPaths files missing: "+", ".join(missing))
+        _cache["required"] = required | {"graph.json"}
         _cache["manifest"] = manifest
         _cache["graph"] = graph
         _cache["hours"] = {}
         _cache["manifest_mtime"] = mtime
+    # Dataset readiness can change while the service remains alive (for example
+    # a removable drive disconnects). Do not cache a positive filesystem check.
+    missing=sorted(name for name in _cache.get("required", ()) if not (folder/name).is_file())
+    if missing: raise HTTPException(503,"Prepared CoolPaths files missing: "+", ".join(missing))
     return _cache["manifest"], _cache["graph"]
 
 

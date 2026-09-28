@@ -206,21 +206,22 @@ class SunStudy {
   }
   
   async initThreeJS() {
-    if (this.dependenciesLoaded) return;
-    
-    console.log('Loading Three.js for sun study...');
-    await loadDependencies();
-    this.dependenciesLoaded = true;
-    
-    this.setupRenderer();
-    this.setupScene();
-    this.setupCamera();
-    this.setupLights();
-    this.setupDualShadowSystem();
-    this.setupPostProcessing();
-    this.loadSTLModel();
+    if(this.dependenciesLoaded)return;
+    if(!this.initializing)this.initializing=(async()=>{
+      await loadDependencies();
+      this.setupRenderer();
+      this.setupScene();
+      this.setupCamera();
+      this.setupLights();
+      this.setupDualShadowSystem();
+      this.setupPostProcessing();
+      this.loadSTLModel();
+      this.dependenciesLoaded=true;
+    })();
+    try { await this.initializing; }
+    finally { this.initializing=null; }
   }
-  
+
   // Control panel removed - logic moved to remote controller
   
   bindControlEvents() {
@@ -1077,6 +1078,7 @@ class SunStudy {
       0,
       Math.cos(this.mapBearing * Math.PI / 180)
     );
+    this.camera.lookAt(0,0,0); // Recompute orientation after setting the table-local up vector.
   }
   
   setupLights() {
@@ -1807,6 +1809,7 @@ class SunStudy {
     if (!this.dependenciesLoaded) {
       await this.initThreeJS();
     }
+    if(!this.isActive)return;
     
     this.canvas.style.display = 'block';
     if (this.overlayCanvas) this.overlayCanvas.style.display = 'block';

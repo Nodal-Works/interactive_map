@@ -6,7 +6,7 @@ const frames=createFrames(fn=>{queue.set(++serial,fn);return serial;},id=>queue.
 const mapEvents={};
 const ctx=new Proxy({}, {get:()=>()=>{}});
 const canvas={width:100,height:100,style:{},getContext:()=>ctx};
-const button={classList:{toggle(){}},addEventListener(){}};
+const button={remove(){},classList:{toggle(){}},addEventListener(){}};
 const map={on:(name,fn)=>{mapEvents[name]=fn;},project:()=>({x:0,y:0})};
 const sandbox={console,performance:{now:()=>0},clearTimeout(){},
  document:{getElementById:id=>id==='bird-sounds-canvas'?canvas:button,addEventListener(){}},

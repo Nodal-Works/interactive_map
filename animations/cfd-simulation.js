@@ -5,7 +5,12 @@
   const canvas = document.getElementById('cfd-simulation-canvas');
   const button = document.getElementById('cfd-simulation-btn');
   if (!canvas || !button || typeof CFD === 'undefined' || typeof CFDVisuals === 'undefined') return;
-  const ctx = canvas.getContext('2d');
+  // Hand transferred frames directly to the compositor; do not copy a full
+  // resolution bitmap into another 2D surface every frame.
+  const bitmapContext = typeof OffscreenCanvas !== 'undefined' && typeof Worker !== 'undefined'
+    ? canvas.getContext('bitmaprenderer') : null;
+  const ctx = bitmapContext ? null : canvas.getContext('2d');
+  const clearCanvas = () => bitmapContext ? bitmapContext.transferFromImageBitmap(null) : ctx.clearRect(0,0,canvas.width,canvas.height);
   const heat = document.createElement('canvas'), heatCtx = heat.getContext('2d');
   const walls = document.createElement('canvas'), wallCtx = walls.getContext('2d');
   const status = document.createElement('div');
@@ -50,7 +55,7 @@
     (window.MR_FRAMES ? window.MR_FRAMES.cancel.bind(window.MR_FRAMES) : cancelAnimationFrame)(animation); animation = null;
     audio.pause(); audio.currentTime = 0;
     button.classList.remove('toggled-on');
-    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    clearCanvas();
     setPhase(`Wind stopped: ${message}`); status.hidden = false;
     channel.postMessage({ type: 'animation_state', animationId: button.id, isActive: false });
     console.error(message);
@@ -112,7 +117,7 @@
     clearTimeout(rebuildTimer);
     const id = ++generation;
     haltRunner(); field = null; targetField = null; visuals = null;
-    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    clearCanvas();
     if (!active) return;
     setPhase('Loading wind geometry');
     try {
@@ -154,13 +159,13 @@
         wallImage.data[(y * grid.vw + x) * 4 + 3] = solid[(y + grid.y0) * grid.nx + x + grid.x0] ? 255 : 0;
       }
       wallCtx.putImageData(wallImage, 0, 0);
-      if(typeof OffscreenCanvas!=='undefined' && typeof createImageBitmap==='function'){
+      if(typeof OffscreenCanvas!=='undefined' && typeof Worker==='function'){
         renderWorker=new Worker('animations/cfd-render-worker.js');
         renderWorker.onmessage=({data})=>{
           if(!active || generation!==id){data.bitmap?.close();return;}
           if(data.type==='error'){fail('Wind drawing failed: '+data.message);return;}
           if(data.type==='ready')renderReady=true;
-          if(data.type==='frame'){renderBusy=false;ctx.clearRect(0,0,canvas.width,canvas.height);ctx.drawImage(data.bitmap,0,0);data.bitmap.close();window.MR_FRAMES?.recordRender?.('wind');}
+          if(data.type==='frame'){renderBusy=false;if(bitmapContext)bitmapContext.transferFromImageBitmap(data.bitmap);else{clearCanvas();ctx.drawImage(data.bitmap,0,0);}data.bitmap.close();window.MR_FRAMES?.recordRender?.('wind');}
         };
         renderWorker.onerror=()=>{if(active && generation===id)fail('Wind drawing worker could not start.');};
         renderWorker.postMessage({type:'init',field,settings,width:canvas.width,height:canvas.height,scale:window.mrTableScale?.()??1});
@@ -193,8 +198,8 @@
       animation=(window.MR_FRAMES ? window.MR_FRAMES.request.bind(window.MR_FRAMES,'wind') : requestAnimationFrame)(draw);return;
     }
     const dt = lastTime === null ? 0 : Math.min(.05, Math.max(0, (now - lastTime) / 1000)); lastTime = now;
-    ctx.clearRect(0, 0, canvas.width, canvas.height);
-    if (field && visuals) {
+    clearCanvas();
+    if (ctx && field && visuals) {
       const g = field;
       if (targetField) CFD.smoothField(g, targetField, dt);
       if (now - lastHeatTime > 50) { updateHeat(); lastHeatTime = now; }
@@ -220,7 +225,7 @@
     field = null; targetField = null; visuals = null;
     canvas.classList.remove('active'); button.classList.remove('toggled-on');
     audio.pause(); audio.currentTime = 0; status.hidden = true;
-    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    clearCanvas();
     setPhase('Stopped');
     channel.postMessage({ type: 'animation_state', animationId: button.id, isActive: false });
   }
