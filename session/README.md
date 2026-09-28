@@ -8,6 +8,12 @@ From the MR Studio repository:
 ./start_services.sh
 ```
 
+On Windows, install Python 3.10 or newer and run the PowerShell launcher:
+
+```powershell
+.\start_services.ps1
+```
+
 The foreground supervisor starts the local host, ECOM, CoolPaths and SAM, opens
 the launcher, and reports readiness. Launch the main display and controller from
 that launcher so they share an origin. Click the main display's start overlay
@@ -25,14 +31,18 @@ proxies dashboard service requests, so changing a backend port requires no HTML 
 ./start_services.sh --config /absolute/path/services.json
 ```
 
+The equivalent PowerShell options are `.\start_services.ps1 --check`,
+`.\start_services.ps1 --no-open`, and
+`.\start_services.ps1 --config C:\path\services.json`.
+
 An occupied port is reused only if its API identifies the expected service.
 Unrelated listeners are reported, never killed. A second supervisor invocation
-reports the existing supervisor. Ctrl+C terminates the process groups this run
-started; services it reused remain running. Logs are `.runtime/{service}.log`.
+reports the existing supervisor. Ctrl+C stops services started by this run;
+services it reused remain running. Logs are `.runtime/{service}.log`.
 The supervisor reports failed optional services while keeping the host available.
 
-The ECOM and CoolPaths launchers retain their existing environment setup.
-SAM requires the configured repository and its existing `.venv`. Prepared
+The supervisor creates the ECOM and CoolPaths virtual environments and installs
+their requirements when needed. SAM requires the configured repository and its existing `.venv`. Prepared
 CoolPaths data and ECOM demand data are prerequisites; startup does not run the
 study preparation pipeline or fabricate missing data. A healthy API may still
 report an unavailable study in the layer dashboard.

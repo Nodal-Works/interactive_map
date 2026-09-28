@@ -8,6 +8,8 @@ yarn.lock
 .env.local
 .env.*.local
 .venv/
+**/.venv-windows/
+**/.venv-windows-312/
 
 # API configuration (contains secrets)
 trafik-config.json

@@ -261,7 +261,8 @@ A secondary controller screen provides a touch-friendly interface for operating 
 
 ### Collaborative phone sessions
 
-Run `./start_services.sh` to coordinate the local MR Studio host, ECOM, CoolPaths,
+Run `./start_services.sh` (macOS/Linux) or `.\start_services.ps1` (Windows PowerShell,
+Python 3.10+) to coordinate the local MR Studio host, ECOM, CoolPaths,
 and SAM from one terminal. Open the main display through the launcher, then use
 **Session** on the dashboard for its QR, participants, four editing slots, and
 session logs. Phones use the GitHub Pages client and PeerJS; calibration stays local.
