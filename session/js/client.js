@@ -98,6 +98,7 @@
     const tool=mapView.tool,shape=['polygon','obstacle'].includes(tool),editing=['select','reshape'].includes(tool);
     const navigation='Two fingers to pan or zoom';
     let input=shape?'Tap corners, then Finish shape':tool==='pen'?'Drag to sketch; lift to save':tool==='viewer'?'Drag to move the viewpoint':tool==='off'?'':editing?'Touch a point to select and drag':'Touch to '+(tool==='location'?'select a location':tool==='heading'?'look toward a place':tool==='route'?'set your route':'draw');
+    if(layer.id==='thermal-comfort-btn')input=MR_MAP.thermalHint(state?.thermal);
     if(shape&&mapView.polygon?.points.length)input=mapView.polygon.points.length+' corners · '+(mapView.polygon.points.length<3?'add '+(3-mapView.polygon.points.length)+' more':'tap Finish shape');
     if(!canEdit())input='';else if(!state?.layers[layer.id])input='Turn on this layer to add input';
     $('map-hint').textContent=input?input+' · '+navigation:navigation;
