@@ -96,8 +96,8 @@
   const pointers=new Map();window.addEventListener('mr-pointer',({detail:p})=>{
     let marker=pointers.get(p.id);if(!marker){marker=document.createElement('div');marker.className='mr-pointer';document.body.append(marker);pointers.set(p.id,marker);}marker.style.setProperty('--pointer-color',p.color);marker.textContent=p.name;const c=view.project(p.coordinate);marker.style.left=c.x+'px';marker.style.top=c.y+'px';marker.hidden=false;clearTimeout(marker.timer);marker.timer=setTimeout(()=>marker.hidden=true,2500);
   });
-  let inviteUrl='', ribbonCm=10;
-  try{ribbonCm=Math.min(20,Math.max(10,Number(localStorage.getItem('mr-ribbon-cm-v2'))||10));}catch{}
+  let inviteUrl='', ribbonCm=9;
+  try{ribbonCm=Math.min(20,Math.max(4,Number(localStorage.getItem('mr-ribbon-cm-v3'))||9));}catch{}
   const ribbon=document.createElement('div');ribbon.className='mr-idle-ribbon';ribbon.hidden=true;
   const label=document.createElement('div');label.className='mr-idle-label';label.textContent='Street Life';
   const join=document.createElement('div');join.className='mr-idle-join';
@@ -107,14 +107,18 @@
   copy.append(caption,hint);
   const qr=document.createElement('div');qr.className='mr-idle-qr';join.append(copy,qr);ribbon.append(label,join);document.body.append(ribbon);
   const setting=document.createElement('label');setting.className='mr-ribbon-setting';setting.textContent='Bottom ribbon height (cm) ';
-  const height=document.createElement('input');height.type='number';height.min='10';height.max='20';height.step='1';height.value=ribbonCm;
+  const height=document.createElement('input');height.type='number';height.min='4';height.max='20';height.step='1';height.value=ribbonCm;
   setting.append(height);dialog.append(setting);
-  height.onchange=()=>{ribbonCm=Math.min(20,Math.max(10,Number(height.value)||10));height.value=ribbonCm;try{localStorage.setItem('mr-ribbon-cm-v2',ribbonCm);}catch{}placeRibbon();};
+  height.onchange=()=>{ribbonCm=Math.min(20,Math.max(4,Number(height.value)||9));height.value=ribbonCm;try{localStorage.setItem('mr-ribbon-cm-v3',ribbonCm);}catch{}placeRibbon();};
   function placeRibbon(){
     const session=window.MR_SESSION?.getState();
     ribbon.hidden=!inviteUrl||!!session?.endedAt||!window.streetLifeAnimation?.isActive()||Object.values(session?.layers||{}).some(Boolean);
     if(ribbon.hidden)return;
-    const t=MR_ADAPTER.table(),h=Math.min(window.innerHeight,t.height*ribbonCm/t.heightCm);
+    const t=MR_ADAPTER.table(),g=MR_TABLE.geometry();
+    const free=Math.max(0,innerHeight-Math.max(...g.points.map(p=>p.y)));
+    const h=Math.min(free,innerWidth/window.MR_CALIBRATION.dimensions.screenWidth*ribbonCm);
+    ribbon.hidden=h<48;
+    if(ribbon.hidden)return;
     ribbon.style.cssText=`top:${window.innerHeight-h}px;height:${h}px;--ribbon-size:${h}px`;
   }
   window.addEventListener('mr-invite',({detail:url})=>{

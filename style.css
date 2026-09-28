@@ -648,7 +648,7 @@ html, body {
 .coolpaths-samples { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: .65rem; margin: .65rem 0; }
 .coolpaths-samples dt { font-size: .65rem; color: #94a3b8; }
 .coolpaths-samples dd { margin: .15rem 0 0; font-size: .95rem; color: #f5f3ff; font-weight: 600; }
-.coolpaths-credit { grid-area: credit; color: #9bacbf; border-top: 1px solid #3a4b61; padding: .6rem .15rem .15rem; font-size: .69rem; line-height: 1.6; }
+.coolpaths-credit { grid-area: credit; color: #9bacbf; border-top: 1px solid #3a4b61; padding: .6rem .15rem .15rem; font-size: 18px; line-height: 1.5; overflow-wrap: anywhere; }
 .coolpaths-credit strong { color: #cbd5e1; }
 .coolpaths-credit a { color: #a5e5f3; text-decoration: underline; text-underline-offset: 2px; }
 .coolpaths-credit > span { display: block; color: #a0aec0; }

@@ -46,8 +46,8 @@
       return window.ecomEnergyLayer.setEnabled(enabled);
     }
     if (layer === 'canvas-btn') {
-      if(enabled && !active[layer]) { canvasBasemap=window.getBasemap();window.setBasemap('osmLight'); }
-      if(!enabled && active[layer] && window.getBasemap()==='osmLight' && canvasBasemap)window.setBasemap(canvasBasemap);
+      if(enabled && !active[layer]) { canvasBasemap=window.getBasemap();window.setBasemap(window.defaultDarkBasemap || 'cartoDark'); }
+      if(!enabled && active[layer] && window.getBasemap()===(window.defaultDarkBasemap || 'cartoDark') && canvasBasemap)window.setBasemap(canvasBasemap);
       active[layer] = enabled;document.getElementById(layer)?.classList.toggle('active',enabled);
       window.dispatchEvent(new CustomEvent('mr-canvas-visibility', {detail: enabled})); return;
     }

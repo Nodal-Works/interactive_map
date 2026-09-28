@@ -722,3 +722,5 @@ function broadcastState(activeLayerId) {
 });
 
 window.MR_TABLE?.install();
+
+window.defaultDarkBasemap=defaultBasemap;

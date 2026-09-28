@@ -276,7 +276,7 @@
     if(typeof Peer!=='function')throw Error('PeerJS could not load. Check internet access.');
     peer=new Peer(MR_CONFIG.peer);
     peer.on('open',id=>{
-      const url=new URL(runtime.clientUrl || MR_CONFIG.clientUrl);url.search=new URLSearchParams({host:id,token,release:MR.RELEASE}).toString();
+      const url=new URL(runtime.clientUrl || MR_CONFIG.clientUrl, location.href);url.search=new URLSearchParams({host:id,token,release:MR.RELEASE}).toString();
       invite=url.href;peerStatus='Ready';record('session.started',hostActor,{});window.dispatchEvent(new CustomEvent('mr-invite',{detail:invite}));
     });
     peer.on('connection',connect);

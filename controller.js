@@ -1324,8 +1324,8 @@ function updateDashboard(targetId) {
                             Street View (Live)
                         </div>
                     </div>
-                    <div id="street-view-panel" style="width: 100%; height: 620px; background: #1a1a1a; position: relative;">
-                        <img id="street-view-image" style="width: 100%; height: 100%; object-fit: cover; display: none;" />
+                    <div id="street-view-panel" style="width: 100%; height: clamp(240px, 52vh, 620px); background: #1a1a1a; position: relative;">
+                        <img id="street-view-image" style="width: 100%; height: 100%; object-fit: contain; display: none;" />
                         <div id="street-view-no-coverage" style="
                             position: absolute;
                             top: 0; left: 0; right: 0; bottom: 0;
@@ -1626,7 +1626,7 @@ function updateDashboard(targetId) {
             <div class="dashboard-container">
                 <div class="dashboard-card" style="padding: 0; overflow: hidden;">
                     <div id="street-view-panel" style="width: 100%; height: 350px; background: #1a1a1a; position: relative;">
-                        <img id="street-view-image" style="width: 100%; height: 100%; object-fit: cover; display: none;" />
+                        <img id="street-view-image" style="width: 100%; height: 100%; object-fit: contain; display: none;" />
                         <div id="street-view-no-coverage" style="
                             position: absolute;
                             top: 0; left: 0; right: 0; bottom: 0;
