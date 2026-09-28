@@ -190,7 +190,7 @@ async function refreshAccessToken(signal) {
     console.log('✓ Trafik: Access token refreshed');
     return true;
   } catch (err) {
-    console.error('Trafik: Token refresh error:', err);
+    if (!signal?.aborted) console.error('Trafik: Token refresh error:', err);
     return false;
   }
 }
@@ -291,9 +291,9 @@ function parseVehiclePositions(data) {
     }
     
     // Get line designation (number/name)
-    const lineName = journey.line?.shortName || 
-                     journey.line?.designation || 
-                     journey.line?.name || 
+    const lineName = journey.line?.shortName ||
+                     journey.line?.designation ||
+                     journey.line?.name ||
                      journey.name || '';
     
     // Get colors from API if available
@@ -320,10 +320,8 @@ function parseVehiclePositions(data) {
 // Project coordinates to canvas
 function projectToCanvas(lng, lat) {
   const point = map.project([lng, lat]);
-  const mapContainer = document.getElementById('map');
-  const mapRect = mapContainer.getBoundingClientRect();
-  const canvasRect = trafikCanvas.getBoundingClientRect();
-  
+  const {mapRect,canvasRect}=transitRects || {mapRect:document.getElementById('map').getBoundingClientRect(),canvasRect:trafikCanvas.getBoundingClientRect()};
+
   return {
     x: point.x - (canvasRect.left - mapRect.left),
     y: point.y - (canvasRect.top - mapRect.top)
@@ -332,14 +330,50 @@ function projectToCanvas(lng, lat) {
 
 // Check if position is on screen
 function isOnScreen(pos, padding = 50) {
-  return pos.x >= -padding && 
-         pos.x <= trafikCanvas.width + padding && 
-         pos.y >= -padding && 
+  return pos.x >= -padding &&
+         pos.x <= trafikCanvas.width + padding &&
+         pos.y >= -padding &&
          pos.y <= trafikCanvas.height + padding;
 }
 
+const vehicleSprites=new Map();
+let historyPixels=new WeakMap(),historyCamera='';
+function projectHistory(point){let pixel=historyPixels.get(point);if(!pixel){pixel=projectToCanvas(point.lng,point.lat);historyPixels.set(point,pixel);}return pixel;}
+
+function paintVehicleSprite(ctx,pos,vehicle,bgColor,fgColor,scale,size){
+  // Soft glow effect
+  ctx.globalCompositeOperation = 'lighter';
+  const glow = ctx.createRadialGradient(pos.x, pos.y, 0, pos.x, pos.y, CONFIG.glowRadius * scale);
+  glow.addColorStop(0, `${bgColor}88`);
+  glow.addColorStop(0.5, `${bgColor}44`);
+  glow.addColorStop(1, 'rgba(0, 0, 0, 0)');
+  ctx.fillStyle = glow;
+  ctx.beginPath();
+  ctx.arc(pos.x, pos.y, CONFIG.glowRadius * scale, 0, Math.PI * 2);
+  ctx.fill();
+
+  // Circle body with line color
+  ctx.globalCompositeOperation = 'source-over';
+  ctx.fillStyle = bgColor;
+  ctx.shadowColor = bgColor;
+  ctx.shadowBlur = 15 * scale;
+  ctx.beginPath();
+  ctx.arc(pos.x, pos.y, size, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.shadowBlur = 0;
+
+  // Line number inside circle
+  if (vehicle.line) {
+    ctx.font = `bold ${Math.round(size * 0.85)}px "Inter", sans-serif`;
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillStyle = fgColor;
+    ctx.fillText(vehicle.line, pos.x, pos.y + scale);
+  }
+
+ }
 // Draw a single vehicle - smooth gliding circle with line number and trail
-function drawVehicle(ctx, vehicle) {
+function drawVehicle(ctx, vehicle, bodies) {
   // Use interpolated position for smooth gliding
   const displayLng = vehicle.displayLng ?? vehicle.lng;
   const displayLat = vehicle.displayLat ?? vehicle.lat;
@@ -354,9 +388,10 @@ function drawVehicle(ctx, vehicle) {
     bgColor = vehicle.apiColors.bg;
     fgColor = vehicle.apiColors.fg || '#FFFFFF';
   }
-  
-  const size = CONFIG.vehicleSize;
-  
+
+  const scale = 1;
+  const size = Math.max(8, CONFIG.vehicleSize * scale);
+
   ctx.save();
   
   // Draw trail from position history
@@ -369,72 +404,53 @@ function drawVehicle(ctx, vehicle) {
     
     // Draw trail segments with fading opacity
     for (let i = 1; i < history.length; i++) {
-      const p1 = projectToCanvas(history[i - 1].lng, history[i - 1].lat);
-      const p2 = projectToCanvas(history[i].lng, history[i].lat);
-      
+      const p1 = projectHistory(history[i - 1]);
+      const p2 = projectHistory(history[i]);
+
       // Calculate opacity based on position in trail (older = more faded)
       const progress = i / history.length;
       const opacity = CONFIG.trailFadeStart * progress;
       
       // Gradient width (thinner at tail)
-      const width = CONFIG.trailWidth * (0.3 + 0.7 * progress);
-      
-      ctx.strokeStyle = bgColor + Math.round(opacity * 255).toString(16).padStart(2, '0');
-      ctx.lineWidth = width;
-      ctx.beginPath();
-      ctx.moveTo(p1.x, p1.y);
-      ctx.lineTo(p2.x, p2.y);
-      ctx.stroke();
+      const width = CONFIG.trailWidth * scale * (0.3 + 0.7 * progress);
+
+      drawTransitSegment(ctx,p1,p2,bgColor+Math.round(opacity*255).toString(16).padStart(2,'0'),width);
     }
     
     // Draw line from last history point to current position
     if (history.length > 0) {
       const lastHist = history[history.length - 1];
-      const p1 = projectToCanvas(lastHist.lng, lastHist.lat);
-      ctx.strokeStyle = bgColor + 'CC';
-      ctx.lineWidth = CONFIG.trailWidth;
-      ctx.beginPath();
-      ctx.moveTo(p1.x, p1.y);
-      ctx.lineTo(pos.x, pos.y);
-      ctx.stroke();
+      const p1 = projectHistory(lastHist);
+      drawTransitSegment(ctx,p1,pos,bgColor+'CC',CONFIG.trailWidth*scale);
     }
   }
-  
-  // Soft glow effect
-  ctx.globalCompositeOperation = 'lighter';
-  const glow = ctx.createRadialGradient(pos.x, pos.y, 0, pos.x, pos.y, CONFIG.glowRadius);
-  glow.addColorStop(0, `${bgColor}88`);
-  glow.addColorStop(0.5, `${bgColor}44`);
-  glow.addColorStop(1, 'rgba(0, 0, 0, 0)');
-  ctx.fillStyle = glow;
-  ctx.beginPath();
-  ctx.arc(pos.x, pos.y, CONFIG.glowRadius, 0, Math.PI * 2);
-  ctx.fill();
-  
-  // Circle body with line color
-  ctx.globalCompositeOperation = 'source-over';
-  ctx.fillStyle = bgColor;
-  ctx.shadowColor = bgColor;
-  ctx.shadowBlur = 15;
-  ctx.beginPath();
-  ctx.arc(pos.x, pos.y, size, 0, Math.PI * 2);
-  ctx.fill();
-  ctx.shadowBlur = 0;
-  
-  // Line number inside circle
-  if (vehicle.line) {
-    ctx.font = `bold ${Math.round(size * 0.85)}px "Inter", sans-serif`;
-    ctx.textAlign = 'center';
-    ctx.textBaseline = 'middle';
-    ctx.fillStyle = fgColor;
-    ctx.fillText(vehicle.line, pos.x, pos.y + 1);
+
+  const spriteKey=[bgColor,fgColor,vehicle.line,scale,size].join('|');
+  let sprite=vehicleSprites.get(spriteKey);
+  if(!sprite){
+    if(vehicleSprites.size>=128)vehicleSprites.delete(vehicleSprites.keys().next().value);
+    const radius=Math.ceil(Math.max(CONFIG.glowRadius*scale,size+15*scale));
+    sprite=document.createElement('canvas');sprite.width=sprite.height=radius*2+4;
+    const painter=sprite.getContext('2d');
+    paintVehicleSprite(painter,{x:sprite.width/2,y:sprite.height/2},vehicle,bgColor,fgColor,scale,size);
+    vehicleSprites.set(spriteKey,sprite);
   }
-  
+  if(bodies)bodies.push({sprite,x:pos.x-sprite.width/2,y:pos.y-sprite.height/2});else ctx.drawImage(sprite,pos.x-sprite.width/2,pos.y-sprite.height/2);
+
   ctx.restore();
 }
 
 // Draw all vehicles with smooth interpolation
+let transitRects=null,trailBatches=null;
+function drawTransitSegment(ctx,a,b,color,width){
+ if(trailBatches){const key=color+'|'+width;let batch=trailBatches.get(key);if(!batch){batch={color,width,path:new Path2D()};trailBatches.set(key,batch);}batch.path.moveTo(a.x,a.y);batch.path.lineTo(b.x,b.y);}
+ else {ctx.strokeStyle=color;ctx.lineWidth=width;ctx.beginPath();ctx.moveTo(a.x,a.y);ctx.lineTo(b.x,b.y);ctx.stroke();}
+}
+
 function drawAllVehicles() {
+  transitRects={mapRect:document.getElementById('map').getBoundingClientRect(),canvasRect:trafikCanvas.getBoundingClientRect()};
+  const camera=JSON.stringify([map.getCenter?.(),map.getZoom?.(),map.getBearing?.(),map.getPitch?.(),transitRects]);
+  if(camera!==historyCamera){historyCamera=camera;historyPixels=new WeakMap();}
   const width = trafikCanvas.width;
   const height = trafikCanvas.height;
   
@@ -442,7 +458,11 @@ function drawAllVehicles() {
   trafikCtx.clearRect(0, 0, width, height);
   
   // Draw each vehicle
-  vehicles.forEach(v => drawVehicle(trafikCtx, v));
+  const bodies=[];trailBatches=typeof Path2D==='undefined'?null:new Map();
+  vehicles.forEach(v => drawVehicle(trafikCtx, v,bodies));
+  if(trailBatches){trafikCtx.lineCap='round';trafikCtx.lineJoin='round';for(const {color,width,path}of trailBatches.values()){trafikCtx.strokeStyle=color;trafikCtx.lineWidth=width;trafikCtx.stroke(path);}}
+  for(const {sprite,x,y}of bodies)trafikCtx.drawImage(sprite,x,y);
+  trailBatches=null;
 }
 
 // Draw legend in corner
@@ -535,8 +555,8 @@ async function updateVehicles() {
           
           // Add current display position to history if it moved
           const lastHist = v.positionHistory[v.positionHistory.length - 1];
-          if (!lastHist || 
-              Math.abs(lastHist.lng - v.displayLng) > 0.00001 || 
+          if (!lastHist ||
+              Math.abs(lastHist.lng - v.displayLng) > 0.00001 ||
               Math.abs(lastHist.lat - v.displayLat) > 0.00001) {
             v.positionHistory.push({ lng: v.displayLng, lat: v.displayLat });
             // Trim history to max length
@@ -572,7 +592,7 @@ function interpolateVehicles() {
       const prevLat = v.displayLat;
       
       // Lerp towards target
-      const factor=v.type==='FERRY' ? 1-Math.exp(-dt/2) : speed;
+      const factor=v.type==='FERRY' ? 1-Math.exp(-dt/2) : 1-Math.pow(1-speed, dt*60);
       v.displayLng += (v.lng - v.displayLng) * factor;
       v.displayLat += (v.lat - v.displayLat) * factor;
       if(v.type==='FERRY') {
@@ -584,8 +604,8 @@ function interpolateVehicles() {
       if (!v.positionHistory) v.positionHistory = [];
       const lastHist = v.positionHistory[v.positionHistory.length - 1];
       // Record every tiny movement for smooth trail
-      if (!lastHist || 
-          Math.abs(lastHist.lng - v.displayLng) > 0.0000005 || 
+      if (!lastHist ||
+          Math.abs(lastHist.lng - v.displayLng) > 0.0000005 ||
           Math.abs(lastHist.lat - v.displayLat) > 0.0000005) {
         v.positionHistory.push({ lng: v.displayLng, lat: v.displayLat });
         if (v.positionHistory.length > CONFIG.trailHistoryLength) {
@@ -601,7 +621,7 @@ function animateTrafik() {
   
   interpolateVehicles();
   drawAllVehicles();
-  trafikAnimationFrame = requestAnimationFrame(animateTrafik);
+  trafikAnimationFrame = (window.MR_FRAMES ? window.MR_FRAMES.request.bind(window.MR_FRAMES, 'transit') : requestAnimationFrame)(animateTrafik);
 }
 
 // ===== Canvas Management =====
@@ -645,14 +665,14 @@ function stopTrafikAnimation() {
   }
   
   if (trafikAnimationFrame) {
-    cancelAnimationFrame(trafikAnimationFrame);
+    (window.MR_FRAMES ? window.MR_FRAMES.cancel.bind(window.MR_FRAMES) : cancelAnimationFrame)(trafikAnimationFrame);
     trafikAnimationFrame = null;
   }
   
   trafikCtx.clearRect(0, 0, trafikCanvas.width, trafikCanvas.height);
   vehicles = [];
-  vehicleHistory.clear();
-  
+  vehicleHistory.clear();vehicleSprites.clear();transitRects=null;
+
   console.log('Trafik: Live transit animation stopped');
 }
 
@@ -674,6 +694,7 @@ window.trafikAnimation = {
   }
 };
 
+window.MR_LAYERS?.register('trafik-btn',{getEnabled:()=>isTrafikAnimating,enable:startTrafikAnimation,disable:stopTrafikAnimation});
 console.log('Trafik: Live transit animation module loaded');
 
 })();
