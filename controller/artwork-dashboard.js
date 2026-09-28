@@ -49,7 +49,7 @@
     const panel=document.getElementById('artwork-dashboard');if(!panel)return;
     const active=!!state?.isActive,enabled=active&&state.lens.enabled;panel.classList.toggle('lens-active',enabled);
     const title=document.getElementById('artwork-dashboard-title'),status=document.getElementById('artwork-dashboard-status');
-    title.textContent=enabled?'Look closer':state?.chapter===C.finale(state)?'The complete composition':state?.chapter?`Artwork ${state.chapter}`:'The drawing';
+    title.textContent=enabled?'Look closer':state?.chapter===C.finale(state)?'The complete composition':state?.chapter?`Artwork ${state.chapter}`:'Art in Lindholmen';
     status.textContent=state?.error||(!active?'Turn on Artwork to begin':state.loading?'Preparing Vishvi’s drawing…':enabled?(state.lens.pinned?(clientMode?'Pinned · tap Unpin to explore':'Pinned · click the map to release'):(clientMode?'Drag across the drawing below to explore':'Move across the map · click to pin')):'A study of art, architecture and visibility');
     for(const b of panel.querySelectorAll('[data-artwork-action]')){
       const action=b.dataset.artworkAction;b.disabled=!active||state.loading||!!state.error;
@@ -77,7 +77,7 @@
     document.getElementById('main-panel').classList.add('artwork-mode');
     document.getElementById('dashboard-title').textContent='Artwork';
     document.getElementById('dashboard-content').innerHTML=`<div id="artwork-dashboard">
-      <div class="artwork-kicker">LINDHOLMEN · VISIBILITY STUDIES</div><h2 id="artwork-dashboard-title">The drawing</h2>
+      <div class="artwork-kicker">LINDHOLMEN · VISIBILITY STUDIES</div><h2 id="artwork-dashboard-title">Art in Lindholmen</h2>
       <p id="artwork-dashboard-status" aria-live="polite">Connecting to the map…</p>
       <div class="artwork-view-wrap"><canvas id="artwork-dashboard-view" aria-label="Vishvi Rajakaruna’s artwork, enlarged when the magnifier is active"></canvas></div>
       <div class="artwork-navigator-wrap" hidden><canvas id="artwork-navigator" tabindex="0" role="img" aria-label="Position the magnifier on the drawing" aria-describedby="artwork-navigator-hint"></canvas><p id="artwork-navigator-hint">Drag to explore · arrow keys move the lens</p></div>

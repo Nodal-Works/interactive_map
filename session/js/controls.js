@@ -86,7 +86,7 @@
       for(const button of this.element.querySelectorAll('button'))button.disabled=!canEdit;
       if(this.layer==='artwork-btn') {
         for(const {input}of this.inputs){input.disabled ||= !values.isActive||values.loading||!!values.error||(input.id!=='artwork-lens'&&!values.lensEnabled);}
-        this.artworkStatus.textContent=values.error|| (values.loading?'Preparing artwork…':!values.isActive?'Turn on Artwork to begin':values.chapter===(values.artworkCount??10)+1?`All ${values.artworkCount??10} artworks`:values.chapter?`Artwork ${values.chapter} / ${values.artworkCount??10}`:'The drawing');
+        this.artworkStatus.textContent=values.error|| (values.loading?'Preparing artwork…':!values.isActive?'Turn on Artwork to begin':values.chapter===(values.artworkCount??10)+1?`All ${values.artworkCount??10} artworks`:values.chapter?`Artwork ${values.chapter} / ${values.artworkCount??10}`:'Art in Lindholmen');
         for(const button of this.element.querySelectorAll('[data-action]')){
           const action=button.dataset.action;
           button.hidden=action==='retry'&&!values.error;

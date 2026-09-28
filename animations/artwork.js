@@ -14,7 +14,7 @@
   function updateHUD(){
     button()?.classList.toggle('active',state.isActive);
     const mag=document.getElementById('artwork-magnifier-btn');if(mag){mag.hidden=!state.isActive;mag.classList.toggle('active',state.lens.enabled);mag.setAttribute('aria-pressed',String(state.lens.enabled));}
-    document.getElementById('artwork-chapter').textContent=state.loading?'Preparing the drawing…':state.error?'Artwork unavailable':state.chapter===0?'The drawing':state.chapter===C.finale(state)?`All ${C.count(state)} artworks`:`Artwork ${state.chapter} / ${C.count(state)}`;
+    document.getElementById('artwork-chapter').textContent=state.loading?'Preparing the drawing…':state.error?'Artwork unavailable':state.chapter===0?'Art in Lindholmen':state.chapter===C.finale(state)?`All ${C.count(state)} artworks`:`Artwork ${state.chapter} / ${C.count(state)}`;
     document.getElementById('artwork-hint').textContent=state.error|| (state.lens.enabled?(state.lens.pinned?'Lens pinned · click to release':'Move to explore · click to pin') : state.chapter===C.finale(state)?'Hover to explore · M to magnify':'Click to reveal · M to magnify');
     canvas.style.cursor=state.lens.enabled?'crosshair':'pointer';
     hud.querySelector('[data-artwork="retry"]').hidden=!state.error;
