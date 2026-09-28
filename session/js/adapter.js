@@ -20,18 +20,18 @@
     }
   });
   function table() {
-    const size = computeOverlayPixelSize(), rect = map.getContainer().getBoundingClientRect();
-    const left = (innerWidth - size.w) / 2 - rect.left, top = (innerHeight - size.h) / 2 - rect.top;
-    const corners = [[left,top],[left+size.w,top],[left+size.w,top+size.h],[left,top+size.h]].map(p => map.unproject(p).toArray());
-    return {widthCm: window.MR_CALIBRATION.dimensions.tableWidth, heightCm: window.MR_CALIBRATION.dimensions.tableHeight, width: size.w, height: size.h, left, top, corners,
-      revision: transformRevision, bearing: map.getBearing()};
+    const g=window.MR_TABLE.geometry(), d=window.MR_CALIBRATION.dimensions;
+    return {widthCm:d.tableWidth,heightCm:d.tableHeight,width:g.w,height:g.h,
+      left:g.left-g.mapRect.left,top:g.top-g.mapRect.top,corners:g.corners,
+      revision:transformRevision,bearing:map.getBearing()};
   }
   function coordinate(message) {
-    const t = table();
-    if (message.transform !== t.revision) throw Error('Table alignment changed. Fit the table and try again.');
-    if (!Number.isFinite(message.x) || !Number.isFinite(message.y) || message.x < 0 || message.x > 1 || message.y < 0 || message.y > 1) throw Error('Touch is outside the table');
-    return map.unproject([t.left + message.x * t.width, t.top + message.y * t.height]).toArray();
+    if(message.transform!==transformRevision)throw Error('Table alignment changed. Fit the table and try again.');
+    if(!Number.isFinite(message.x)||!Number.isFinite(message.y)||message.x<0||message.x>1||message.y<0||message.y>1)throw Error('Touch is outside the table');
+    const g=window.MR_TABLE.geometry(),p=MR_TABLE.affine(g.points,1,1).project(message.x,message.y);
+    return map.unproject([p.x-g.mapRect.left,p.y-g.mapRect.top]).toArray();
   }
+
   function control(message) {
     if (message?.type === 'ecom_activate') return setLayer('ecom-energy-btn', true);
     if (!MR.validControl(message)) throw Error('Control is not available remotely');

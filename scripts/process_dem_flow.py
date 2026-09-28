@@ -14,7 +14,7 @@ import numpy as np
 import rasterio
 from rasterio.features import rasterize
 from rasterio.transform import xy as rio_xy
-from rasterio.warp import transform_geom
+from rasterio.warp import transform_geom, transform as transform_coordinates
 
 # Same D8 order as the browser, including deterministic ties.
 NEIGHBORS = [(-1, 1, 128), (0, 1, 1), (1, 1, 2), (1, 0, 4),
@@ -197,6 +197,11 @@ def main():
         dst.set_band_description(1, 'Terrain with building barriers')
         dst.set_band_description(2, 'Building mask (1 = building, 0 = terrain)')
     print(f'Saved {browser_path}: {np.count_nonzero(buildings)} building cells')
+    xs, ys = transform_coordinates(crs, 'EPSG:4326',
+        [bounds.left,bounds.right,bounds.right,bounds.left],
+        [bounds.top,bounds.top,bounds.bottom,bounds.bottom])
+    (args.output / 'stormwater-georeference.json').write_text(json.dumps({
+        'width':dem.shape[1], 'height':dem.shape[0], 'corners':list(zip(xs,ys))}, indent=2))
     if args.browser_only:
         return
 

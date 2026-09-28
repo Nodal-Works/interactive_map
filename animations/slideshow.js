@@ -53,7 +53,7 @@ async function loadSlideshowConfig() {
 // Resize slideshow canvas to match table overlay
 function resizeSlideshowCanvas() {
   if (!slideshowCanvas) return;
-  const s = computeOverlayPixelSize();
+  const s = window.MR_TABLE ? MR_TABLE.place(slideshowCanvas,true) : computeOverlayPixelSize();
   slideshowCanvas.width = s.w;
   slideshowCanvas.height = s.h;
   slideshowCanvas.style.width = s.w + 'px';
@@ -669,3 +669,5 @@ slideshowChannel.addEventListener('message',({data})=>{
   if(data.action==='retry' && isSlideShowActive)displaySlide(currentSlideIndex);
   if(data.action==='request_status')broadcastSlideshowState(isSlideShowActive?slideshowConfig?.slides[currentSlideIndex]:null);
 });
+
+window.addEventListener('mr-table-layout', () => { if(isSlideShowActive){resizeSlideshowCanvas();if(currentMediaElement)drawMediaOnCanvas(currentMediaElement,currentMediaFitMode,currentMediaRotation);} });

@@ -86,7 +86,7 @@ class SunStudy {
     this.timezone = window.APP_CONFIG.area.sunLocation.timezone; // CET = UTC+1 (standard time; DST not modelled)
     
     // Map bearing for alignment
-    this.mapBearing = window.MR_CALIBRATION.current.bearing;
+    this.mapBearing = -90; // Canvas-local north points right; the table transform supplies map rotation.
     
     // Time settings
     // Default to June 21st (Summer Solstice)
@@ -105,7 +105,7 @@ class SunStudy {
     this.offsetX = 0;      // X position offset
     this.offsetZ = 0;      // Z position offset (Y on screen in top-down)
     this.rotationOffset = 0; // Additional rotation in degrees
-    this.scaleMultiplier = 0.89; // Scale multiplier
+    this.scaleMultiplier = 1.0; // Scale multiplier
     
     this.controlPanel = null;
     this.dependenciesLoaded = false;
@@ -148,6 +148,10 @@ class SunStudy {
     }
     
     window.addEventListener('resize', () => this.onResize());
+    window.addEventListener('mr-table-layout',()=>{
+      if(this.isActive){MR_TABLE.place(this.canvas,true);MR_TABLE.place(this.overlayCanvas,true);}
+    });
+    window.map.on('moveend',()=>this.onResize());
   }
 
   handleRemoteControl(data) {
@@ -283,8 +287,7 @@ class SunStudy {
     // 2) Combined shadows (buildings + trees) → shadowTargetCombined
     // The false color shader then samples both to determine shadow source
     
-    const width = window.innerWidth - 120;
-    const height = window.innerHeight;
+    const {w:width,h:height}=MR_TABLE.place(this.canvas,true);
     // Account for pixel ratio to match actual framebuffer size
     const pixelRatio = this.renderer ? this.renderer.getPixelRatio() : window.devicePixelRatio || 1;
     // OPTIMIZATION: Divide by 2. This cuts GPU load by 4x with almost no visual loss for blurred shadows.
@@ -681,8 +684,7 @@ class SunStudy {
   
   resizeOverlay() {
     if (!this.overlayCanvas) return;
-    const w = window.innerWidth - 120;
-    const h = window.innerHeight;
+    const {w,h}=MR_TABLE.place(this.overlayCanvas,true);
     const dpr = window.devicePixelRatio || 1;
     this.overlayCanvas.width = w * dpr;
     this.overlayCanvas.height = h * dpr;
@@ -1009,8 +1011,7 @@ class SunStudy {
 
   
   setupRenderer() {
-    const width = window.innerWidth - 120;
-    const height = window.innerHeight;
+    const {w:width,h:height}=MR_TABLE.place(this.canvas,true);
     
     this.renderer = new THREE.WebGLRenderer({
       canvas: this.canvas,
@@ -1053,8 +1054,7 @@ class SunStudy {
   }
   
   setupCamera() {
-    const width = window.innerWidth - 120;
-    const height = window.innerHeight;
+    const {w:width,h:height}=MR_TABLE.place(this.canvas,true);
     const aspect = width / height;
     
     // Orthographic camera for top-down view
@@ -1129,8 +1129,7 @@ class SunStudy {
   }
   
   setupPostProcessing() {
-    const width = window.innerWidth - 120;
-    const height = window.innerHeight;
+    const {w:width,h:height}=MR_TABLE.place(this.canvas,true);
     
     // Effect composer for post-processing
     this.composer = new EffectComposer(this.renderer);
@@ -1470,7 +1469,7 @@ class SunStudy {
 
         
         // Initial setup
-        this.baseRotation = -Math.PI/2; 
+        this.baseRotation = 0; 
         this.meshBuildings.rotation.y = this.baseRotation;
         
         // Apply initial position offset
@@ -1678,16 +1677,12 @@ class SunStudy {
   fitCameraToModel() {
     if (!this.mesh || !this.modelSize) return;
     
-    const canvasWidth = window.innerWidth - 120;
-    const canvasHeight = window.innerHeight;
-    
-    // Fit model to canvas with padding
-    const padding = 0.8;
-    const maxDim = Math.max(this.modelSize.x, this.modelSize.z);
-    const minCanvasDim = Math.min(canvasWidth, canvasHeight);
-    
-    const scale = ((minCanvasDim * padding) / maxDim) * 2.0;
-    
+    const {w:canvasWidth,h:canvasHeight}=MR_TABLE.place(this.canvas,true);
+    // STL X is east (0.6), Y is north (1.0), Z is height. After Z-up conversion
+    // north is -Z. Fit its actual footprint, without viewport-dependent padding.
+    const maxDim=Math.max(this.modelSize.x,this.modelSize.z);
+    const scale=Math.min(canvasWidth/this.modelSize.z,canvasHeight/this.modelSize.x);
+
     // Apply scale
     this.mesh.scale.set(scale * this.scaleMultiplier, scale * this.scaleMultiplier, scale * this.scaleMultiplier);
     if (this.meshTrees) {
@@ -1718,8 +1713,7 @@ class SunStudy {
   onResize() {
     if (!this.isActive || !this.renderer) return;
     
-    const width = window.innerWidth - 120;
-    const height = window.innerHeight;
+    const {w:width,h:height}=MR_TABLE.place(this.canvas,true);
     const pixelRatio = this.renderer.getPixelRatio();
     
     this.renderer.setSize(width, height);
@@ -1820,7 +1814,9 @@ class SunStudy {
     this.needsRender = true;
     this.overlayDirty = true;
     
-    setTimeout(() => {
+    clearTimeout(this.showTimer);
+    this.showTimer=setTimeout(() => {
+      if(!this.isActive)return;
       this.onResize();
       this.animate();
     }, 50);
@@ -2037,6 +2033,7 @@ class SunStudy {
   // ==================== END MEMORY PROFILING ====================
   
   hide() {
+    clearTimeout(this.showTimer);
     this.canvas.style.display = 'none';
     if (this.overlayCanvas) this.overlayCanvas.style.display = 'none';
     // this.controlPanel.style.display = 'none'; // Panel moved to controller

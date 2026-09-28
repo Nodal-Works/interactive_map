@@ -3,6 +3,7 @@
 
 // Physical sizing uses the selected calibration's dimensions.
 window.computeOverlayPixelSize = function() {
+  if (window.MR_TABLE && window.map) { const g=MR_TABLE.geometry(); return {w:Math.ceil(g.w),h:Math.ceil(g.h)}; }
   const d = window.MR_CALIBRATION.dimensions;
   const px = window.innerWidth / d.screenWidth;
   return {w: Math.round(d.tableWidth * px), h: Math.round(d.tableHeight * px)};
@@ -715,3 +716,5 @@ function broadcastState(activeLayerId) {
         });
     }
 });
+
+window.MR_TABLE?.install();

@@ -109,6 +109,11 @@ class StormwaterFlowAnimation {
       this.demWidth = image.getWidth();
       this.demHeight = image.getHeight();
       
+      const geoResponse=await fetch(window.mrAsset('media/stormwater-georeference.json'));
+      if(!geoResponse.ok)throw Error('DEM georeference missing; regenerate the browser DEM');
+      this.georeference=await geoResponse.json();
+      if(this.georeference.width!==this.demWidth || this.georeference.height!==this.demHeight)throw Error('DEM georeference dimensions do not match');
+
       // Convert typed array to 2D array for easier processing
       this.dem = [];
       this.buildingMask = [];
@@ -567,6 +572,7 @@ class StormwaterFlowAnimation {
     
     // Add resize listener
     window.addEventListener('resize', this.handleResize);
+    this.map.on('moveend',this.handleResize);
     
     // Start animation loop
     this.animate();
@@ -701,6 +707,7 @@ class StormwaterFlowAnimation {
     }
     
     window.removeEventListener('resize', this.handleResize);
+    this.map.off('moveend',this.handleResize);
     
     this.ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
     this.particles = [];
@@ -717,14 +724,15 @@ class StormwaterFlowAnimation {
   }
   
   handleResize() {
-    const s = typeof computeOverlayPixelSize === 'function' 
-      ? computeOverlayPixelSize() 
-      : { w: window.innerWidth - 120, h: window.innerHeight };
-    
-    this.canvas.width = s.w;
-    this.canvas.height = s.h;
-    this.canvas.style.width = s.w + 'px';
-    this.canvas.style.height = s.h + 'px';
+    const s = window.MR_TABLE ? MR_TABLE.place(this.canvas) : computeOverlayPixelSize();
+    this.canvas.width = s.w; this.canvas.height = s.h;
+    this.canvas.style.width=s.w+'px';this.canvas.style.height=s.h+'px';
+    if(this.georeference && window.MR_TABLE){
+      const rect=this.map.getContainer().getBoundingClientRect(),canvasRect=this.canvas.getBoundingClientRect();
+      const points=this.georeference.corners.map(c=>{const p=this.map.project(c);return {x:p.x+rect.left-canvasRect.left,y:p.y+rect.top-canvasRect.top};});
+      this.demTransform=MR_TABLE.affine(points,this.demWidth,this.demHeight);
+    }
+
     this.scaleFlowToScreen();
     this.particles = [];
   }
@@ -744,8 +752,7 @@ class StormwaterFlowAnimation {
     // inside a building and discard rainfall near walls or in narrow passages.
     const rowPosition = row + 0.5 + (Math.random() - 0.5) * 0.9;
     const colPosition = col + 0.5 + (Math.random() - 0.5) * 0.9;
-    const x = (1 - rowPosition / this.demHeight) * this.canvas.width;
-    const y = colPosition / this.demWidth * this.canvas.height;
+    const {x,y}=this.cellToScreen(rowPosition,colPosition);
     const accumulation = this.flowAcc[row][col];
 
     return {
@@ -769,8 +776,13 @@ class StormwaterFlowAnimation {
     };
   }
   
-  // Inverse of generateFlowData's existing rotated campus layout.
+  cellToScreen(row,col) {
+    if(this.demTransform)return this.demTransform.project(col,row);
+    return {x:(1-row/this.demHeight)*this.canvas.width,y:col/this.demWidth*this.canvas.height};
+  }
+
   screenToCell(x, y) {
+    if(this.demTransform){const p=this.demTransform.inverse(x,y);return {row:Math.floor(p.y),col:Math.floor(p.x)};}
     return { row: Math.floor((1 - x / this.canvas.width) * this.demHeight),
       col: Math.floor(y / this.canvas.height * this.demWidth) };
   }
@@ -787,8 +799,7 @@ class StormwaterFlowAnimation {
     // A straight segment whose endpoints share one cell cannot cross a cell boundary.
     if(from.row===to.row && from.col===to.col)return this.isBlockedCell(from);
     const steps = Math.max(1, Math.ceil(Math.max(
-      Math.abs(nextX - x) * this.demHeight / this.canvas.width,
-      Math.abs(nextY - y) * this.demWidth / this.canvas.height) * 2));
+      Math.abs(to.row-from.row),Math.abs(to.col-from.col)) * 2));
     let previous = from;
     for (let step = 0; step <= steps; step++) {
       const t = step / steps;
@@ -815,8 +826,8 @@ class StormwaterFlowAnimation {
     const offsets = {128: [-1, 1], 1: [0, 1], 2: [1, 1], 4: [1, 0],
       8: [1, -1], 16: [0, -1], 32: [-1, -1], 64: [-1, 0]};
     const [dr, dc] = offsets[this.flowDir[cell.row][cell.col]];
-    const dx = -dr * this.canvas.width / this.demHeight;
-    const dy = dc * this.canvas.height / this.demWidth;
+    const origin=this.cellToScreen(cell.row,cell.col),target=this.cellToScreen(cell.row+dr,cell.col+dc);
+    const dx=target.x-origin.x,dy=target.y-origin.y;
     const mag = Math.hypot(dx, dy);
     const accumulation = this.flowAcc[cell.row][cell.col];
 

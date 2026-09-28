@@ -1380,7 +1380,7 @@ function stopSpawning() {
 
 // Resize canvas
 function resizeStreetLifeCanvas() {
-  const s = computeOverlayPixelSize();
+  const s = window.MR_TABLE ? MR_TABLE.place(streetLifeCanvas) : computeOverlayPixelSize();
   streetLifeCanvas.width = s.w;
   streetLifeCanvas.height = s.h;
   streetLifeCanvas.style.width = s.w + 'px';
@@ -1654,6 +1654,7 @@ if (document.readyState === 'loading') {
   setTimeout(initStreetLife, 1000);
 }
 
+window.addEventListener('mr-table-layout', () => { if(isStreetLifeAnimating){ resizeStreetLifeCanvas(); staticLayerDirty=true; } });
 // Handle window resize
 window.addEventListener('resize', () => {
   if (isStreetLifeAnimating) {

@@ -124,7 +124,7 @@
       const treeTask = settings.trees ? loadJSON(window.mrAsset('media/trees.geojson')) : Promise.resolve({ features: [] });
       const [buildings, trees] = await Promise.all([buildingTask, treeTask]);
       if (!active || generation !== id) return;
-      const size = computeOverlayPixelSize();
+      const size = window.MR_TABLE ? MR_TABLE.place(canvas) : computeOverlayPixelSize();
       canvas.width = size.w; canvas.height = size.h;
       canvas.style.width = size.w + 'px'; canvas.style.height = size.h + 'px';
       const grid = CFD.domain(size.w, size.h, settings.resolution, settings.angle);

@@ -15,6 +15,7 @@ let ROWS = Math.floor(TABLE_HEIGHT_CM / TILE_SIZE_CM); // 3
 
 let animationFrame = null;
 let isAnimating = false;
+let gridStopTimer=null;
 
 function resizeGridCanvas() {
   TABLE_WIDTH_CM = window.MR_CALIBRATION.dimensions.tableWidth;
@@ -22,7 +23,7 @@ function resizeGridCanvas() {
   COLS = Math.floor(TABLE_WIDTH_CM / TILE_SIZE_CM);
   ROWS = Math.floor(TABLE_HEIGHT_CM / TILE_SIZE_CM);
   // Use the same calculation as table overlay
-  const s = computeOverlayPixelSize();
+  const s = window.MR_TABLE ? MR_TABLE.place(gridCanvas,true) : computeOverlayPixelSize();
   gridCanvas.width = s.w;
   gridCanvas.height = s.h;
   gridCanvas.style.width = s.w + 'px';
@@ -137,12 +138,14 @@ function startGridAnimation() {
   animateGrid();
   
   // Auto-stop after 10 seconds
-  setTimeout(() => {
+  clearTimeout(gridStopTimer);
+  gridStopTimer=setTimeout(() => {
     if (isAnimating) stopGridAnimation();
   }, 10000);
 }
 
 function stopGridAnimation() {
+  clearTimeout(gridStopTimer);gridStopTimer=null;
   isAnimating = false;
   gridCanvas.classList.remove('active');
   gridChannel.postMessage({ type: 'animation_state', animationId: 'grid-animation-btn', isActive: false });
@@ -160,3 +163,5 @@ gridBtn.addEventListener('click', startGridAnimation);
 window.addEventListener('resize', () => {
   if (isAnimating) resizeGridCanvas();
 });
+
+window.addEventListener('mr-table-layout', () => { if(isAnimating)resizeGridCanvas(); });
