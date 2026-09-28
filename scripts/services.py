@@ -1,6 +1,5 @@
 """One foreground supervisor for MR Studio. No network services bind publicly."""
 import argparse
-import fcntl
 import json
 import os
 from pathlib import Path
@@ -8,9 +7,15 @@ import signal
 import socket
 import subprocess
 import sys
+import tempfile
 import time
 import urllib.request
 import webbrowser
+
+if os.name == 'nt':
+    import msvcrt
+else:
+    import fcntl
 
 ROOT = Path(__file__).resolve().parents[1]
 RUNTIME = ROOT / '.runtime'
@@ -45,6 +50,81 @@ def occupied(port):
         return sock.connect_ex(('127.0.0.1', port)) == 0
 
 
+def lock_supervisor(lock):
+    if os.name == 'nt':
+        lock.seek(0)
+        if not lock.read(1):
+            lock.seek(0)
+            lock.write('\0')
+            lock.flush()
+        lock.seek(0)
+        try:
+            msvcrt.locking(lock.fileno(), msvcrt.LK_NBLCK, 1)
+        except OSError:
+            return False
+        return True
+    try:
+        fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+    except BlockingIOError:
+        return False
+    return True
+
+
+def environment_python(directory):
+    executable = 'python.exe' if os.name == 'nt' else 'python'
+    environment = '.venv-windows-312' if os.name == 'nt' and (directory / '.venv').is_file() else '.venv'
+    return directory / environment / ('Scripts' if os.name == 'nt' else 'bin') / executable
+
+
+def ensure_environment(directory, requirements, imports):
+    python = environment_python(directory)
+    if not python.exists():
+        subprocess.run([sys.executable, '-m', 'venv', str(python.parent.parent)], check=True)
+    check = subprocess.run([str(python), '-c', imports], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    if check.returncode:
+        subprocess.run([str(python), '-m', 'pip', 'install', '-r', str(requirements)], check=True)
+    return python
+
+
+def service_command(name, config):
+    if name == 'host':
+        return [sys.executable, str(ROOT / 'host_server.py')], ROOT
+    if name == 'ecom':
+        directory = ROOT / 'Dashboard' / 'backend'
+        python = ensure_environment(directory, directory / 'requirements.txt',
+                                   'import fastapi, uvicorn, pydantic, pandas, numpy, networkx')
+        return [str(python), '-m', 'uvicorn', 'app.main:app', '--host', '127.0.0.1', '--port', str(config[name])], directory
+    if name == 'coolpaths':
+        directory = ROOT / 'coolpaths'
+        python = ensure_environment(directory, directory / 'requirements.txt',
+                                   'import fastapi, uvicorn, rasterio, osmnx, pvlib, ee')
+        return [str(python), '-m', 'uvicorn', 'coolpaths.api:app', '--host', '127.0.0.1', '--port', str(config[name])], ROOT
+    sam_directory = (ROOT / config['sam_directory']).resolve()
+    python = environment_python(sam_directory)
+    if not python.exists() or not (sam_directory / 'segment_streetview_server.py').exists():
+        raise FileNotFoundError(f'SAM service checkout or virtual environment is missing: {sam_directory}')
+    return [str(python), '-m', 'uvicorn', 'segment_streetview_server:app', '--host', '127.0.0.1', '--port', str(config[name])], sam_directory
+
+
+def write_status(statuses):
+    payload = json.dumps(statuses)
+    with tempfile.NamedTemporaryFile(mode='w', encoding='utf-8', dir=RUNTIME,
+                                     prefix='status.', suffix='.tmp', delete=False) as temp:
+        temp.write(payload)
+        temp_path = Path(temp.name)
+    try:
+        for attempt in range(10):
+            try:
+                temp_path.replace(RUNTIME / 'status.json')
+                return
+            except PermissionError:
+                if attempt == 9:
+                    raise
+                time.sleep(0.1)
+    finally:
+        temp_path.unlink(missing_ok=True)
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--config')
@@ -57,10 +137,8 @@ def main():
             print(f'{name:10} :{config[name]} ' + ('ready' if probe(name, config[name]) else 'not running / not ready'))
         return
     RUNTIME.mkdir(exist_ok=True)
-    lock = (RUNTIME / 'supervisor.lock').open('w')
-    try:
-        fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
-    except BlockingIOError:
+    lock = (RUNTIME / 'supervisor.lock').open('a+')
+    if not lock_supervisor(lock):
         sys.exit('MR Studio services are already supervised. Use --check for status.')
     conflicts = [f'{name} port {config[name]}' for name in ('host', 'ecom', 'coolpaths', 'sam')
                  if occupied(config[name]) and not probe(name, config[name])]
@@ -70,10 +148,7 @@ def main():
     config_file.write_text(json.dumps(config))
     env = {**os.environ, 'MR_SERVICES_CONFIG': str(config_file), 'PYTHONUNBUFFERED': '1',
            'MR_HOST_PORT': str(config['host'])}
-    commands = {'host': [sys.executable, str(ROOT / 'host_server.py')],
-                'ecom': ['bash', str(ROOT / 'launch_ecom_backend.sh')],
-                'coolpaths': ['bash', str(ROOT / 'launch_coolpaths_server.sh')],
-                'sam': ['bash', str(ROOT / 'launch_sam_server.sh')]}
+    commands = ('host', 'ecom', 'coolpaths', 'sam')
     children, handles, statuses = {}, [], {}
     running = True
 
@@ -84,7 +159,7 @@ def main():
     signal.signal(signal.SIGINT, stop)
     signal.signal(signal.SIGTERM, stop)
     try:
-        for name, command in commands.items():
+        for name in commands:
             if probe(name, config[name]):
                 statuses[name] = 'reused'
                 print(f'{name}: reusing healthy service on {config[name]}', flush=True)
@@ -93,23 +168,29 @@ def main():
             handles.append(log)
             child_env = {**env, 'MR_SERVICE_PORT': str(config[name]),
                          'MR_SAM_DIRECTORY': str((ROOT / config['sam_directory']).resolve())}
-            children[name] = subprocess.Popen(command, cwd=ROOT, env=child_env, stdout=log, stderr=subprocess.STDOUT, start_new_session=True)
+            try:
+                command, cwd = service_command(name, config)
+            except FileNotFoundError as error:
+                statuses[name] = 'unavailable'
+                print(f'{name:10} :{config[name]} unavailable — {error}', flush=True)
+                continue
+            children[name] = subprocess.Popen(command, cwd=cwd, env=child_env, stdout=log, stderr=subprocess.STDOUT,
+                                              **({'start_new_session': True} if os.name != 'nt' else {}))
             statuses[name] = 'starting'
         opened = False
         began = time.monotonic()
         while running:
             for name in commands:
                 child = children.get(name)
-                new = ('failed' if child and child.poll() is not None else
-                       ('ready' if probe(name, config[name]) else ('starting' if time.monotonic() - began < 180 else 'unavailable')))
+                new = ('unavailable' if statuses[name] == 'unavailable' else
+                       ('failed' if child and child.poll() is not None else
+                        ('ready' if probe(name, config[name]) else ('starting' if time.monotonic() - began < 180 else 'unavailable'))))
                 if statuses[name] == 'reused' and new == 'ready':
                     new = 'reused'
                 if statuses[name] != new:
                     statuses[name] = new
                     print(f'{name:10} :{config[name]} {new}' + (f' — see .runtime/{name}.log' if new in ('failed', 'unavailable') else ''), flush=True)
-            temp = RUNTIME / 'status.tmp'
-            temp.write_text(json.dumps({name: {'port': config[name], 'status': value} for name, value in statuses.items()}))
-            temp.replace(RUNTIME / 'status.json')
+            write_status({name: {'port': config[name], 'status': value} for name, value in statuses.items()})
             if statuses['host'] == 'failed':
                 raise RuntimeError('Host failed; see .runtime/host.log')
             if not opened and statuses['host'] in ('ready', 'reused'):
@@ -122,13 +203,19 @@ def main():
     finally:
         for child in children.values():
             if child.poll() is None:
-                os.killpg(child.pid, signal.SIGTERM)
+                if os.name == 'nt':
+                    child.terminate()
+                else:
+                    os.killpg(child.pid, signal.SIGTERM)
         deadline = time.monotonic() + 8
         for child in children.values():
             try:
                 child.wait(timeout=max(.1, deadline - time.monotonic()))
             except subprocess.TimeoutExpired:
-                os.killpg(child.pid, signal.SIGKILL)
+                if os.name == 'nt':
+                    child.kill()
+                else:
+                    os.killpg(child.pid, signal.SIGKILL)
         for handle in handles:
             handle.close()
         (RUNTIME / 'status.json').unlink(missing_ok=True)
