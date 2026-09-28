@@ -13,6 +13,7 @@ class BirdSoundsLayer {
     this.frameId=null;
     this.invalidate=()=>{if(this.isActive && this.frameId===null)this.frameId=(window.MR_FRAMES ? window.MR_FRAMES.request('birds',this.animate) : requestAnimationFrame(this.animate));};
     this.audioContext = null;
+    this.buffers=new Map(); this.loadingSound=false; this.generation=0;
     
     // Sensor locations (around the center of the map)
     this.sensors = window.APP_CONFIG.area.birdSensors.map(sensor => ({...sensor}));
@@ -88,17 +89,18 @@ class BirdSoundsLayer {
           console.log('AudioContext resumed by user gesture');
         });
       } else if (!this.audioContext) {
-        this.audioContext = new (window.AudioContext || window.webkitAudioContext)();
+        this.audioContext = (window.MR_AUDIO_CONTEXT ||= new (window.AudioContext || window.webkitAudioContext)());
       }
       // Remove listeners once unlocked
       if (this.audioContext && this.audioContext.state === 'running') {
-        document.removeEventListener('click', unlockAudio);
+        document.removeEventListener('click', unlockAudio, true);
         document.removeEventListener('touchstart', unlockAudio);
         document.removeEventListener('keydown', unlockAudio);
       }
     };
 
-    document.addEventListener('click', unlockAudio);
+    window.addEventListener('mr-audio-unlock',unlockAudio);
+    document.addEventListener('click', unlockAudio, true);
     document.addEventListener('touchstart', unlockAudio);
     document.addEventListener('keydown', unlockAudio);
   }
@@ -116,6 +118,11 @@ class BirdSoundsLayer {
             sound.audio.volume = vol;
         }
     });
+  }
+
+  projectSensor(sensor) {
+    const p=this.map.project([sensor.lng,sensor.lat]),rect=this.map.getContainer().getBoundingClientRect();
+    return {x:p.x+rect.left,y:p.y+rect.top};
   }
 
   resize() {
@@ -147,7 +154,7 @@ class BirdSoundsLayer {
 
   initAudioContext() {
     if (!this.audioContext) {
-      this.audioContext = new (window.AudioContext || window.webkitAudioContext)();
+      this.audioContext = (window.MR_AUDIO_CONTEXT ||= new (window.AudioContext || window.webkitAudioContext)());
     }
     if (this.audioContext.state === 'suspended') {
       this.audioContext.resume().catch(e => console.warn('AudioContext resume failed (waiting for user gesture):', e));
@@ -167,9 +174,12 @@ class BirdSoundsLayer {
   }
 
   stopAll() {
-    this.activeSounds.forEach(sound => {
+    this.generation++; this.loadingSound=false;
+    clearTimeout(this.nextPlayTimeout);this.nextPlayTimeout=null;
+    this.activeSounds.slice().forEach(sound => {
       try {
-        sound.audio.pause();
+        sound.source.onended=null; sound.source?.stop?.();
+        sound.audio?.pause();
         sound.source?.disconnect();sound.gainNode?.disconnect();sound.analyser?.disconnect?.();
         window.MR_AUDIO?.release(sound.audio);
       } catch (e) {
@@ -183,6 +193,7 @@ class BirdSoundsLayer {
   scheduleNextBird() {
     if (!this.isActive) return;
 
+    clearTimeout(this.nextPlayTimeout);
     // Random delay between 2 and 8 seconds
     const delay = 2000 + Math.random() * 6000;
     
@@ -192,84 +203,32 @@ class BirdSoundsLayer {
     }, delay);
   }
 
-  playRandomBird() {
-    if (!this.isActive || this.activeSounds.length>=4) return;
-
-    // Find sensors that are not currently playing a sound
-    const activeSensorIds = this.activeSounds.map(s => s.sensor.id);
-    const freeSensors = this.sensors.filter(s => !activeSensorIds.includes(s.id));
-    
-    // If all sensors are busy, don't add more noise (or could pick random if desired)
-    if (freeSensors.length === 0) return;
-
-    // Find birds that are not currently playing (try to vary species)
-    const activeBirdNames = this.activeSounds.map(s => s.bird.name);
-    const freeBirds = this.birds.filter(b => !activeBirdNames.includes(b.name));
-    
-    // Pick a sensor and bird
-    // Prefer free sensors and unique birds, but fallback to random if needed
-    const sensor = freeSensors[Math.floor(Math.random() * freeSensors.length)];
-    const bird = freeBirds.length > 0 
-      ? freeBirds[Math.floor(Math.random() * freeBirds.length)]
-      : this.birds[Math.floor(Math.random() * this.birds.length)];
-
-    // Create audio element
-    const audio = new Audio(bird.file);
-    // audio.crossOrigin = "anonymous"; // Removed to avoid potential CORS issues with local files
-    
-    // Create Web Audio nodes
-    let source, analyser, gainNode;
+  async playRandomBird() {
+    if(!this.isActive || this.loadingSound || this.activeSounds.length>=3)return;
+    this.initAudioContext();
+    if(this.audioContext.state!=='running'){this.showInteractionPrompt();return;}
+    const sensors=this.sensors.filter(s=>!this.activeSounds.some(a=>a.sensor.id===s.id));
+    const birds=this.birds.filter(b=>!this.activeSounds.some(a=>a.bird.name===b.name));
+    if(!sensors.length || !birds.length)return;
+    const sensor=sensors[Math.floor(Math.random()*sensors.length)],bird=birds[Math.floor(Math.random()*birds.length)];
+    const generation=this.generation;
+    this.loadingSound=true;
     try {
-        source = this.audioContext.createMediaElementSource(audio);
-        gainNode = this.audioContext.createGain();
-        analyser = this.audioContext.createAnalyser();
-        
-        gainNode.gain.value = this.masterVolume;
-        analyser.fftSize = 256;
-        
-        source.connect(gainNode);
-        gainNode.connect(analyser);
-        analyser.connect(this.audioContext.destination);
-    } catch (e) {
-        console.warn('Web Audio API setup failed, falling back to simple playback:', e);
-        // Fallback: just play audio without analysis
-        audio.volume = this.masterVolume;
-        analyser = {
-            frequencyBinCount: 128,
-            getByteFrequencyData: (array) => { array.fill(0); } // No visual data
-        };
-    }
-
-    const soundObj = {
-      bird: bird,
-      sensor: sensor,
-      audio: audio,
-      analyser: analyser,
-      source: source,
-      gainNode: gainNode,
-      dataArray: new Uint8Array(analyser.frequencyBinCount),
-      startTime: Date.now(),
-      lastWaveTime: 0,
-      waves: [] // Store wave history for visual effect
-    };
-
-    this.activeSounds.push(soundObj);
-    this.broadcastActiveBirds();
-
-    // Cleanup when audio ends
-    audio.onended = () => {
-      this.removeSound(soundObj);
-    };
-
-    audio.play().catch(e => {
-        console.warn('Audio play failed:', e);
-        // If play fails (e.g. no user interaction yet), remove the sound object so we don't have a ghost visualization
-        this.removeSound(soundObj);
-        
-        if (e.name === 'NotAllowedError') {
-            this.showInteractionPrompt();
-        }
-    });
+      if(!this.buffers.has(bird.file)){
+        this.buffers.set(bird.file,fetch(bird.file).then(r=>{if(!r.ok)throw Error('HTTP '+r.status);return r.arrayBuffer();})
+          .then(bytes=>this.audioContext.decodeAudioData(bytes)).catch(error=>{this.buffers.delete(bird.file);throw error;}));
+      }
+      const buffer=await this.buffers.get(bird.file);
+      if(!this.isActive || generation!==this.generation)return;
+      const source=this.audioContext.createBufferSource(),gainNode=this.audioContext.createGain(),analyser=this.audioContext.createAnalyser();
+      source.buffer=buffer;gainNode.gain.value=this.masterVolume;analyser.fftSize=256;
+      source.connect(gainNode);gainNode.connect(analyser);analyser.connect(this.audioContext.destination);
+      const sound={bird,sensor,source,gainNode,analyser,dataArray:new Uint8Array(analyser.frequencyBinCount),startTime:Date.now(),lastWaveTime:0,waves:[]};
+      source.onended=()=>this.removeSound(sound);
+      this.activeSounds.push(sound);source.start();this.broadcastActiveBirds();this.invalidate();
+    }catch(error){
+      if(generation===this.generation){console.warn('Bird audio failed:',error);window.showToast?.('Bird sound could not load: '+bird.name);}
+    }finally{if(generation===this.generation)this.loadingSound=false;}
   }
 
   showInteractionPrompt() {
@@ -310,6 +269,7 @@ class BirdSoundsLayer {
           }
           overlay.remove();
           // Try to play a bird immediately to confirm
+          this.playRandomBird();
           this.scheduleNextBird();
       };
       
@@ -321,7 +281,7 @@ class BirdSoundsLayer {
     if (index > -1) {
       this.activeSounds.splice(index, 1);
       try {
-        soundObj.audio.pause();soundObj.source?.disconnect();soundObj.gainNode?.disconnect();soundObj.analyser?.disconnect?.();
+        soundObj.source.onended=null;soundObj.source?.stop?.();soundObj.audio?.pause();soundObj.source?.disconnect();soundObj.gainNode?.disconnect();soundObj.analyser?.disconnect?.();
         window.MR_AUDIO?.release(soundObj.audio);
       } catch (e) {}
       this.broadcastActiveBirds();
@@ -340,7 +300,7 @@ class BirdSoundsLayer {
 
     // Draw sensors
     this.sensors.forEach(sensor => {
-      const pos = this.map.project([sensor.lng, sensor.lat]);
+      const pos = this.projectSensor(sensor);
       
       // Only draw if within canvas bounds (optional optimization, but good for debugging visibility)
       if (pos.x >= 0 && pos.x <= this.canvas.width && pos.y >= 0 && pos.y <= this.canvas.height) {
@@ -356,7 +316,7 @@ class BirdSoundsLayer {
     // Draw active sounds
     const wallNow = Date.now();
     this.activeSounds.forEach(sound => {
-      const pos = this.map.project([sound.sensor.lng, sound.sensor.lat]);
+      const pos = this.projectSensor(sound.sensor);
       
       // Get audio data
       sound.analyser.getByteFrequencyData(sound.dataArray);

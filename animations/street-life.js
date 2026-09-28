@@ -1387,6 +1387,7 @@ function resizeStreetLifeCanvas() {
   streetLifeCanvas.style.height = s.h + 'px';
 }
 
+window.addEventListener('mr-audio-unlock',()=>{if(isStreetLifeAnimating)fadeInCitySound();});
 // Fade in city ambient sound
 function fadeInCitySound() {
   // Clear any existing fade

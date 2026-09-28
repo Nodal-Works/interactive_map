@@ -15,9 +15,10 @@ document.addEventListener('DOMContentLoaded', () => {
   if (overlay) {
     overlay.addEventListener('click', () => {
       // Resume any existing audio contexts or create a dummy one to unlock
-      const AudioContext = window.AudioContext || window.webkitAudioContext;
-      const ctx = new AudioContext();
-      ctx.resume().then(() => {
+      window.MR_AUDIO_CONTEXT ||= new (window.AudioContext || window.webkitAudioContext)();
+      window.MR_AUDIO_CONTEXT.resume().catch(error=>console.warn('Audio unlock failed',error));
+      window.dispatchEvent(new Event('mr-audio-unlock'));
+      Promise.resolve().then(() => {
         console.log('AudioContext unlocked');
         overlay.style.opacity = '0';
         setTimeout(() => overlay.remove(), 500);
@@ -79,6 +80,7 @@ const EPC_CLASS_COLORS = {
   F: '#dd702d',
   G: '#bd3c2f'
 };
+let epcPopup = null;
 let epcModeActive = false;
 let epcSelectedFeature = null;
 
@@ -93,6 +95,7 @@ function setEpcMode(active) {
     if (map.getLayer(layerId)) map.setLayoutProperty(layerId, 'visibility', active ? 'visible' : 'none');
   });
   if (!active) {
+    epcPopup?.remove(); epcPopup=null; map.getCanvas().style.cursor='';
     epcSelectedFeature = null;
     const selectedSource = map.getSource('epc-selected');
     if (selectedSource) selectedSource.setData({ type: 'FeatureCollection', features: [] });
@@ -129,12 +132,13 @@ async function loadEpcBuildings() {
     map.on('mouseenter', 'epc-buildings-fill', () => { map.getCanvas().style.cursor = 'pointer'; });
     map.on('mouseleave', 'epc-buildings-fill', () => { map.getCanvas().style.cursor = ''; });
     map.on('click', 'epc-buildings-fill', event => {
-      if (window.MR_CANVAS_EDITING) return;
+      if (window.MR_CANVAS_EDITING || !epcModeActive) return;
       const feature = event.features?.[0];
       if (!feature) return;
       epcSelectedFeature = feature;
       map.getSource('epc-selected').setData({ type: 'FeatureCollection', features: [feature] });
-      new maplibregl.Popup({ closeButton: false })
+      epcPopup?.remove();
+      epcPopup = new maplibregl.Popup({ closeButton: false })
         .setLngLat(event.lngLat)
         .setHTML(`<strong>EPC ${feature.properties?.energy_class || 'No data'}</strong>`)
         .addTo(map);
