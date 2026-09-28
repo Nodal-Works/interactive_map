@@ -1323,13 +1323,18 @@ function isOnScreen(pos, w, h) {
 }
 
 // Animation loop
-function animateStreetLife() {
+let streetLifeAccumulator = 0, streetLifeGeneration = 0;
+function animateStreetLife(now = performance.now()) {
   if (!isStreetLifeAnimating) return;
   
-  updateStreetLifeEntities();
+  streetLifeAccumulator += window.MR_FRAMES ? window.MR_FRAMES.delta('streetlife', now) : 1/60;
+  while (streetLifeAccumulator >= 1/60 - 1e-9) {
+    updateStreetLifeEntities();
+    streetLifeAccumulator -= 1/60;
+  }
   drawStreetLife();
   
-  streetLifeAnimationFrame = requestAnimationFrame(animateStreetLife);
+  streetLifeAnimationFrame = (window.MR_FRAMES ? window.MR_FRAMES.request.bind(window.MR_FRAMES, 'streetlife') : requestAnimationFrame)(animateStreetLife);
 }
 
 // Spawn timer
@@ -1450,7 +1455,9 @@ function fadeOutCitySound() {
 function startStreetLifeAnimation() {
   if (isStreetLifeAnimating) return;
   
+  const revision = ++streetLifeGeneration;
   loadStreetLifeData().then(() => {
+    if (revision !== streetLifeGeneration) return;
     if (isAnyVisualizationActive() || isStreetLifeAnimating) return;
     if (streetPaths.length === 0) {
       console.warn('Street Life: No paths available for animation');
@@ -1497,6 +1504,9 @@ function startStreetLifeAnimation() {
 
 // Stop animation
 function stopStreetLifeAnimation() {
+  streetLifeGeneration++;
+  streetLifeAccumulator = 0;
+  window.MR_FRAMES?.times.delete('streetlife');
   isStreetLifeAnimating = false;
   window.dispatchEvent(new Event('mr-street-life'));
   streetLifeCanvas.style.display = 'none';
@@ -1506,7 +1516,7 @@ function stopStreetLifeAnimation() {
   fadeOutCitySound();
   
   if (streetLifeAnimationFrame) {
-    cancelAnimationFrame(streetLifeAnimationFrame);
+    (window.MR_FRAMES ? window.MR_FRAMES.cancel.bind(window.MR_FRAMES) : cancelAnimationFrame)(streetLifeAnimationFrame);
     streetLifeAnimationFrame = null;
   }
   

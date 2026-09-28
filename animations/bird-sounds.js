@@ -10,6 +10,8 @@ class BirdSoundsLayer {
     this.canvas = document.getElementById('bird-sounds-canvas');
     this.ctx = this.canvas.getContext('2d');
     this.isActive = false;
+    this.frameId=null;
+    this.invalidate=()=>{if(this.isActive && this.frameId===null)this.frameId=(window.MR_FRAMES ? window.MR_FRAMES.request('birds',this.animate) : requestAnimationFrame(this.animate));};
     this.audioContext = null;
     
     // Sensor locations (around the center of the map)
@@ -68,14 +70,15 @@ class BirdSoundsLayer {
     window.addEventListener('resize', this.resize);
     
     // Map events to redraw
-    map.on('move', this.animate);
-    map.on('moveend', this.animate);
-    map.on('zoom', this.animate);
+    map.on('move', this.invalidate);
+    map.on('moveend', this.invalidate);
+    map.on('zoom', this.invalidate);
 
     // Button handler
     const btn = document.getElementById('bird-sounds-btn');
     if (btn) {
       btn.addEventListener('click', () => this.toggle());
+      window.MR_LAYERS?.register('bird-sounds-btn',{getEnabled:()=>this.isActive,enable:()=>{if(!this.isActive)this.toggle();},disable:()=>{if(this.isActive)this.toggle();}});
     }
 
     // Unlock AudioContext on first user interaction
@@ -135,6 +138,8 @@ class BirdSoundsLayer {
       this.animate();
     } else {
       this.stopAll();
+      if(this.frameId!==null){if(window.MR_FRAMES)window.MR_FRAMES.cancel(this.frameId);else cancelAnimationFrame(this.frameId);this.frameId=null;}
+      window.MR_FRAMES?.times.delete('birds');
       this.canvas.style.display = 'none';
       if (this.nextPlayTimeout) clearTimeout(this.nextPlayTimeout);
     }
@@ -165,7 +170,8 @@ class BirdSoundsLayer {
     this.activeSounds.forEach(sound => {
       try {
         sound.audio.pause();
-        sound.source.disconnect();
+        sound.source?.disconnect();sound.gainNode?.disconnect();sound.analyser?.disconnect?.();
+        window.MR_AUDIO?.release(sound.audio);
       } catch (e) {
         console.warn('Error stopping sound', e);
       }
@@ -187,7 +193,7 @@ class BirdSoundsLayer {
   }
 
   playRandomBird() {
-    if (!this.isActive) return;
+    if (!this.isActive || this.activeSounds.length>=4) return;
 
     // Find sensors that are not currently playing a sound
     const activeSensorIds = this.activeSounds.map(s => s.sensor.id);
@@ -315,14 +321,17 @@ class BirdSoundsLayer {
     if (index > -1) {
       this.activeSounds.splice(index, 1);
       try {
-        soundObj.source.disconnect();
+        soundObj.audio.pause();soundObj.source?.disconnect();soundObj.gainNode?.disconnect();soundObj.analyser?.disconnect?.();
+        window.MR_AUDIO?.release(soundObj.audio);
       } catch (e) {}
       this.broadcastActiveBirds();
     }
   }
 
-  animate() {
+  animate(now=performance.now()) {
+    this.frameId=null;
     if (!this.isActive) return;
+    const step=window.MR_FRAMES ? window.MR_FRAMES.delta('birds',now)*60 : 1;
 
     this.ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
     
@@ -345,7 +354,7 @@ class BirdSoundsLayer {
     });
 
     // Draw active sounds
-    const now = Date.now();
+    const wallNow = Date.now();
     this.activeSounds.forEach(sound => {
       const pos = this.map.project([sound.sensor.lng, sound.sensor.lat]);
       
@@ -418,7 +427,7 @@ class BirdSoundsLayer {
       // Use a dynamic threshold based on recent average to detect beats/peaks
       // Simple peak detection: if current > threshold and time elapsed > min_interval
       // We lower the interval to allow faster beats if the song is fast
-      if (average > 25 && now - sound.lastWaveTime > 1000) {
+      if (average > 25 && wallNow - sound.lastWaveTime > 1000) {
         // Check if this is a local peak (simple version: just check if it's loud enough)
         // For better beat detection we'd need history, but this is a visualizer
         
@@ -427,16 +436,16 @@ class BirdSoundsLayer {
           opacity: 0.4, // Start more transparent
           intensity: intensity
         });
-        sound.lastWaveTime = now;
+        sound.lastWaveTime = wallNow;
       }
 
       // Update and draw waves
       for (let i = sound.waves.length - 1; i >= 0; i--) {
         const wave = sound.waves[i];
-        wave.r += 0.5 + wave.intensity * 1.0; // Faster expansion
-        
+        wave.r += (0.5 + wave.intensity * 1.0) * step; // Faster expansion
+
         // Fade out slower to let them travel farther
-        wave.opacity -= 0.001; 
+        wave.opacity -= 0.001 * step;
 
         if (wave.opacity <= 0) {
           sound.waves.splice(i, 1);
@@ -456,7 +465,7 @@ class BirdSoundsLayer {
     // Reset composite operation
     this.ctx.globalCompositeOperation = 'source-over';
 
-    requestAnimationFrame(this.animate);
+    this.invalidate();
   }
 }
 

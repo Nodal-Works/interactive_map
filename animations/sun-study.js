@@ -1755,13 +1755,14 @@ class SunStudy {
     this._compassSize = 0; // Invalidate compass cache on resize
   }
   
-  animate() {
+  animate(now = performance.now()) {
     if (!this.isActive) return;
     
-    this.animationId = requestAnimationFrame(() => this.animate());
+    this.animationId = (window.MR_FRAMES ? window.MR_FRAMES.request.bind(window.MR_FRAMES, 'sun') : requestAnimationFrame)(time => this.animate(time));
     
     if (this.isAnimating) {
-      this.timeOfDay += this.animationSpeed * 0.016;
+      const dt = window.MR_FRAMES ? window.MR_FRAMES.delta('sun', now) : .016;
+      this.timeOfDay += this.animationSpeed * dt;
       if (this.timeOfDay >= 24) this.timeOfDay = 0;
       this.updateTimeDisplay();
       this.updateSunPosition();
@@ -2042,7 +2043,7 @@ class SunStudy {
     this.isAnimating = false;
     
     if (this.animationId) {
-      cancelAnimationFrame(this.animationId);
+      (window.MR_FRAMES ? window.MR_FRAMES.cancel.bind(window.MR_FRAMES) : cancelAnimationFrame)(this.animationId);
       this.animationId = null;
     }
     
