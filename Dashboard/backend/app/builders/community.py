@@ -3,6 +3,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from typing import Optional
+from pathlib import Path
 
 from app import toolkit  # noqa: F401  - puts ECOMToolkit on sys.path
 from app.builders.battery import build_battery
@@ -38,6 +39,10 @@ def build_community(
     spec: CommunitySpec,
     nordpool: Optional[NordPoolClient] = None,
 ) -> BuiltCommunity:
+    missing=[str(b.demand.csv_path) for b in spec.buildings
+             if b.demand.csv_path and not Path(b.demand.csv_path).is_file()]
+    if missing:
+        raise CommunityBuildError("Missing demand CSVs: " + "; ".join(missing))
     node_kinds: dict[str, str] = {}
     positions: dict[str, tuple[float, float]] = {}
 

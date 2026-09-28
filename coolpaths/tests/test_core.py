@@ -117,6 +117,9 @@ class ApiTests(unittest.TestCase):
                 (folder / "manifest.json").write_text(json.dumps({"study_date": "2026-07-15", "hours": {"14": {}}}))
                 (folder / "graph.json").write_text(json.dumps(sample_graph()))
                 (folder / "edge_pet_14.json").write_text(json.dumps({"ab": 40}))
+                self.assertFalse(api.status()["ready"], 'A running API with incomplete products is not ready')
+                for name in ['buildings.gpkg','dem.tif','ee_canopy.tif','ee_ndvi.tif','ee_water.tif','albedo.tif','svf.tif','pet_14.png'] + [f'{n}_14.tif' for n in ['pet','mrt','shade','direct','diffuse']]:
+                    (folder/name).touch()
                 self.assertTrue(api.status()["ready"])
                 with self.assertRaises(api.HTTPException) as caught:
                     api.route(api.RouteRequest(origin=[11, 57], destination=[11.001, 57.001], hour=14))

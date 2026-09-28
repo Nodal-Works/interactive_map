@@ -9,6 +9,7 @@ fast enough to drive sliders directly. The LEC-Opt MILP is a different matter -
 from __future__ import annotations
 
 import json
+import os
 import re
 import shutil
 from contextlib import asynccontextmanager
@@ -94,19 +95,37 @@ class Health(BaseModel):
     status: str
     pvgis_cached_orientations: int
     nordpool_cached_days: int
+    data_ready: bool = False
+    missing_demand_files: list[str] = []
 
 
 @app.get("/api/health", response_model=Health)
 def health() -> Health:
     return Health(
         status="ok",
+        data_ready=not missing_campus_demand(),
+        missing_demand_files=missing_campus_demand(),
         pvgis_cached_orientations=len(list(pvgis.cache_dir.glob("*.json"))),
         nordpool_cached_days=len(list(nordpool.cache_dir.glob("*.json"))),
     )
 
 
 SCENARIO_DIR = Path(__file__).resolve().parents[1] / "data"
-DEMAND_DIR = (PROJECT_ROOT / "media" / "ecom" / "energy_data").resolve()
+DEMAND_DIR = Path(os.environ.get("ECOM_DEMAND_DIR", PROJECT_ROOT / "media" / "ecom" / "energy_data")).expanduser().resolve()
+
+def missing_campus_demand() -> list[str]:
+    path=SCENARIO_DIR / "campus_community.json"
+    definition=json.loads(path.read_text(encoding="utf-8"))
+    return [str(b["demand"]["csv_path"]) for b in definition.get("buildings",[])
+            if b.get("demand",{}).get("csv_path") and not demand_path(b["demand"]["csv_path"]).is_file()]
+
+def demand_path(value: str) -> Path:
+    portable=value.replace("\\", "/")
+    prefix="media/ecom/energy_data/"
+    path=(DEMAND_DIR / portable[len(prefix):] if portable.startswith(prefix) else PROJECT_ROOT / portable).resolve()
+    if not path.is_relative_to(DEMAND_DIR):
+        raise HTTPException(status_code=400,detail=f"invalid demand path: {value}")
+    return path
 
 
 def local_demand_paths(definition: dict) -> dict:
@@ -116,10 +135,14 @@ def local_demand_paths(definition: dict) -> dict:
         csv_path = demand.get("csv_path")
         if not csv_path:
             continue
-        path = (PROJECT_ROOT / csv_path).resolve()
+        path = demand_path(csv_path)
         if not path.is_relative_to(DEMAND_DIR):
             raise HTTPException(status_code=500, detail=f"invalid demand path: {csv_path}")
         demand["csv_path"] = str(path)
+    missing=[b["demand"]["csv_path"] for b in definition.get("buildings",[])
+             if b.get("demand",{}).get("csv_path") and not Path(b["demand"]["csv_path"]).is_file()]
+    if missing:
+        raise HTTPException(status_code=503,detail="Campus demand data missing. Set ECOM_DEMAND_DIR or restore these CSVs: " + "; ".join(missing))
     return definition
 
 

@@ -13,6 +13,16 @@ spec.loader.exec_module(services)
 
 
 class SupervisorTests(unittest.TestCase):
+    def test_dataset_readiness_is_distinct_from_liveness(self):
+        response=Mock()
+        response.__enter__=Mock(return_value=response)
+        response.__exit__=Mock(return_value=False)
+        with patch.object(services.urllib.request,'urlopen',return_value=response), patch.object(services.json,'load',return_value={'ready':False,'message':'Missing study'}):
+            self.assertTrue(services.probe('coolpaths',8001))
+            self.assertEqual(services.service_health('coolpaths',8001),{'live':True,'ready':False,'message':'Missing study'})
+        with patch.object(services.urllib.request,'urlopen',side_effect=OSError('offline')):
+            self.assertFalse(services.probe('coolpaths',8001))
+
     def test_windows_environments(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
@@ -39,7 +49,7 @@ class SupervisorTests(unittest.TestCase):
     def test_environment_setup_and_reuse(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
-            python = root / '.venv/bin/python'
+            python = services.environment_python(root)
             with patch.object(services.subprocess, 'run', return_value=SimpleNamespace(returncode=1)) as run:
                 services.ensure_environment(root, root / 'requirements.txt', 'import fastapi')
                 self.assertEqual(run.call_count, 3)

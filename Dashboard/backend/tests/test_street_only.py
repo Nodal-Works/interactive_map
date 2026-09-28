@@ -39,7 +39,9 @@ class StreetOnlyLayerTests(unittest.TestCase):
     def test_api_reports_routing_error_to_controller(self):
         from app import main
 
-        spec = CommunitySpec(**main.get_scenario("campus_community"))
+        # Routing behavior is independent of the private campus CSV installation.
+        with patch.object(main, "local_demand_paths", side_effect=lambda definition: definition):
+            spec = CommunitySpec(**main.get_scenario("campus_community"))
         with patch.object(main, "run_dispatch", return_value={}), \
              patch.object(main, "build_layer", side_effect=ValueError("No street route")):
             with self.assertRaises(main.HTTPException) as caught:

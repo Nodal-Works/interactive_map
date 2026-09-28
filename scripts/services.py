@@ -1,6 +1,8 @@
 """One foreground supervisor for MR Studio. No network services bind publicly."""
 import argparse
 import json
+import logging.handlers
+import threading
 import os
 from pathlib import Path
 import signal
@@ -32,17 +34,49 @@ def configuration(path=None):
     return config
 
 
-def probe(name, port):
+def service_health(name, port):
     paths = {'host': '/api/health', 'ecom': '/api/health', 'coolpaths': '/api/coolpaths/status', 'sam': '/'}
     try:
         with urllib.request.urlopen(f'http://127.0.0.1:{port}{paths[name]}', timeout=1) as response:
             data = json.load(response)
-        return {'host': data.get('service') == 'mr-studio',
+        live = {'host': data.get('service') == 'mr-studio',
                 'ecom': 'pvgis_cached_orientations' in data,
                 'coolpaths': 'ready' in data,
                 'sam': 'Street View Segmentation' in data.get('message', '')}[name]
+        ready = live and (data.get('ready', False) if name == 'coolpaths' else
+                         data.get('data_ready', True) if name == 'ecom' else True)
+        return {'live': live, 'ready': ready, 'message': data.get('message') or
+                ('Campus demand CSVs are missing' if live and not ready and name == 'ecom' else None)}
     except (OSError, ValueError):
-        return False
+        return {'live': False, 'ready': False, 'message': None}
+
+
+def probe(name, port):
+    # Occupied-port reuse must test process identity, not dataset readiness.
+    return service_health(name, port)['live']
+
+
+def pipe_log(pipe, handler):
+    try:
+        for line in iter(pipe.readline, ''):
+            handler.emit(logging.LogRecord('service', logging.INFO, '', 0, line.rstrip(), (), None))
+    finally:
+        pipe.close()
+        handler.close()
+
+
+def launch_service(name, command, cwd, env):
+    handler=logging.handlers.RotatingFileHandler(RUNTIME / f'{name}.log', maxBytes=5*1024*1024,
+                                                backupCount=2, encoding='utf-8')
+    try:
+        child=subprocess.Popen(command,cwd=cwd,env=env,stdout=subprocess.PIPE,stderr=subprocess.STDOUT,
+                               text=True,encoding='utf-8',errors='replace',
+                               **({'start_new_session':True} if os.name!='nt' else {}))
+    except Exception:
+        handler.close()
+        raise
+    threading.Thread(target=pipe_log,args=(child.stdout,handler),daemon=True).start()
+    return child
 
 
 def occupied(port):
@@ -150,6 +184,7 @@ def main():
            'MR_HOST_PORT': str(config['host'])}
     commands = ('host', 'ecom', 'coolpaths', 'sam')
     children, handles, statuses = {}, [], {}
+    launches,retries,retry_at={},{},{}
     running = True
 
     def stop(*_):
@@ -164,8 +199,6 @@ def main():
                 statuses[name] = 'reused'
                 print(f'{name}: reusing healthy service on {config[name]}', flush=True)
                 continue
-            log = (RUNTIME / f'{name}.log').open('a')
-            handles.append(log)
             child_env = {**env, 'MR_SERVICE_PORT': str(config[name]),
                          'MR_SAM_DIRECTORY': str((ROOT / config['sam_directory']).resolve())}
             try:
@@ -174,24 +207,31 @@ def main():
                 statuses[name] = 'unavailable'
                 print(f'{name:10} :{config[name]} unavailable — {error}', flush=True)
                 continue
-            children[name] = subprocess.Popen(command, cwd=cwd, env=child_env, stdout=log, stderr=subprocess.STDOUT,
-                                              **({'start_new_session': True} if os.name != 'nt' else {}))
+            launches[name]=(command,cwd,child_env)
+            children[name]=launch_service(name,*launches[name])
             statuses[name] = 'starting'
         opened = False
         began = time.monotonic()
         while running:
             for name in commands:
                 child = children.get(name)
-                new = ('unavailable' if statuses[name] == 'unavailable' else
-                       ('failed' if child and child.poll() is not None else
-                        ('ready' if probe(name, config[name]) else ('starting' if time.monotonic() - began < 180 else 'unavailable'))))
+                if child and child.poll() is not None and retries.get(name,0)<3:
+                    retry_at.setdefault(name,time.monotonic()+2**(retries.get(name,0)+1))
+                    if time.monotonic()>=retry_at[name]:
+                        children[name]=launch_service(name,*launches[name]);child=children[name]
+                        retries[name]=retries.get(name,0)+1;retry_at.pop(name,None)
+                health=service_health(name,config[name])
+                new=('failed' if child and child.poll() is not None else
+                     'data-missing' if health['live'] and not health['ready'] else
+                     'ready' if health['ready'] else
+                     'starting' if time.monotonic()-began<180 else 'unavailable')
                 if statuses[name] == 'reused' and new == 'ready':
                     new = 'reused'
                 if statuses[name] != new:
                     statuses[name] = new
                     print(f'{name:10} :{config[name]} {new}' + (f' — see .runtime/{name}.log' if new in ('failed', 'unavailable') else ''), flush=True)
             write_status({name: {'port': config[name], 'status': value} for name, value in statuses.items()})
-            if statuses['host'] == 'failed':
+            if statuses['host'] == 'failed' and retries.get('host',0)>=3:
                 raise RuntimeError('Host failed; see .runtime/host.log')
             if not opened and statuses['host'] in ('ready', 'reused'):
                 opened = True

@@ -50,8 +50,22 @@ def current_study() -> tuple[dict, dict]:
         raise HTTPException(503, "CoolPaths study is not prepared; run python -m coolpaths.prepare")
     mtime = manifest_path.stat().st_mtime_ns
     if _cache["manifest_mtime"] != mtime:
-        _cache["manifest"] = json.loads(manifest_path.read_text())
-        _cache["graph"] = json.loads((folder / "graph.json").read_text())
+        try:
+            manifest=json.loads(manifest_path.read_text(encoding="utf-8"))
+            graph=json.loads((folder / "graph.json").read_text(encoding="utf-8"))
+        except (OSError,ValueError) as error:
+            raise HTTPException(503,"Prepared CoolPaths manifest or graph is unreadable") from error
+        required={"buildings.gpkg","dem.tif","ee_canopy.tif","ee_ndvi.tif","ee_water.tif","albedo.tif","svf.tif"}
+        if not manifest.get("hours"):
+            raise HTTPException(503,"Prepared CoolPaths study has no hours")
+        for hour in manifest["hours"]:
+            h=int(hour)
+            required.update({f"pet_{h:02d}.png",f"edge_pet_{h:02d}.json"})
+            required.update(f"{name}_{h:02d}.tif" for name in ("pet","mrt","shade","direct","diffuse"))
+        missing=sorted(name for name in required if not (folder/name).is_file())
+        if missing:raise HTTPException(503,"Prepared CoolPaths files missing: "+", ".join(missing))
+        _cache["manifest"] = manifest
+        _cache["graph"] = graph
         _cache["hours"] = {}
         _cache["manifest_mtime"] = mtime
     return _cache["manifest"], _cache["graph"]
