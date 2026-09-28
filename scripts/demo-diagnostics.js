@@ -4,7 +4,7 @@
   panel.style.cssText='position:fixed;right:65px;top:8px;z-index:12000;background:#101827;color:white;padding:12px;width:360px;font:13px monospace;max-height:45vh;overflow:auto';
   panel.innerHTML='<summary>Demo diagnostics</summary><button id="measure-demo">Measure 30 seconds</button> <button id="soak-demo">Run four-hour soak</button> <button id="stop-soak-demo">Stop soak</button><pre id="demo-metrics">Ready</pre>';
   document.body.append(panel);
-  const output=panel.querySelector('pre');let sampling=false,soaking=false,hiddenFrames=0,longTasks=0,soakTimer,sampleTimer;
+  const output=panel.querySelector('pre');let sampling=false,soaking=false,hiddenFrames=0,longTasks=0,soakTimer,sampleTimer,soakRun=null;
   try{new PerformanceObserver(list=>{if(sampling)longTasks+=list.getEntries().length;}).observe({type:'longtask',buffered:false});}catch{}
   function graphics(){
     const canvas=document.querySelector('.maplibregl-canvas');
@@ -21,7 +21,7 @@
       if(finished)return;finished=true;clearTimeout(timer);
       sampling=false;frames.sort((a,b)=>a-b);
       const mean=frames.reduce((a,b)=>a+b,0)/frames.length;
-      const report={label,graphics:graphics(),date:new Date().toISOString(),viewport:[innerWidth,innerHeight],screen:[screen.width,screen.height],devicePixelRatio,
+      const report={label,soakRun:soaking?soakRun:null,graphics:graphics(),date:new Date().toISOString(),viewport:[innerWidth,innerHeight],screen:[screen.width,screen.height],devicePixelRatio,
         samples:frames.length,hiddenFrames,meanMs:mean,fps:1000/mean,p95Ms:frames[Math.floor(frames.length*.95)],longTasks,
         nodes:document.getElementsByTagName('*').length,canvases:document.querySelectorAll('canvas').length,
         activeButtons:Array.from(document.querySelectorAll('.icon-btn.active,.icon-btn.toggled-on')).map(b=>b.id),
@@ -47,13 +47,15 @@
   panel.querySelector('#stop-soak-demo').onclick=()=>{soaking=false;clearTimeout(soakTimer);clearTimeout(sampleTimer);disableLast();output.textContent='Soak stopped by operator';};
   panel.querySelector('#soak-demo').onclick=()=>{
     if(soaking||sampling)return;soaking=true;
+    soakRun=new Date().toISOString();
+    fetch('/__benchmark',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({label:'soak started',soakRun,date:soakRun})}).catch(()=>{});
     const start=Date.now(),cases=[['bird-sounds-btn'],['cfd-simulation-btn'],['stormwater-btn'],['sun-study-btn'],['slideshow-btn'],['grid-animation-btn'],['cfd-simulation-btn','stormwater-btn'],[]];let step=0;
     function cycle(){
       if(!soaking)return;
       disableLast();
       if(Date.now()-start>=4*60*60*1000){
         soaking=false;output.textContent='Four-hour soak complete';
-        fetch('/__benchmark',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({label:'soak complete',elapsedMs:Date.now()-start,cycles:step,date:new Date().toISOString()})}).catch(()=>{});
+        fetch('/__benchmark',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({label:'soak complete',soakRun,elapsedMs:Date.now()-start,cycles:step,date:new Date().toISOString()})}).catch(()=>{});
         return;
       }
       last=cases[step++%cases.length];for(const id of last)document.getElementById(id)?.click();

@@ -2,7 +2,7 @@
 
 ## Delivery state
 
-Code repairs are implemented and regression-tested. This is **not yet a fully validated working installation**: ECOM demand data and the prepared CoolPaths campus study have not been recovered, and the four-hour soak is running (started 28 September at approximately 21:02 UTC; due 29 September at approximately 01:02 UTC). No synthetic demand or substitute thermal study has been introduced.
+Code repairs are implemented and regression-tested. This is **not yet a fully validated working installation**: ECOM demand data and the prepared CoolPaths campus study have not been recovered, and the four-hour soak is running (restarted 28 September at 22:07:20 UTC; due 29 September at approximately 02:07 UTC). No synthetic demand or substitute thermal study has been introduced.
 
 Checkpoints: `d2e49d2` geographic alignment; `6d13fb6` audio/EPC; `4a91890` dataset readiness and supervisor; `11b8fb2` presentation, Canvas and invitations. `a83ca97` adds the lifecycle/performance validation fixes, including bird initialization after map load, the calibration preview, Sun Study camera orientation, audio cleanup, stale runoff frames and bounded session history.
 
@@ -84,3 +84,7 @@ The Windows Taildrop receiver is waiting in `.runtime/transfers`; no files have 
 ## Endurance follow-up
 
 The in-chat follow-up `finish-main-demo-validation` checks hourly, inspects completed samples and any received Mac archive, and will finish validation and the authorized push. Main commits have not yet been pushed. Keep the PC and Codex running. The benchmark browser has a temporary 1920×1080 override for the ongoing test; reset it when the soak is finished. Do not equate elapsed time with a successful soak: require the completion record, valid visible samples, layer-state checks and resource trends.
+
+### First follow-up: interrupted test and restart
+
+At 22:05 UTC, only the first three cycle samples existed and the browser had no open tabs. The temporary test tab had been cleaned up when the previous turn ended; this is not a successful endurance run or evidence of a map crash. Restarted at `2026-09-28T22:07:20.859Z` with the tab explicitly retained for subsequent turns. The diagnostics now write start/completion records and attach a run identifier to every soak sample, so the interrupted run cannot be combined with the replacement. Each follow-up must mark the existing tab for handoff again. Expected completion is around 04:07 Stockholm time on 29 September. No Mac data has arrived; push remains pending.
