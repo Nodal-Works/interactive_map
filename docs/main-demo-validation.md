@@ -88,3 +88,9 @@ The in-chat follow-up `finish-main-demo-validation` checks hourly, inspects comp
 ### First follow-up: interrupted test and restart
 
 At 22:05 UTC, only the first three cycle samples existed and the browser had no open tabs. The temporary test tab had been cleaned up when the previous turn ended; this is not a successful endurance run or evidence of a map crash. Restarted at `2026-09-28T22:07:20.859Z` with the tab explicitly retained for subsequent turns. The diagnostics now write start/completion records and attach a run identifier to every soak sample, so the interrupted run cannot be combined with the replacement. Each follow-up must mark the existing tab for handoff again. Expected completion is around 04:07 Stockholm time on 29 September. No Mac data has arrived; push remains pending.
+
+### Second follow-up: background samples are invalid
+
+At 23:05 UTC the retained tab was still alive and had reached cycle 49, with no reported registered-layer errors or new Mac files. However, all 43 completed samples inspected at the start of this check had hidden frames and zero rendered-frame samples. The browser had also reverted to 1280×720 between turns. These samples provide no valid full-resolution performance evidence and cannot satisfy the requested four-hour visible-display soak. DOM/canvas counts stayed at 318/12 in the inspected tail; this alone is not proof of leak-free operation.
+
+The existing run was left intact, and browser visibility was explicitly enabled. The live DOM then reported visible and 1920×1080. Future checks must inspect each sample's visibility, viewport and run identifier; do not assume these settings survive a turn. If the remaining samples stay invalid, report the browser test limitation rather than claiming a completed endurance pass or repeatedly restarting without evidence that the cause is resolved.
