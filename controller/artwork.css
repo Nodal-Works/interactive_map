@@ -16,6 +16,7 @@
 .artwork-kicker { font-size:10px; letter-spacing:.23em; color:#9a907d; }
 #artwork-dashboard h2 { font-weight:400; font-size:clamp(22px,3vw,34px); letter-spacing:-.035em; margin:0; border:0; padding:0; }
 #artwork-dashboard-status { margin:0 0 4px; color:#928d82; font-size:12px; min-height:19px; }
+.artwork-stage { display:contents; }
 .artwork-view-wrap { width:min(100%,1000px); height:clamp(200px,calc(100dvh - 330px),640px); display:flex; align-items:center; justify-content:center; }
 #artwork-dashboard-view { width:100%; height:100%; background:#000; border-radius:2px; }
 .lens-active .artwork-view-wrap { width:min(720px,calc(100dvh - 395px),100%); height:auto; aspect-ratio:1; border-radius:50%; border:1px solid #494436; position:relative;box-shadow:0 0 22px #e1bd7126,0 0 75px #b69a5120,inset 0 0 24px #e9d9a810; }
@@ -61,11 +62,12 @@ body.artwork-presenting #laser-pointer { display:none !important; }
   body:not([data-layer]) .artwork-kicker { display:none; }
   body:not([data-layer]) #artwork-dashboard h2 { grid-row:1; grid-column:1/-1; font-size:clamp(28px,2.2vw,42px); }
   body:not([data-layer]) #artwork-dashboard-status { grid-row:2; grid-column:1/-1; margin:0; }
-  body:not([data-layer]) .artwork-view-wrap { grid-row:3; grid-column:1/-1; width:100%; height:100%; min-height:0; }
+  body:not([data-layer]) .artwork-stage { grid-row:3; grid-column:1/-1; width:100%; height:100%; min-height:0; container-type:size; display:flex; align-items:center; justify-content:center; }
+  body:not([data-layer]) .artwork-view-wrap { width:100%; height:100%; min-height:0; }
   body:not([data-layer]) .artwork-chapters { grid-row:4; grid-column:1/-1; margin:0; }
   body:not([data-layer]) .artwork-dashboard-controls { grid-row:5; grid-column:2; }
   body:not([data-layer]) .artwork-secondary-controls { grid-row:5; grid-column:3; justify-self:start; }
   body:not([data-layer]) .artwork-zoom { grid-row:6; grid-column:1/-1; }
   body:not([data-layer]) .artwork-credit { grid-row:7; grid-column:1/-1; margin:0; }
-  body:not([data-layer]) .lens-active .artwork-view-wrap { width:min(720px,calc(100dvh - 280px),100%); height:auto; max-height:100%; aspect-ratio:1; }
+  body:not([data-layer]) .lens-active .artwork-view-wrap { width:min(2160px,calc(100cqw - 20px),calc(100cqh - 20px)); height:auto; max-height:none; aspect-ratio:1; }
 }

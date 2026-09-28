@@ -34,6 +34,7 @@ function tick(ms){now+=ms;const callbacks=[...frames.values()];frames.clear();ca
  api.control('show_all');tick(2100);assert.equal(api.getState().chapter,11);
  api.control('set_lens',true);api.control('pin_lens',true);api.control('set_zoom',6);assert.equal(api.getState().lens.pinned,true);assert.equal(api.getState().lens.zoom,6);
  api.control('set_lens_position',{x:.1,y:.2});assert.equal(api.getState().lens.x,.5,'Pinned lens rejects remote movement');api.control('pin_lens',false);api.control('set_lens_position',{x:.1,y:.2});assert.equal(api.getState().lens.x,.1);api.control('set_lens_position',{x:-1,y:0});assert.equal(api.getState().lens.x,.1);
+ const previousSpan=api.getState().lens.span,previousDiameter=api.getState().lens.diameter;api.control('set_lens_diameter',1200);assert.equal(api.getState().lens.diameter,1200);assert.ok(Math.abs(api.getState().lens.span/previousSpan-1200/previousDiameter)<1e-8,'Table sampling ring follows the enlarged dashboard lens');api.control('set_lens_diameter',2161);assert.equal(api.getState().lens.diameter,1200);
  api.control('set_zoom',7);assert.equal(api.getState().lens.zoom,6);
  api.control('restart');assert.equal(api.getState().chapter,0);assert.ok(Core.frame(api.getState(),now).fields.every(f=>!f.opacity));
  api.stop();assert.equal(frames.size,0);assert.equal(api.getState().lens.enabled,false);

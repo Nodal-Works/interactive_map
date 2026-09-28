@@ -72,14 +72,14 @@
     schedule();measure();
   }
   async function loadAssets(){load=new AbortController();const own=load;try{const result=await C.Scene.load(own.signal);if(load!==own)return;scene=result;schedule();}catch(e){if(e.name!=='AbortError'&&visible){document.getElementById('artwork-dashboard-status').textContent='Dashboard artwork could not load. Retry to reconnect.';const b=document.querySelector('[data-artwork-action="retry"]');b.hidden=false;b.disabled=false;}}finally{if(load===own)load=null;}}
-  function measure(){if(clientMode||!visible||!state?.lens.enabled)return;const canvas=document.getElementById('artwork-dashboard-view'),diameter=Math.round(canvas.getBoundingClientRect().width);if(diameter>=100&&diameter<=720&&Math.abs(diameter-measuredDiameter)>2){measuredDiameter=diameter;send('set_lens_diameter',diameter);}}
+  function measure(){if(clientMode||!visible||!state?.lens.enabled)return;const canvas=document.getElementById('artwork-dashboard-view'),diameter=Math.round(canvas.getBoundingClientRect().width);if(diameter>=100&&diameter<=2160&&Math.abs(diameter-measuredDiameter)>2){measuredDiameter=diameter;send('set_lens_diameter',diameter);}}
   function show(){if(visible&&document.getElementById('artwork-dashboard')){refresh();send('request_state');return;}if(visible)hide();visible=true;measuredDiameter=0;
     document.getElementById('main-panel').classList.add('artwork-mode');
     document.getElementById('dashboard-title').textContent='Artwork';
     document.getElementById('dashboard-content').innerHTML=`<div id="artwork-dashboard">
       <div class="artwork-kicker">LINDHOLMEN · VISIBILITY STUDIES</div><h2 id="artwork-dashboard-title">Art in Lindholmen</h2>
       <p id="artwork-dashboard-status" aria-live="polite">Connecting to the map…</p>
-      <div class="artwork-view-wrap"><canvas id="artwork-dashboard-view" aria-label="Vishvi Rajakaruna’s artwork, enlarged when the magnifier is active"></canvas></div>
+      <div class="artwork-stage"><div class="artwork-view-wrap"><canvas id="artwork-dashboard-view" aria-label="Vishvi Rajakaruna’s artwork, enlarged when the magnifier is active"></canvas></div></div>
       <div class="artwork-navigator-wrap" hidden><canvas id="artwork-navigator" tabindex="0" role="img" aria-label="Position the magnifier on the drawing" aria-describedby="artwork-navigator-hint"></canvas><p id="artwork-navigator-hint">Drag to explore · arrow keys move the lens</p></div>
       <div class="artwork-chapters" aria-label="Artwork chapters">${Array.from({length:C.count(state)},(_,i)=>`<span title="Artwork ${i+1}"></span>`).join('')}</div>
       <div class="artwork-dashboard-controls"><button data-artwork-action="previous">Back</button><button data-artwork-action="next">Next <span aria-hidden="true">→</span></button><button data-artwork-action="set_lens" aria-pressed="false"><span class="material-icons" aria-hidden="true">search</span> Magnifier</button><button data-artwork-action="pin_lens" hidden>Pin</button></div>

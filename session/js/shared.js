@@ -1,6 +1,6 @@
 (function(root) {
   'use strict';
-  const RELEASE = '20260928-lindholmen-artwork-7';
+  const RELEASE = '20260928-lindholmen-artwork-8';
   const LAYERS = [
     ['cfd-simulation-btn', 'Wind · CFD', 'Environment', '🌬', 'obstacle'],
     ['stormwater-btn', 'Stormwater', 'Environment', '💧'],
@@ -45,7 +45,7 @@
       if (message.action === 'set_lens_position') return !!v && typeof v === 'object' && !Array.isArray(v) && Object.keys(v).length === 2 && ['x','y'].every(k => typeof v[k] === 'number' && Number.isFinite(v[k]) && v[k] >= 0 && v[k] <= 1);
       if (['set_lens','pin_lens'].includes(message.action)) return typeof v === 'boolean';
       if (message.action === 'set_zoom') return typeof v === 'number' && Number.isFinite(v) && v >= 2 && v <= 6;
-      if (message.action === 'set_lens_diameter') return typeof v === 'number' && Number.isFinite(v) && v >= 100 && v <= 720;
+      if (message.action === 'set_lens_diameter') return typeof v === 'number' && Number.isFinite(v) && v >= 100 && v <= 2160;
       return v === undefined;
     }
     if (v !== undefined && !['number','string','boolean'].includes(typeof v)) return false;

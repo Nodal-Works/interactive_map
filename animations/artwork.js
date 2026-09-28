@@ -67,7 +67,7 @@
     if(action==='set_lens'){state.lens.enabled=!!value;state.lens.pinned=false;state.lens.changedAt=Date.now();}
     else if(action==='set_lens_position'){if(!state.lens.enabled||state.lens.pinned||!value||!Number.isFinite(value.x)||!Number.isFinite(value.y)||value.x<0||value.x>1||value.y<0||value.y>1)return;state.lens.x=value.x;state.lens.y=value.y;}
     else if(action==='set_zoom'){if(!Number.isFinite(value)||value<2||value>6)return;state.lens.zoom=value;project();}
-    else if(action==='set_lens_diameter'){if(!Number.isFinite(value)||value<100||value>720)return;state.lens.diameter=value;project();}
+    else if(action==='set_lens_diameter'){if(!Number.isFinite(value)||value<100||value>2160)return;state.lens.diameter=value;project();}
     else if(action==='pin_lens'){state.lens.pinned=!!value;}
     else {
       if(state.loading||state.error||state.transitioning&&['next','previous'].includes(action))return;

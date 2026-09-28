@@ -145,7 +145,7 @@
       this.texture=gl.createTexture();gl.bindTexture(gl.TEXTURE_2D,this.texture);gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_MIN_FILTER,gl.LINEAR);gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_MAG_FILTER,gl.LINEAR);gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_WRAP_S,gl.CLAMP_TO_EDGE);gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_WRAP_T,gl.CLAMP_TO_EDGE);
     }
     draw(scene,state,now){
-      const css=Math.max(1,this.canvas.getBoundingClientRect().width),size=Math.min(1440,Math.round(css*(devicePixelRatio||1))),lens=state.lens;
+      const css=Math.max(1,this.canvas.getBoundingClientRect().width),size=Math.min(2048,Math.round(css*(devicePixelRatio||1))),lens=state.lens;
       if(this.canvas.width!==size||this.canvas.height!==size||this.source.width!==size){this.canvas.width=this.canvas.height=this.source.width=this.source.height=this.linesCanvas.width=this.linesCanvas.height=this.lightCanvas.width=this.lightCanvas.height=size;this.cacheKey='';}
       const span=lens.span||600,scale=size/span,cx=lens.x*W,cy=lens.y*H,ctx=this.source.getContext('2d');
       ctx.setTransform(1,0,0,1,0,0);ctx.fillStyle='#000';ctx.fillRect(0,0,size,size);ctx.setTransform(scale,0,0,scale,size/2-cx*scale,size/2-cy*scale);
