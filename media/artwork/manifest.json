@@ -1,19 +1,22 @@
 {
-  "version": 1,
+  "version": 2,
   "credit": "Artwork and visibility studies by Vishvi Rajakaruna",
-  "source": "artworks with  white lines - test 1 .ai",
-  "sourceSha256": "5a264f2e73af3e8468790fd532ed89226697a660170e0ba2987623783ae134db",
-  "width": 3370,
-  "height": 2384,
+  "source": "artworks file.ai",
+  "sourceSha256": "499ee4c206a61ed5c5c438102209b02997cc3c25e9a195444ea6c0eb9874b662",
+  "width": 3370.0,
+  "height": 2384.0,
   "base": "base.svg",
   "stacking": [
-    5,
-    6,
-    2,
-    1,
-    3,
+    10,
+    9,
+    8,
     7,
-    4
+    6,
+    5,
+    4,
+    3,
+    2,
+    1
   ],
   "items": [
     {
@@ -21,15 +24,15 @@
       "label": "Artwork 1",
       "field": "field-1.svg",
       "sculpture": "sculpture-1.svg",
-      "fieldBounds": [
-        830.37,
-        2003.18,
-        994.26,
-        2168.42
-      ],
       "anchor": [
-        903.8935387,
-        2132.4927618
+        978.0899877,
+        2138.04474965
+      ],
+      "fieldBounds": [
+        834.979,
+        2030.625,
+        1026.92,
+        2168.535
       ]
     },
     {
@@ -37,15 +40,15 @@
       "label": "Artwork 2",
       "field": "field-2.svg",
       "sculpture": "sculpture-2.svg",
+      "anchor": [
+        984.59999085,
+        1990.1300139
+      ],
       "fieldBounds": [
         858.24,
         1917.38,
         1194.9,
         2168.45
-      ],
-      "anchor": [
-        987.6300201500001,
-        1991.7200103
       ]
     },
     {
@@ -53,15 +56,15 @@
       "label": "Artwork 3",
       "field": "field-3.svg",
       "sculpture": "sculpture-3.svg",
+      "anchor": [
+        1270.72603395,
+        1987.84971135
+      ],
       "fieldBounds": [
         1066.65,
         1479.716,
         1772.61,
         2168.536
-      ],
-      "anchor": [
-        1268.0478799999999,
-        2015.3300013
       ]
     },
     {
@@ -69,15 +72,15 @@
       "label": "Artwork 4",
       "field": "field-4.svg",
       "sculpture": "sculpture-4.svg",
+      "anchor": [
+        1205.58009195,
+        1753.30999215
+      ],
       "fieldBounds": [
         1101.45,
         769.01,
         1689.69,
         2168.424
-      ],
-      "anchor": [
-        1220.59705295,
-        1735.339957
       ]
     },
     {
@@ -85,15 +88,15 @@
       "label": "Artwork 5",
       "field": "field-5.svg",
       "sculpture": "sculpture-5.svg",
+      "anchor": [
+        1755.4198563,
+        1457.50996865
+      ],
       "fieldBounds": [
         1420.32,
         773.06,
         2154.24,
         2041.76
-      ],
-      "anchor": [
-        1765.7098953,
-        1457.61507115
       ]
     },
     {
@@ -101,15 +104,15 @@
       "label": "Artwork 6",
       "field": "field-6.svg",
       "sculpture": "sculpture-6.svg",
+      "anchor": [
+        986.37000785,
+        1714.66932185
+      ],
       "fieldBounds": [
         924.48,
         1659.08,
         1032.66,
         1752.8
-      ],
-      "anchor": [
-        986.37000785,
-        1714.66932185
       ]
     },
     {
@@ -117,18 +120,67 @@
       "label": "Artwork 7",
       "field": "field-7.svg",
       "sculpture": "sculpture-7.svg",
+      "anchor": [
+        1756.14000195,
+        948.9200225500001
+      ],
       "fieldBounds": [
         1599.48,
         840.6500000000001,
         1972.89,
         1185.38
-      ],
+      ]
+    },
+    {
+      "id": 8,
+      "label": "Artwork 8",
+      "field": "field-8.svg",
+      "sculpture": "sculpture-8.svg",
       "anchor": [
-        1783.5298945499999,
-        979.40000295
+        1248.63002725,
+        1347.1099192
+      ],
+      "fieldBounds": [
+        122.492,
+        324.6500000000001,
+        2135.91,
+        2130.084
+      ]
+    },
+    {
+      "id": 9,
+      "label": "Artwork 9",
+      "field": "field-9.svg",
+      "sculpture": "sculpture-9.svg",
+      "anchor": [
+        908.6699669000001,
+        2139.7527716
+      ],
+      "fieldBounds": [
+        821.284,
+        2038.911,
+        1055.19,
+        2168.451
+      ]
+    },
+    {
+      "id": 10,
+      "label": "Artwork 10",
+      "field": "field-10.svg",
+      "sculpture": "sculpture-10.svg",
+      "anchor": [
+        2068.5000416,
+        564.6500182499999
+      ],
+      "fieldBounds": [
+        2000.65,
+        499.3399999999999,
+        2138.26,
+        635.06
       ]
     }
   ],
+  "locations": "locations.svg",
   "registration": {
     "crs": "EPSG:3857",
     "matrix": [

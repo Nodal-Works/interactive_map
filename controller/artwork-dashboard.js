@@ -49,11 +49,11 @@
     const panel=document.getElementById('artwork-dashboard');if(!panel)return;
     const active=!!state?.isActive,enabled=active&&state.lens.enabled;panel.classList.toggle('lens-active',enabled);
     const title=document.getElementById('artwork-dashboard-title'),status=document.getElementById('artwork-dashboard-status');
-    title.textContent=enabled?'Look closer':state?.chapter===8?'The complete composition':state?.chapter?`Artwork ${state.chapter}`:'The drawing';
+    title.textContent=enabled?'Look closer':state?.chapter===C.finale(state)?'The complete composition':state?.chapter?`Artwork ${state.chapter}`:'The drawing';
     status.textContent=state?.error||(!active?'Turn on Artwork to begin':state.loading?'Preparing Vishvi’s drawing…':enabled?(state.lens.pinned?(clientMode?'Pinned · tap Unpin to explore':'Pinned · click the map to release'):(clientMode?'Drag across the drawing below to explore':'Move across the map · click to pin')):'A study of art, architecture and visibility');
     for(const b of panel.querySelectorAll('[data-artwork-action]')){
       const action=b.dataset.artworkAction;b.disabled=!active||state.loading||!!state.error;
-      if(['next','previous'].includes(action))b.disabled ||= state.transitioning||action==='next'&&state.chapter===8||action==='previous'&&state.chapter===0;
+      if(['next','previous'].includes(action))b.disabled ||= state.transitioning||action==='next'&&state.chapter===C.finale(state)||action==='previous'&&state.chapter===0;
       if(action==='retry'){b.hidden=!state?.error;b.disabled=!active;}
       if(action==='set_lens'){b.classList.toggle('selected',enabled);b.setAttribute('aria-pressed',String(enabled));}
       if(action==='pin_lens'){b.hidden=!enabled;b.textContent=state?.lens.pinned?'Unpin':'Pin';}
@@ -63,7 +63,11 @@
     panel.querySelector('.artwork-zoom').hidden=!enabled;
     panel.querySelector('.artwork-navigator-wrap').hidden=!(clientMode&&enabled);
     document.getElementById('artwork-navigator').setAttribute('aria-disabled',String(!canControl()||!enabled||state?.lens.pinned));
-    const dots=panel.querySelectorAll('.artwork-chapters span');dots.forEach((dot,i)=>{dot.classList.toggle('revealed',active&&(state.chapter===8||i<state.chapter));dot.classList.toggle('current',state?.chapter===i+1);});
+    const chapters=panel.querySelector('.artwork-chapters');
+    if(chapters.children.length!==C.count(state))chapters.innerHTML=Array.from({length:C.count(state)},(_,i)=>`<span title="Artwork ${i+1}"></span>`).join('');
+    chapters.setAttribute('aria-label',`${C.count(state)} artwork chapters`);
+    document.getElementById('legend-content').textContent=`Original architectural linework and ${C.count(state)} artwork visibility studies.`;
+    const dots=panel.querySelectorAll('.artwork-chapters span');dots.forEach((dot,i)=>{dot.classList.toggle('revealed',active&&(state.chapter===C.finale(state)||i<state.chapter));dot.classList.toggle('current',state?.chapter===i+1);});
     if(active&&!scene&&!load)loadAssets();
     schedule();measure();
   }
@@ -77,12 +81,12 @@
       <p id="artwork-dashboard-status" aria-live="polite">Connecting to the map…</p>
       <div class="artwork-view-wrap"><canvas id="artwork-dashboard-view" aria-label="Vishvi Rajakaruna’s artwork, enlarged when the magnifier is active"></canvas></div>
       <div class="artwork-navigator-wrap" hidden><canvas id="artwork-navigator" tabindex="0" role="img" aria-label="Position the magnifier on the drawing" aria-describedby="artwork-navigator-hint"></canvas><p id="artwork-navigator-hint">Drag to explore · arrow keys move the lens</p></div>
-      <div class="artwork-chapters" aria-label="Seven artwork chapters">${Array.from({length:7},(_,i)=>`<span title="Artwork ${i+1}"></span>`).join('')}</div>
+      <div class="artwork-chapters" aria-label="Artwork chapters">${Array.from({length:C.count(state)},(_,i)=>`<span title="Artwork ${i+1}"></span>`).join('')}</div>
       <div class="artwork-dashboard-controls"><button data-artwork-action="previous">Back</button><button data-artwork-action="next">Next <span aria-hidden="true">→</span></button><button data-artwork-action="set_lens" aria-pressed="false"><span class="material-icons" aria-hidden="true">search</span> Magnifier</button><button data-artwork-action="pin_lens" hidden>Pin</button></div>
       <div class="artwork-zoom" hidden><label for="artwork-zoom">Magnification</label><input id="artwork-zoom" type="range" min="2" max="6" step=".25" value="3"><output id="artwork-zoom-value">3×</output></div>
       <div class="artwork-secondary-controls"><button data-artwork-action="restart">Replay</button><button data-artwork-action="show_all">Show all</button><button data-artwork-action="retry" hidden>Retry</button></div>
       <p class="artwork-credit">Artwork and visibility studies by <strong>Vishvi Rajakaruna</strong></p></div>`;
-    document.getElementById('legend-content').textContent='Original architectural linework and seven artwork visibility studies.';
+    document.getElementById('legend-content').textContent=`Original architectural linework and ${C.count(state)} artwork visibility studies.`;
     const panel=document.getElementById('artwork-dashboard');panel.addEventListener('click',e=>{const b=e.target.closest('[data-artwork-action]');if(!b)return;const a=b.dataset.artworkAction;
       if(a==='retry'){load?.abort();load=null;scene=null;loadAssets();if(state?.error)send('retry');}
       else send(a,a==='set_lens'?!state?.lens.enabled:a==='pin_lens'?!state?.lens.pinned:undefined);

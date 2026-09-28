@@ -10,7 +10,7 @@ function element(){const listeners={},classes=new Set(),buttons={};return {datas
  getBoundingClientRect:()=>({left:0,top:0,width:1920,height:1080})};}
 const els=new Map(),get=id=>{if(!els.has(id))els.set(id,element());return els.get(id);};
 const document={body:element(),hidden:false,createElement:()=>element(),getElementById:get,addEventListener(){},removeEventListener(){}};
-const pendingScene={manifest:{registration:{matrix:[[1,0,0],[0,1,0]]}},items:[],draw(){}};
+const pendingScene={manifest:{items:Array.from({length:10},(_,i)=>({id:i+1})),registration:{matrix:[[1,0,0],[0,1,0]]}},items:[],draw(){}};
 const sandbox={console,document,Date:{now:()=>now},performance:{now:()=>now},devicePixelRatio:1,innerWidth:1920,innerHeight:1080,
  AbortController,matchMedia:()=>({matches:false,addEventListener(){}}),
  requestAnimationFrame:f=>{frames.set(++serial,f);return serial;},cancelAnimationFrame:id=>frames.delete(id),
@@ -30,7 +30,8 @@ function tick(ms){now+=ms;const callbacks=[...frames.values()];frames.clear();ca
  await api.start();tick(4000);assert.equal(api.getState().transitioning,true);api.control('next');assert.equal(api.getState().chapter,0);tick(6800);assert.equal(api.getState().transitioning,false);
  api.control('next');api.control('next');assert.equal(api.getState().chapter,1,'Burst advances must be ignored');tick(3200);
  api.control('previous');tick(10800);assert.equal(api.getState().chapter,0);
- api.control('show_all');tick(2100);assert.equal(api.getState().chapter,8);
+ for(let chapter=1;chapter<=10;chapter++){api.control('next');tick(3200);assert.equal(api.getState().chapter,chapter);}
+ api.control('show_all');tick(2100);assert.equal(api.getState().chapter,11);
  api.control('set_lens',true);api.control('pin_lens',true);api.control('set_zoom',6);assert.equal(api.getState().lens.pinned,true);assert.equal(api.getState().lens.zoom,6);
  api.control('set_lens_position',{x:.1,y:.2});assert.equal(api.getState().lens.x,.5,'Pinned lens rejects remote movement');api.control('pin_lens',false);api.control('set_lens_position',{x:.1,y:.2});assert.equal(api.getState().lens.x,.1);api.control('set_lens_position',{x:-1,y:0});assert.equal(api.getState().lens.x,.1);
  api.control('set_zoom',7);assert.equal(api.getState().lens.zoom,6);
@@ -39,6 +40,6 @@ function tick(ms){now+=ms;const callbacks=[...frames.values()];frames.clear();ca
  // A prior selected layer is suspended once and restored after both exits.
  assert.ok(changes.some(([id,on])=>id==='grid-animation-btn'&&!on));assert.equal(sandbox.MR_ADAPTER.active['grid-animation-btn'],true);
  const phone=require('../session/js/phone-state.js').project({participants:[],messages:[{type:'artwork_state',...api.getState(),secretGeometry:[1,2]}]}, {layer:'artwork-btn'});
- assert.equal(phone.artwork.chapter,0);assert.equal(phone.artwork.secretGeometry,undefined);assert.equal(phone.artwork.lens,undefined);
+ assert.equal(phone.artwork.chapter,0);assert.equal(phone.artwork.artworkCount,10);assert.equal(phone.artwork.secretGeometry,undefined);assert.equal(phone.artwork.lens,undefined);
  console.log('PASS Artwork preload cancellation, rapid advance guard, backwards/replay/finale, magnifier controls, layer restoration, cleanup and compact phone state');
 })().catch(e=>{console.error(e);process.exitCode=1;});

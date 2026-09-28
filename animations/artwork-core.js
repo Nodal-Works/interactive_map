@@ -3,24 +3,25 @@
   'use strict';
   const W=3370,H=2384, clamp=(v,a=0,b=1)=>Math.max(a,Math.min(b,v)), ease=t=>{t=clamp(t);return t*t*(3-2*t);};
   const OPENING_FADE_MS=800,OPENING_DRAW_MS=10000;
-  const duration=(chapter,reduced)=>reduced?180:chapter===0?OPENING_FADE_MS+OPENING_DRAW_MS:chapter===8?2000:3100;
+  const count=state=>state?.artworkCount??10,finale=state=>count(state)+1;
+  const duration=(chapter,reduced,artworkCount=10)=>reduced?180:chapter===0?OPENING_FADE_MS+OPENING_DRAW_MS:chapter===artworkCount+1?2000:3100;
   function frame(state,now=Date.now()) {
-    const elapsed=Math.max(0,now-state.startedAt), d=duration(state.chapter,state.reducedMotion);
+    const elapsed=Math.max(0,now-state.startedAt), d=duration(state.chapter,state.reducedMotion,count(state));
     const t=state.transitioning?clamp(elapsed/d):1;
     const current=state.chapter, previous=state.fromChapter??current;
-    const weight=(chapter,id)=>chapter===8?.68:chapter===0||id>chapter?0:id===chapter?1:.25;
-    const fields=Array.from({length:7},(_,i)=>{
+    const weight=(chapter,id)=>chapter===finale(state)?.68:chapter===0||id>chapter?0:id===chapter?1:.25;
+    const fields=Array.from({length:count(state)},(_,i)=>{
       const id=i+1,old=weight(previous,id),next=weight(current,id);
-      const arriving=id===current&&current>previous&&current<8;
+      const arriving=id===current&&current>previous&&current<finale(state);
       return {opacity:old+(next-old)*ease(t),reveal:arriving?ease(clamp((elapsed-300)/2000)):1};
     });
     if(state.reducedMotion)fields.forEach(f=>f.reveal=1);
     const opening=current===0;
-    return {fields,t,elapsed,done:t===1,base:opening?ease(clamp((elapsed-(state.reducedMotion?0:OPENING_FADE_MS))/(state.reducedMotion?180:OPENING_DRAW_MS))):1,
+    return {fields,t,elapsed,done:t===1,locationsOpacity:(previous===finale(state)?1:0)+((current===finale(state)?1:0)-(previous===finale(state)?1:0))*ease(t),base:opening?ease(clamp((elapsed-(state.reducedMotion?0:OPENING_FADE_MS))/(state.reducedMotion?180:OPENING_DRAW_MS))):1,
       black:opening?ease(clamp(elapsed/(state.reducedMotion?180:OPENING_FADE_MS))):1};
   }
   function transition(state,chapter,now=Date.now()) {
-    if(state.loading||state.error||!state.isActive||chapter<0||chapter>8)return false;
+    if(state.loading||state.error||!state.isActive||chapter<0||chapter>finale(state))return false;
     state.fromChapter=chapter===0?0:state.chapter;state.chapter=chapter;state.startedAt=now;state.transitioning=true;state.hover=0;return true;
   }
   function geo(matrix,x,y){const [a,b]=matrix,X=a[0]*x+a[1]*y+a[2],Y=b[0]*x+b[1]*y+b[2];return [X/6378137*180/Math.PI,(2*Math.atan(Math.exp(Y/6378137))-Math.PI/2)*180/Math.PI];}
@@ -61,14 +62,15 @@
   }
 
   class Scene {
-    constructor(manifest,base,paths,items){Object.assign(this,{manifest,base,paths,items});}
+    constructor(manifest,base,paths,items,locations){Object.assign(this,{manifest,base,paths,items,locations});}
     static async load(signal){
-      const directory=new URL('media/artwork/',document.baseURI),response=await fetch(new URL('manifest.json',directory),{signal});
+      const directory=new URL('media/artwork/',document.baseURI),response=await fetch(new URL('manifest.json',directory),{signal,cache:'no-cache'});
       if(!response.ok)throw Error('Artwork assets are unavailable');const manifest=await response.json();
-      const get=async file=>{const r=await fetch(new URL(file,directory),{signal});if(!r.ok)throw Error('Missing artwork asset: '+file);return r.text();};
+      const get=async file=>{const url=new URL(file,directory);url.searchParams.set('v',manifest.sourceSha256);const r=await fetch(url,{signal});if(!r.ok)throw Error('Missing artwork asset: '+file);return r.text();};
       const text=await get(manifest.base),base=await imageFromText(text),paths=vectors(text);
       const items=await Promise.all(manifest.items.map(async item=>({...item,fieldImage:await imageFromText(await get(item.field)),sculptureImage:await imageFromText(await get(item.sculpture))})));
-      if(signal?.aborted)throw new DOMException('Aborted','AbortError');return new Scene(manifest,base,paths,items);
+      const locations=manifest.locations?await imageFromText(await get(manifest.locations)):null;
+      if(signal?.aborted)throw new DOMException('Aborted','AbortError');return new Scene(manifest,base,paths,items,locations);
     }
     lines(ctx,lightOnly=false){
       ctx.save();ctx.beginPath();ctx.rect(0,0,W,H);ctx.clip();
@@ -96,13 +98,14 @@
       if(!options.skipBase&&f.base<1)this.awaken(ctx,f.base,state.reducedMotion);
       else if(!options.skipBase){options.vector?this.lines(ctx):ctx.drawImage(this.base,0,0,W,H);}
       for(const id of this.manifest.stacking){const item=this.items[id-1],v=f.fields[id-1];if(!v.opacity)continue;
-        ctx.save();const hoverMix=ease((now-(state.hoverStartedAt||0))/450);ctx.globalAlpha=state.chapter===8?v.opacity+(.97-v.opacity)*(state.hover===id?hoverMix:state.previousHover===id?1-hoverMix:0):v.opacity;
+        ctx.save();const hoverMix=ease((now-(state.hoverStartedAt||0))/450);ctx.globalAlpha=state.chapter===finale(state)?v.opacity+(.97-v.opacity)*(state.hover===id?hoverMix:state.previousHover===id?1-hoverMix:0):v.opacity;
         if(v.reveal<1){ctx.beginPath();ctx.arc(...item.anchor,Math.max(...[0,2].flatMap(x=>[1,3].map(y=>Math.hypot(item.fieldBounds[x]-item.anchor[0],item.fieldBounds[y]-item.anchor[1]))))*v.reveal,0,Math.PI*2);ctx.clip();}
         ctx.drawImage(item.fieldImage,0,0,W,H);ctx.restore();
       }
       for(const item of this.items){const v=f.fields[item.id-1];if(v.opacity<=0)continue;ctx.save();ctx.globalAlpha=clamp(v.opacity*4);
         ctx.drawImage(item.sculptureImage,0,0,W,H);ctx.restore();}
-      if(state.transitioning&&state.chapter>0&&state.chapter<8&&f.elapsed<2600&&!state.reducedMotion){
+      if(this.locations&&f.locationsOpacity>0){ctx.save();ctx.globalAlpha=f.locationsOpacity;ctx.drawImage(this.locations,0,0,W,H);ctx.restore();}
+      if(state.transitioning&&state.chapter>0&&state.chapter<finale(state)&&f.elapsed<2600&&!state.reducedMotion){
         const item=this.items[state.chapter-1],pulse=Math.sin(clamp(f.elapsed/2600)*Math.PI),r=18+35*pulse;
         const g=ctx.createRadialGradient(...item.anchor,2,...item.anchor,r);g.addColorStop(0,`rgba(255,224,173,${.28*pulse})`);g.addColorStop(1,'rgba(255,224,173,0)');ctx.fillStyle=g;ctx.beginPath();ctx.arc(...item.anchor,r,0,Math.PI*2);ctx.fill();
       }
@@ -171,5 +174,5 @@
     }
     dispose(){if(this.gl){for(const [type,obj] of [['Texture',this.texture],['Buffer',this.buffer],['Program',this.program],['Shader',this.vs],['Shader',this.fs]])if(obj)this.gl['delete'+type](obj);}this.source.width=this.linesCanvas.width=this.lightCanvas.width=1;if(this.glow)this.glow.width=1;}
   }
-  const api={W,H,clamp,ease,duration,frame,transition,geo,affine,Scene,Lens,lensRadius};root.ArtworkCore=api;if(typeof module!=='undefined')module.exports=api;
+  const api={W,H,clamp,ease,count,finale,duration,frame,transition,geo,affine,Scene,Lens,lensRadius};root.ArtworkCore=api;if(typeof module!=='undefined')module.exports=api;
 })(typeof window==='undefined'?globalThis:window);

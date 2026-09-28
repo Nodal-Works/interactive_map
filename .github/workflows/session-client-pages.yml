@@ -47,6 +47,10 @@ jobs:
               node scripts/test_pages_client.cjs
               if [ "$branch" = lindholmen ]; then
                 node scripts/test_lindholmen.cjs
+                python scripts/build_session_client.py
+                node scripts/test_artwork.cjs
+                node scripts/test_artwork_lifecycle.cjs
+                node scripts/test_artwork_client.cjs
               fi
             )
           done

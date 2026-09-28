@@ -86,11 +86,11 @@
       for(const button of this.element.querySelectorAll('button'))button.disabled=!canEdit;
       if(this.layer==='artwork-btn') {
         for(const {input}of this.inputs){input.disabled ||= !values.isActive||values.loading||!!values.error||(input.id!=='artwork-lens'&&!values.lensEnabled);}
-        this.artworkStatus.textContent=values.error|| (values.loading?'Preparing artwork…':!values.isActive?'Turn on Artwork to begin':values.chapter===8?'All seven artworks':values.chapter?`Artwork ${values.chapter} / 7`:'The drawing');
+        this.artworkStatus.textContent=values.error|| (values.loading?'Preparing artwork…':!values.isActive?'Turn on Artwork to begin':values.chapter===(values.artworkCount??10)+1?`All ${values.artworkCount??10} artworks`:values.chapter?`Artwork ${values.chapter} / ${values.artworkCount??10}`:'The drawing');
         for(const button of this.element.querySelectorAll('[data-action]')){
           const action=button.dataset.action;
           button.hidden=action==='retry'&&!values.error;
-          button.disabled=!canEdit||!values.isActive||values.loading||!!values.error&&action!=='retry'||values.transitioning&&['next','previous'].includes(action)||action==='next'&&values.chapter===8||action==='previous'&&values.chapter===0;
+          button.disabled=!canEdit||!values.isActive||values.loading||!!values.error&&action!=='retry'||values.transitioning&&['next','previous'].includes(action)||action==='next'&&values.chapter===(values.artworkCount??10)+1||action==='previous'&&values.chapter===0;
         }
       }
       if(this.layer==='slideshow-btn') {

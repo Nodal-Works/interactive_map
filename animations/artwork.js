@@ -6,7 +6,7 @@
   hud.innerHTML='<div class="artwork-caption"><span id="artwork-chapter">Artwork</span><span>Vishvi Rajakaruna</span></div><div id="artwork-hint">Click to reveal · M to magnify</div><div class="artwork-controls"><button data-artwork="previous" aria-label="Previous chapter">Back</button><button data-artwork="next">Next</button><button data-artwork="restart">Replay</button><button data-artwork="show_all">Show all</button><button data-artwork="retry" hidden>Retry</button><button data-artwork="stop">Close</button></div>';
   document.body.append(hud);
   const media=matchMedia('(prefers-reduced-motion: reduce)');
-  const state={isActive:false,loading:false,error:null,chapter:0,fromChapter:0,transitioning:false,startedAt:0,reducedMotion:media.matches,hover:0,lens:{enabled:false,pinned:false,x:.5,y:.5,zoom:3,diameter:600,span:600}};
+  const state={isActive:false,loading:false,error:null,chapter:0,artworkCount:C.count(),fromChapter:0,transitioning:false,startedAt:0,reducedMotion:media.matches,hover:0,lens:{enabled:false,pinned:false,x:.5,y:.5,zoom:3,diameter:600,span:600}};
   let scene=null,controller=null,generation=0,raf=0,transform=null,saved=[],latestPointer=0,pointerTimer=0,lastRender=0,dirty=true;
   const button=()=>document.getElementById('artwork-btn');
   function snapshot(){return {...state,lens:{...state.lens},sentAt:Date.now()};}
@@ -14,11 +14,11 @@
   function updateHUD(){
     button()?.classList.toggle('active',state.isActive);
     const mag=document.getElementById('artwork-magnifier-btn');if(mag){mag.hidden=!state.isActive;mag.classList.toggle('active',state.lens.enabled);mag.setAttribute('aria-pressed',String(state.lens.enabled));}
-    document.getElementById('artwork-chapter').textContent=state.loading?'Preparing the drawing…':state.error?'Artwork unavailable':state.chapter===0?'The drawing':state.chapter===8?'All seven artworks':`Artwork ${state.chapter} / 7`;
-    document.getElementById('artwork-hint').textContent=state.error|| (state.lens.enabled?(state.lens.pinned?'Lens pinned · click to release':'Move to explore · click to pin') : state.chapter===8?'Hover to explore · M to magnify':'Click to reveal · M to magnify');
+    document.getElementById('artwork-chapter').textContent=state.loading?'Preparing the drawing…':state.error?'Artwork unavailable':state.chapter===0?'The drawing':state.chapter===C.finale(state)?`All ${C.count(state)} artworks`:`Artwork ${state.chapter} / ${C.count(state)}`;
+    document.getElementById('artwork-hint').textContent=state.error|| (state.lens.enabled?(state.lens.pinned?'Lens pinned · click to release':'Move to explore · click to pin') : state.chapter===C.finale(state)?'Hover to explore · M to magnify':'Click to reveal · M to magnify');
     canvas.style.cursor=state.lens.enabled?'crosshair':'pointer';
     hud.querySelector('[data-artwork="retry"]').hidden=!state.error;
-    for(const b of hud.querySelectorAll('[data-artwork]'))b.disabled= !['stop','retry'].includes(b.dataset.artwork)&&(state.loading||!!state.error||(state.transitioning&&['next','previous'].includes(b.dataset.artwork))||(b.dataset.artwork==='next'&&state.chapter===8)||(b.dataset.artwork==='previous'&&state.chapter===0));
+    for(const b of hud.querySelectorAll('[data-artwork]'))b.disabled= !['stop','retry'].includes(b.dataset.artwork)&&(state.loading||!!state.error||(state.transitioning&&['next','previous'].includes(b.dataset.artwork))||(b.dataset.artwork==='next'&&state.chapter===C.finale(state))||(b.dataset.artwork==='previous'&&state.chapter===0));
   }
   function resize(){if(!state.isActive)return;const dpr=Math.min(devicePixelRatio||1,2);canvas.width=Math.round(innerWidth*dpr);canvas.height=Math.round(innerHeight*dpr);dirty=true;project();schedule();}
   function project(){if(!scene||!window.map)return;const m=scene.manifest.registration.matrix,rect=map.getContainer().getBoundingClientRect();
@@ -55,7 +55,7 @@
   async function start(){if(state.isActive)return;state.isActive=true;state.loading=true;state.error=null;state.chapter=state.fromChapter=0;state.transitioning=false;state.lens.enabled=false;state.lens.pinned=false;
     button()?.classList.add('active');document.body.classList.add('artwork-presenting');suspend();canvas.hidden=hud.hidden=false;bind();resize();channel.postMessage({type:'animation_state',animationId:'artwork-btn',isActive:true});publish();await load();}
   async function load(){const own=++generation;controller?.abort();controller=new AbortController();state.loading=true;state.error=null;publish();schedule();
-    try{scene=scene||await C.Scene.load(controller.signal);if(own!==generation||!state.isActive)return;state.loading=false;state.startedAt=Date.now();state.transitioning=true;project();publish();schedule();}
+    try{scene=scene||await C.Scene.load(controller.signal);if(own!==generation||!state.isActive)return;state.artworkCount=scene.manifest.items.length;state.loading=false;state.startedAt=Date.now();state.transitioning=true;project();publish();schedule();}
     catch(e){if(own!==generation||!state.isActive||e.name==='AbortError')return;state.loading=false;state.error='The artwork could not load. Please retry.';publish();schedule();}
   }
   function stop(exclude){if(!state.isActive)return;state.isActive=false;++generation;controller?.abort();cancelAnimationFrame(raf);raf=0;state.loading=false;state.transitioning=false;state.lens.enabled=false;canvas.hidden=hud.hidden=true;unbind();ctx.clearRect(0,0,canvas.width,canvas.height);button()?.classList.remove('active');document.body.classList.remove('artwork-presenting');channel.postMessage({type:'animation_state',animationId:'artwork-btn',isActive:false});publish();
@@ -71,14 +71,14 @@
     else if(action==='pin_lens'){state.lens.pinned=!!value;}
     else {
       if(state.loading||state.error||state.transitioning&&['next','previous'].includes(action))return;
-      const chapter=action==='next'?state.chapter+1:action==='previous'?state.chapter-1:action==='restart'?0:action==='show_all'?8:null;
+      const chapter=action==='next'?state.chapter+1:action==='previous'?state.chapter-1:action==='restart'?0:action==='show_all'?C.finale(state):null;
       if(chapter===null||!C.transition(state,chapter))return;
     }
     publish();dirty=true;schedule();
   }
   function move(event){if(!scene||state.loading||state.error||!transform)return;const p=transform.inverse(event.clientX,event.clientY);if(p.x<0||p.y<0||p.x>C.W||p.y>C.H)return;
     if(state.lens.enabled&&!state.lens.pinned){state.lens.x=p.x/C.W;state.lens.y=p.y/C.H;dirty=true;schedule();if(!pointerTimer){const delay=Math.max(0,50-(performance.now()-latestPointer));pointerTimer=setTimeout(()=>{pointerTimer=0;latestPointer=performance.now();if(state.isActive)publish();},delay);}}
-    else if(state.chapter===8&&!state.lens.enabled){const found=scene.items.find(i=>Math.hypot(i.anchor[0]-p.x,i.anchor[1]-p.y)<45);if(state.hover!==(found?.id||0)){state.previousHover=state.hover;state.hover=found?.id||0;state.hoverStartedAt=Date.now();publish();schedule();}}
+    else if(state.chapter===C.finale(state)&&!state.lens.enabled){const found=scene.items.find(i=>Math.hypot(i.anchor[0]-p.x,i.anchor[1]-p.y)<45);if(state.hover!==(found?.id||0)){state.previousHover=state.hover;state.hover=found?.id||0;state.hoverStartedAt=Date.now();publish();schedule();}}
   }
   function leave(){if(state.hover&&!state.lens.enabled){state.previousHover=state.hover;state.hover=0;state.hoverStartedAt=Date.now();publish();schedule();}}
   function click(e){if(e.button!==0)return;e.preventDefault();e.stopPropagation();if(state.lens.enabled)control('pin_lens',!state.lens.pinned);else control('next');}
