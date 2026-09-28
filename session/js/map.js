@@ -8,6 +8,14 @@
     const ux=b[0]-a[0],uy=b[1]-a[1],vx=d[0]-a[0],vy=d[1]-a[1],det=ux*vy-uy*vx;
     return {x:((p[0]-a[0])*vy-(p[1]-a[1])*vx)/det,y:(ux*(p[1]-a[1])-uy*(p[0]-a[0]))/det};
   }
+  function thermalHint(thermal={}) {
+    if(thermal.mode==='inspect')return thermal.inspectionLoading?'Inspecting this location…':'Tap a location to inspect';
+    if(thermal.phase==='snapping')return thermal.origin?'Snapping destination B…':'Snapping origin A…';
+    if(thermal.phase==='routing')return 'Finding routes from A to B…';
+    if(thermal.phase==='route-error')return 'Route selection failed · retry or clear the route';
+    if(thermal.origin&&thermal.destination)return 'A → B selected · tap to start a new route';
+    return thermal.origin?'Origin A selected · tap destination B':'Tap origin A, then destination B';
+  }
   class CompanionMap {
     constructor({element,map,send,identity,desktop=false}) {
       this.element=element;this.send=send;this.identity=identity;this.desktop=desktop;
@@ -41,6 +49,7 @@
     }
     setState(state) {
       if(this.table && state.table?.revision!==this.table.revision)this.cancel();
+      this.thermal=state.thermal||{};
       this.table=state.table;this.objects=state.objects||[];this.layers=state.layers||{};this.drafts=state.drafts||[];
       if(!this.didFit&&this.table&&!this.desktop){this.fit();this.didFit=true;}
       this.render();
@@ -140,7 +149,22 @@
       marker.append(node('path',{d:'M 0 0 L 10 5 L 0 10 z',fill:'context-stroke'}));defs.append(marker);this.svg.append(defs);
       if(this.table&&!this.desktop){const pts=this.table.corners.map(c=>{const p=this.project(c);return`${p.x},${p.y}`;}).join(' ');this.svg.append(node('polygon',{points:pts,fill:'none',stroke:'#ffffff66','stroke-width':1,'stroke-dasharray':'5 5'}));}
       const input=this.gesture?.point?this.gesture.coordinate:this.lastInput&&this.lastInput.layer===this.layer?this.lastInput.coordinate:null;
-      if(input&&!this.desktop){const p=this.project(input);this.svg.append(node('circle',{cx:p.x,cy:p.y,r:7,fill:'#0f766e',stroke:'#fff','stroke-width':3}));}
+      if(this.layer==='thermal-comfort-btn'&&!this.desktop) {
+        // Use host-confirmed snapped endpoints, never the phone's last tap.
+        // This also restores both markers after reconnect or a controller change.
+        const thermal=this.thermal||{};
+        const points=thermal.mode==='inspect'
+          ? [[thermal.inspectionPoint,'Inspect','#0f766e']]
+          : [[thermal.origin,'A','#0f766e'],[thermal.destination,'B','#b45309']];
+        if(this.layers?.['thermal-comfort-btn'])for(const [coordinate,label,color] of points) {
+          if(!Array.isArray(coordinate)||coordinate.length!==2||!coordinate.every(Number.isFinite))continue;
+          const p=this.project(coordinate),group=node('g',{'data-coolpaths-point':label});
+          group.append(node('title',{},label==='A'?'Route origin':label==='B'?'Route destination':'Inspection location'));
+          group.append(node('circle',{cx:p.x,cy:p.y,r:11,fill:color,stroke:'#fff','stroke-width':2}));
+          group.append(node('text',{x:p.x,y:p.y+4,'text-anchor':'middle',fill:'#fff','font-size':12,'font-weight':700},label==='Inspect'?'i':label));
+          this.svg.append(group);
+        }
+      } else if(input&&!this.desktop){const p=this.project(input);this.svg.append(node('circle',{cx:p.x,cy:p.y,r:7,fill:'#0f766e',stroke:'#fff','stroke-width':3}));}
       const all=[...this.objects,...this.drafts.filter(d=>d.creatorId!==this.identity()?.id).map(d=>({...d,draft:true}))];
       if(this.gesture?.object)all.push({...this.gesture.object,draft:true});
       if(this.polygon)all.push({...this.polygon,draft:true});
@@ -160,5 +184,5 @@
       }
     }
   }
-  window.MR_MAP={CompanionMap,normalized};
+  window.MR_MAP={CompanionMap,normalized,thermalHint};
 })();

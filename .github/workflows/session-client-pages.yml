@@ -42,6 +42,7 @@ jobs:
               node scripts/test_ecom_lifecycle.cjs
               node scripts/test_session.cjs
               node scripts/test_session_connection.cjs
+              node scripts/test_mobile_coolpaths.cjs
               python scripts/test_session_server.py
               python scripts/test_pages_site.py
               node scripts/test_pages_client.cjs

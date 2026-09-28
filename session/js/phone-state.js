@@ -15,7 +15,17 @@
       participants:state.participants.map(p=>pick(p,['id','name','avatar','color','online','slot'])),messages:[]};
     const entry=settings[focus?.layer];
     if(entry){const[name,keys]=entry;result[name]=pick(state[name],keys.split(' '));
-      if(name==='thermal'&&result.thermal.tour)result.thermal.tour=pick(result.thermal.tour,['open','playing','step','layer']);}
+      if(name==='thermal') {
+        if(result.thermal.tour)result.thermal.tour=pick(result.thermal.tour,['open','playing','step','layer']);
+        // Endpoint selections are inputs, not route geometry. Always send nulls
+        // when cleared so every phone drops its previous selection.
+        for(const key of ['origin','destination','inspectionPoint']) {
+          const point=state.thermal?.[key];
+          result.thermal[key]=Array.isArray(point)&&point.length===2&&point.every(Number.isFinite)&&Math.abs(point[0])<=180&&Math.abs(point[1])<=90 ? [...point] : null;
+        }
+        result.thermal.phase=typeof state.thermal?.phase==='string'?state.thermal.phase.slice(0,40):'';
+        result.thermal.inspectionLoading=!!state.thermal?.inspectionLoading;
+      }}
     if(focus?.layer==='slideshow-btn') {
       const slide=(state.messages || []).find(m=>m.type==='slideshow_update');
       if(slide) result.slideshow={...pick(slide,['isActive','currentIndex','totalSlides','status','error','categoryIndex','categoryCount','category','autoReveal']),title:slide.metadata?.title || ''};

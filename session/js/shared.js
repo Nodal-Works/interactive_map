@@ -1,6 +1,6 @@
 (function(root) {
   'use strict';
-  const RELEASE = '20260925-session-6';
+  const RELEASE = '20260928-main-coolpaths-inputs-1';
   const LAYERS = [
     ['cfd-simulation-btn', 'Wind · CFD', 'Environment', '🌬', 'obstacle'],
     ['stormwater-btn', 'Stormwater', 'Environment', '💧'],
