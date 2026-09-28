@@ -2,9 +2,9 @@
 
 ## Delivery state
 
-Code repairs are implemented and regression-tested. This is **not yet a fully validated working installation**: ECOM demand data and the prepared CoolPaths campus study have not been recovered, and the four-hour soak is pending. No synthetic demand or substitute thermal study has been introduced.
+Code repairs are implemented and regression-tested. This is **not yet a fully validated working installation**: ECOM demand data and the prepared CoolPaths campus study have not been recovered, and the four-hour soak is running (started 28 September at approximately 21:02 UTC; due 29 September at approximately 01:02 UTC). No synthetic demand or substitute thermal study has been introduced.
 
-Checkpoints: `d2e49d2` geographic alignment; `6d13fb6` audio/EPC; `4a91890` dataset readiness and supervisor; `11b8fb2` presentation, Canvas and invitations. Later validation fixes include bird initialization after map load, the calibration preview, Sun Study camera orientation, audio cleanup, stale runoff frames and bounded session history.
+Checkpoints: `d2e49d2` geographic alignment; `6d13fb6` audio/EPC; `4a91890` dataset readiness and supervisor; `11b8fb2` presentation, Canvas and invitations. `a83ca97` adds the lifecycle/performance validation fixes, including bird initialization after map load, the calibration preview, Sun Study camera orientation, audio cleanup, stale runoff frames and bounded session history.
 
 ## Measured display performance
 
@@ -14,6 +14,7 @@ Windows hardware reports an i7-10875H, Intel UHD and Quadro RTX 3000. The test b
 | --- | ---: | ---: | ---: | ---: |
 | Original Street Life + transit | 57.17 FPS | 17.49 ms | 17.0 ms | 16.56 → 20.70 MB |
 | Updated Street Life + transit | 60.00 FPS | 16.67 ms | 16.8 ms | 24.29 → 25.66 MB |
+| Updated bird sounds | 60.00 FPS | 16.67 ms | 16.8 ms | 23.00 → 23.79 MB |
 | Original wind | 6.23 FPS | 160.57 ms | 183.4 ms | 21.60 → 21.92 MB |
 | Updated wind, calibrated full footprint | 4.03 FPS | 247.92 ms | 283.2 ms | 23.15 → 22.77 MB |
 | Original runoff | 10.00 FPS | 99.99 ms | 133.4 ms | 42.83 → 69.80 MB |
@@ -79,3 +80,7 @@ Restore the Mac's `interactive_map/media/ecom/energy_data` into the same ignored
 Restore the Mac's complete `interactive_map/coolpaths/data` directory, including the campus date folder and its manifest, graph, hourly PET edge JSON/PNG/TIFF products, MRT, shade, direct/diffuse radiation, buildings and terrain/canopy/NDVI/water/albedo/SVF rasters. The API reports the exact missing products together. Preparing a replacement through the existing pipeline currently stops because `COOLPATHS_EE_KEY_FILE` is not configured. Real routing, hourly inspection, tour and ECOM calculation remain blocked until those inputs arrive.
 
 The Windows Taildrop receiver is waiting in `.runtime/transfers`; no files have arrived. SSH reaches the Mac through Tailscale but requires interactive authentication. No password was requested in chat. Private data and credentials must remain outside Git.
+
+## Endurance follow-up
+
+The in-chat follow-up `finish-main-demo-validation` checks hourly, inspects completed samples and any received Mac archive, and will finish validation and the authorized push. Main commits have not yet been pushed. Keep the PC and Codex running. The benchmark browser has a temporary 1920×1080 override for the ongoing test; reset it when the soak is finished. Do not equate elapsed time with a successful soak: require the completion record, valid visible samples, layer-state checks and resource trends.
