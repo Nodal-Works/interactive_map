@@ -40,3 +40,18 @@ lens.draw(scene,lensState,95000);lens.draw(scene,lensState,96000);
 assert.equal(lens.gl,null);assert.equal(target.width,1440);assert.equal(vectorDraws,2);assert.equal(sceneDraws,2);
 lensState.lens.x=.6;lens.draw(scene,lensState,97000);assert.equal(vectorDraws,4);lens.dispose();assert.equal(lens.source.width,1);
 console.log('PASS circular Canvas fallback at 2× pixel density, native-resolution vector cache reuse/invalidation and disposal');
+
+// The projection and lens share this renderer: neither may paint future assets.
+const drawn=[];
+const drawContext=new Proxy({drawImage:image=>drawn.push(image.name),createRadialGradient:()=>({addColorStop(){}})},{get:(o,k)=>o[k]||(o[k]=()=>{})});
+const renderScene=new C.Scene(manifest,{name:'base'},[],manifest.items.map(item=>({...item,fieldImage:{name:`field-${item.id}`},sculptureImage:{name:`sculpture-${item.id}`}})),{name:'locations'});
+for(let chapter=1;chapter<=10;chapter++){
+ drawn.length=0;renderScene.draw(drawContext,{...state,chapter,fromChapter:chapter,artworkCount:10,transitioning:false},100000);
+ for(let future=chapter+1;future<=10;future++)assert.ok(!drawn.includes(`field-${future}`)&&!drawn.includes(`sculpture-${future}`));
+ assert.ok(!drawn.includes('locations'),'Overview markers are finale-only');
+}
+drawn.length=0;renderScene.draw(drawContext,{...state,chapter:11,fromChapter:10,artworkCount:10,transitioning:false},100000);
+assert.deepEqual(drawn.filter(name=>name.startsWith('field-')),manifest.stacking.map(id=>`field-${id}`));
+assert.ok(drawn.findIndex(name=>name.startsWith('sculpture-'))>drawn.lastIndexOf('field-1'));
+assert.equal(drawn.at(-1),'locations');
+console.log('PASS shared scene chapter isolation, source field stacking, sculptures above fields and finale location overlay');
