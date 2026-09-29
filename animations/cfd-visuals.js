@@ -201,6 +201,15 @@
             if (solidAt(p.x, p.y)) { if (fluid || d >= 1) break; continue; }
             // Don't sample through another building across a narrow opening.
             if (last && C.crossesSolid(g, last.x, last.y, p.x, p.y)) break;
+            // Probe coordinates and obstacle masks are fixed for this renderer.
+            // Preserve sample()'s exact bilinear summation order, caching only
+            // its indices/weights rather than resolving four cells per frame.
+            const gx=p.x-.5,gy=p.y-.5,ix=Math.floor(gx),iy=Math.floor(gy),fx=gx-ix,fy=gy-iy;
+            p.stencil=[];
+            for(let dy=0;dy<=1;dy++)for(let dx=0;dx<=1;dx++){
+              const n=Math.max(0,Math.min(g.ny-1,iy+dy))*g.nx+Math.max(0,Math.min(g.nx-1,ix+dx));
+              if(!g.solid[n])p.stencil.push(n,(dx?fx:1-fx)*(dy?fy:1-fy));
+            }
             fluid = true; last = p; probes.push(p);
           }
         }
@@ -209,11 +218,14 @@
     }
     update(dt) {
       const g = this.field;
+      const {ux,uy,windSpeed,latticeSpeed}=g;
+      const rise=1-Math.exp(-dt/1.5),fall=1-Math.exp(-dt/.3);
       for (const edge of this.edges) {
         let incoming = 0;
         for (const point of edge.probes) {
-          const v = C.sample(g, point.x, point.y);
-          incoming = Math.max(incoming, -(v.x * edge.nx + v.y * edge.ny) * g.windSpeed / g.latticeSpeed);
+          let u=0,v=0;const s=point.stencil;
+          for(let i=0;i<s.length;i+=2){u+=s[i+1]*ux[s[i]];v+=s[i+1]*uy[s[i]];}
+          incoming = Math.max(incoming, -(u * edge.nx + v * edge.ny) * windSpeed / latticeSpeed);
         }
         // Qualitative normal-incidence energy proxy, NOT surface pressure/Cp.
         // Fixed exposure preserves increased impact when inlet speed increases.
@@ -221,7 +233,7 @@
         const target = 1 - Math.exp(-edge.impact / 9);
         // Build gradually (~3.5s to 95% displayed brightness). Keep the faster
         // release so a face stops glowing when the wind no longer hits it.
-        const blend = 1 - Math.exp(-dt / (target > edge.intensity ? 1.5 : .3));
+        const blend = target > edge.intensity ? rise : fall;
         edge.intensity += (target - edge.intensity) * blend;
       }
     }
@@ -237,9 +249,9 @@
           (edge.b.x - g.x0) * g.cellSize, (edge.b.y - g.y0) * g.cellSize);
       }
       ctx.lineCap = 'round'; ctx.lineJoin = 'round';
-      // Three nested strokes give a soft halo without per-edge blur filters.
-      const layers = palette === 'monochrome' ? [[16,.28,'230,230,230'],[7,.6,'245,245,245'],[2,1,'255,255,255']] :
-        [[16,.28,'255,159,67'],[7,.6,'255,194,105'],[2,1,'255,245,219']];
+      // Keep impact visible at the edge without obscuring adjacent map detail.
+      const layers = palette === 'monochrome' ? [[9,.14,'230,230,230'],[4,.36,'245,245,245'],[1.3,.65,'255,255,255']] :
+        [[9,.14,'255,159,67'],[4,.36,'255,194,105'],[1.3,.65,'255,245,219']];
       // Reuse identical geometry for all three halo strokes; colours and widths stay unchanged.
       const paths=typeof Path2D==='undefined'?null:this.buckets.map(bucket=>{
         if(!bucket.length)return null;const path=new Path2D();let lastX,lastY;
@@ -278,11 +290,17 @@
         new Particles(this.field, this.settings.particles) : new Ribbons(this.field, this.settings.particles));
       this.model = this.models.get(style);
     }
-    update(dt) {
-      this.facades.update(dt);
+    update(dt, profile) {
+      const start=profile?performance.now():0;
+      // Disabled glow has no visible output. Resume the same exposure/smoothing
+      // model when enabled, without spending every off-frame sampling facades.
+      if(this.settings.facadeGlow)this.facades.update(dt);
+      const updated=profile?performance.now():0;
+      if(profile)profile.facadeUpdateMs=updated-start;
       this.wallTime += dt; const elapsed = dt * this.settings.playback / 20; this.time += elapsed;
       if (this.settings.visualStyle === 'particles') this.model.update(elapsed);
       else this.model.update(this.wallTime);
+      if(profile)profile.tracerUpdateMs=performance.now()-updated;
     }
     drawFacades(ctx) {
       if (this.settings.facadeGlow) this.facades.draw(ctx, this.settings.palette);

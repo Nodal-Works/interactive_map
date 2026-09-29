@@ -21,8 +21,8 @@ water.send({type:'init',width:1440,height:1080,settings:{glowSpriteSize:24,parti
 assert.equal(water.messages.at(-1).message.type,'ready');
 const values=new Float32Array(46);
 for(let i=0;i<2;i++){const n=i*23;values.set([20+i,30,40,3,.5,i,3,1,2,3,4,5,6],n);}
-water.send({type:'frame',values,width:1920,height:1080,scale:1});
-const result=water.messages.at(-1);assert.equal(result.message.type,'frame');assert.equal(result.message.bitmap.width,1920);
+water.send({type:'frame',revision:42,values,width:1920,height:1080,scale:1});
+const result=water.messages.at(-1);assert.equal(result.message.revision,42,'A resized host can reject the old frame');assert.equal(result.message.type,'frame');assert.equal(result.message.bitmap.width,1920);
 assert.equal(result.transfer[1],values.buffer,'Particle storage is returned for reuse');
 const workerOps=water.canvases[0].ops.slice();water.canvases[0].ops.length=0;
 vm.runInContext('state.drawParticles()',water.context);

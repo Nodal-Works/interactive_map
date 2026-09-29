@@ -47,7 +47,8 @@ for (const geographicSymbols of source.includes('function drawGeographicVehicle'
         for (const direction of [1, -1]) for (const progress of [.2, .8, direction === 1 ? 0 : 1]) {
           for (const type of ['car', 'taxi', 'bus', 'bicycle', 'emergency']) {
             const ctx = canvas();
-            const rect = () => ({left: 20, top: 30});
+            let layoutReads = 0;
+            const rect = () => { layoutReads++; return {left: 20, top: 30}; };
             const context = vm.createContext({streetLifeCtx: ctx, streetLifeCanvas: {width: 2000, height: 2000, getBoundingClientRect: rect},
               streetLifeRects: null, document: {getElementById: () => ({getBoundingClientRect: rect})},
               map: {project, getBearing: () => bearing, getZoom: () => 15, getCenter: () => ({lat: 57.7}), getContainer: () => ({getBoundingClientRect: rect})},
@@ -58,6 +59,8 @@ for (const geographicSymbols of source.includes('function drawGeographicVehicle'
               window: {MR_TABLE: {pixelsPerMetre: () => 1, symbol: (length, width) => ({length, width})}}});
             vm.runInContext(functions.map(extract).join('\n'), context);
             context.drawStreetLife();
+            assert.equal(layoutReads, 2, 'All entities share two layout reads per draw');
+            assert.equal(context.streetLifeRects, null, 'Layout cache is scoped to the draw');
             const before = context.getPointAlongPath(path, progress);
             const after = context.getPointAlongPath(path, progress + direction * .0001);
             const a = project([before.lng, before.lat]), b = project([after.lng, after.lat]);

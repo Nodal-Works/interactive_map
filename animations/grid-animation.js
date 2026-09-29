@@ -16,28 +16,55 @@ let ROWS = Math.floor(TABLE_HEIGHT_CM / TILE_SIZE_CM); // 3
 let animationFrame = null;
 let isAnimating = false;
 
+function gridCorners() {
+  const rect = map.getContainer().getBoundingClientRect();
+  const points = window.APP_CONFIG.area.corners.map(coordinate => {
+    const p = map.project(coordinate);
+    return { x: p.x + rect.left, y: p.y + rect.top };
+  });
+  // The table marker polygon is ordered around the footprint. Start at its
+  // visible top-left so the grid labels read across the screen.
+  const topLeft = points.reduce((best, p, i) => p.x + p.y < points[best].x + points[best].y ? i : best, 0);
+  const next = (topLeft + 1) % 4, previous = (topLeft + 3) % 4;
+  const topRight = points[next].x > points[previous].x ? next : previous;
+  return [points[topLeft], points[topRight], points[(topLeft + 2) % 4], points[topRight === next ? previous : next]];
+}
+
+function gridPoint(corners, u, v) {
+  const [tl, tr, br, bl] = corners;
+  return {
+    x: (1-u)*(1-v)*tl.x + u*(1-v)*tr.x + u*v*br.x + (1-u)*v*bl.x,
+    y: (1-u)*(1-v)*tl.y + u*(1-v)*tr.y + u*v*br.y + (1-u)*v*bl.y
+  };
+}
+
 function resizeGridCanvas() {
   TABLE_WIDTH_CM = window.MR_CALIBRATION.dimensions.tableWidth;
   TABLE_HEIGHT_CM = window.MR_CALIBRATION.dimensions.tableHeight;
   COLS = Math.floor(TABLE_WIDTH_CM / TILE_SIZE_CM);
   ROWS = Math.floor(TABLE_HEIGHT_CM / TILE_SIZE_CM);
-  // Use the same calculation as table overlay
-  const s = computeOverlayPixelSize();
-  gridCanvas.width = s.w;
-  gridCanvas.height = s.h;
-  gridCanvas.style.width = s.w + 'px';
-  gridCanvas.style.height = s.h + 'px';
+  gridCanvas.width = innerWidth;
+  gridCanvas.height = innerHeight;
+  gridCanvas.style.width = innerWidth + 'px';
+  gridCanvas.style.height = innerHeight + 'px';
 }
 
 function drawGlowingGrid(time) {
   const width = gridCanvas.width;
   const height = gridCanvas.height;
+  const corners = gridCorners();
+  const points = Array.from({length: ROWS + 1}, (_, row) =>
+    Array.from({length: COLS + 1}, (_, col) => gridPoint(corners, col / COLS, row / ROWS)));
+  const trace = (axis, index) => {
+    gridCtx.beginPath();
+    for (let i = 0; i <= (axis === 'column' ? ROWS : COLS); i++) {
+      const p = axis === 'column' ? points[i][index] : points[index][i];
+      if (i === 0) gridCtx.moveTo(p.x, p.y);
+      else gridCtx.lineTo(p.x, p.y);
+    }
+  };
   
   gridCtx.clearRect(0, 0, width, height);
-  
-  // Calculate tile size in pixels
-  const tileWidth = width / COLS;
-  const tileHeight = height / ROWS;
   
   // Sci-fi glow effect parameters
   const baseAlpha = 0.3 + Math.sin(time * 0.002) * 0.15;
@@ -46,7 +73,6 @@ function drawGlowingGrid(time) {
   
   // Draw vertical lines
   for (let i = 0; i <= COLS; i++) {
-    const x = i * tileWidth;
     const phase = i * 0.5;
     const pulse = Math.sin(time * pulseSpeed + phase) * 0.5 + 0.5;
     const wave = Math.sin(time * waveSpeed + phase * 2) * 0.3 + 0.7;
@@ -58,16 +84,13 @@ function drawGlowingGrid(time) {
       gridCtx.shadowBlur = 15 + layer * 10;
       gridCtx.shadowColor = `rgba(0, 255, 255, ${pulse * 0.8})`;
       
-      gridCtx.beginPath();
-      gridCtx.moveTo(x, 0);
-      gridCtx.lineTo(x, height);
+      trace('column', i);
       gridCtx.stroke();
     }
   }
   
   // Draw horizontal lines
   for (let i = 0; i <= ROWS; i++) {
-    const y = i * tileHeight;
     const phase = i * 0.5 + COLS * 0.5; // Offset from vertical lines
     const pulse = Math.sin(time * pulseSpeed + phase) * 0.5 + 0.5;
     const wave = Math.sin(time * waveSpeed + phase * 2) * 0.3 + 0.7;
@@ -79,9 +102,7 @@ function drawGlowingGrid(time) {
       gridCtx.shadowBlur = 15 + layer * 10;
       gridCtx.shadowColor = `rgba(0, 255, 255, ${pulse * 0.8})`;
       
-      gridCtx.beginPath();
-      gridCtx.moveTo(0, y);
-      gridCtx.lineTo(width, y);
+      trace('row', i);
       gridCtx.stroke();
     }
   }
@@ -89,8 +110,7 @@ function drawGlowingGrid(time) {
   // Draw corner nodes with pulsing effect
   for (let row = 0; row <= ROWS; row++) {
     for (let col = 0; col <= COLS; col++) {
-      const x = col * tileWidth;
-      const y = row * tileHeight;
+      const {x, y} = points[row][col];
       const phase = (row + col) * 0.3;
       const pulse = Math.sin(time * pulseSpeed * 1.5 + phase) * 0.5 + 0.5;
       

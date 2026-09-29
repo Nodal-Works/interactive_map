@@ -142,19 +142,20 @@ function geometryAndTracerTests() {
   assert.deepEqual(C.speedColor(20),C.speedColor(30));assert.notDeepEqual(C.speedColor(5),C.speedColor(10));
   console.log('PASS geometry/tracers: polygon parts, holes, passages, projected trees, frame rates, walls, trails, inlet flux');
 }
-function makeAppHarness() {
-  let now=0, sequence=0, frame=null, strokeCount=0;
+function makeAppHarness(bitmapMode=false) {
+  let now=0, sequence=0, frame=null, strokeCount=0, mapShiftY=0;
   const timers=new Map(), events={}, mapEvents={}, messages=[], workers=[], requests=[];
   const context2d={clearRect(){},drawImage(){},putImageData(){},beginPath(){},moveTo(){},lineTo(){},stroke(){strokeCount++;},
     createImageData(w,h){return {data:new Uint8ClampedArray(w*h*4)};}};
   const element=()=>({style:{},classList:{add(){},remove(){}},addEventListener(type,fn){this[type]=fn;},
     getContext(){return context2d;},getBoundingClientRect(){return {left:0,top:0};},
     insertAdjacentElement(){},setAttribute(){}});
-  const canvas=element(),button=element();button.id='cfd-simulation-btn';
-  const map={getSource(){return null;},getContainer(){return canvas;},project(c){return {x:c[0],y:c[1]};},
+  const presented=[];const canvas=element(),button=element();if(bitmapMode)canvas.getContext=()=>({transferFromImageBitmap:bitmap=>presented.push(bitmap)});button.id='cfd-simulation-btn';
+  const map={getSource(){return null;},getContainer(){return canvas;},project(c){return {x:c[0],y:c[1]+mapShiftY};},
     on(type,fn){mapEvents[type]=fn;}};
   class Worker {constructor(){workers.push(this);}postMessage(data){this.init=data;}terminate(){this.terminated=true;}}
-  const window={mrAsset:path=>path,addEventListener(type,fn){events[type]=fn;}};
+  const window={mrAsset:path=>path,APP_CONFIG:{area:{corners:[[50,25],[450,25],[450,325],[50,325]]}},
+    addEventListener(type,fn){events[type]=fn;}};
   let channel;
   const sandbox={CFD:C,CFDVisuals:V,console:{...console,error(){},warn(){}},Math,Number,Float32Array,Uint8Array,Map,Worker,window,map,
     document:{getElementById:id=>id===button.id?button:canvas,createElement:element,addEventListener(){}},
@@ -163,8 +164,10 @@ function makeAppHarness() {
     Audio:function(){this.play=()=>Promise.resolve();this.pause=()=>{};},
     BroadcastChannel:function(){channel=this;this.postMessage=d=>messages.push(d);},
     fetch(url){return new Promise(resolve=>requests.push({url,resolve}));}};
+  if(bitmapMode)sandbox.OffscreenCanvas=class{};
   vm.runInNewContext(fs.readFileSync(path.join(__dirname,'../animations/cfd-simulation.js'),'utf8'),sandbox);
-  return {button,workers,requests,messages,events,mapEvents,channel,
+  return {button,canvas,workers,requests,messages,events,mapEvents,channel,presented,
+    shiftTable(dy){mapShiftY+=dy;},
     render(time){now=time;strokeCount=0;frame?.(time);return strokeCount;},
     runTimers(){const jobs=[...timers.values()];timers.clear();jobs.forEach(f=>f());},
     resolveRequests(){requests.splice(0).forEach(r=>r.resolve({ok:true,json:async()=>({features:[]})}));},
@@ -173,9 +176,18 @@ function makeAppHarness() {
 }
 async function lifecycleTests() {
   const flush=async()=>{for(let i=0;i<12;i++)await Promise.resolve();};
+  const direct=makeAppHarness(true);direct.button.click();direct.resolveRequests();await flush();
+  const drawing=direct.workers[0];let closed=0;const bitmap={close(){closed++;}};
+  drawing.onmessage({data:{type:'ready'}});drawing.onmessage({data:{type:'frame',bitmap}});
+  assert.equal(direct.presented.at(-1),bitmap,'Worker frames are presented without a 2D copy');
+  direct.button.click();assert.equal(direct.presented.at(-1),null,'Stopped wind clears the bitmap surface');
+  drawing.onmessage({data:{type:'frame',bitmap}});assert.equal(closed,2,'Late transferred frames are closed without displaying');
   const h=makeAppHarness();h.button.click();assert.equal(h.requests.length,2);
   h.button.click();h.resolveRequests();await flush();assert.equal(h.workers.length,0,'Stopped loads cannot start worker');
   h.button.click();await flush();assert.equal(h.workers.length,1,'Geometry cache reused');
+  assert.equal(h.canvas.style.left,'50px');assert.equal(h.canvas.style.top,'25px');
+  assert.equal(h.canvas.width,400);assert.equal(h.canvas.height,300);
+  assert.match(h.canvas.style.clipPath,/polygon\(0px 0px,400px 0px,400px 300px,0px 300px\)/);
   const first=h.workers[0];
   const snapshot=new C.Solver(first.init.options).snapshot();
   first.onmessage({data:{...snapshot,type:'field',generation:first.init.generation}});
@@ -212,9 +224,11 @@ async function lifecycleTests() {
   h.command('set_particle_speed',32);h.command('set_particles',1000);h.command('get_state');
   assert.equal(h.latest().playback,32);assert.equal(h.latest().particles,1000);assert.equal(h.latest().trees,false);
   h.command('set_wind_speed','invalid');assert.equal(h.latest().windSpeed,20);
-  for(const reset of [h.events.resize,h.events['cfd-geometry-changed'],h.mapEvents.moveend]){
+  for(const [index,reset] of [h.events.resize,h.events['cfd-geometry-changed'],h.mapEvents.moveend].entries()){
+    if(index===2)h.shiftTable(70);
     const count=h.workers.length;reset();h.runTimers();await flush();assert.equal(h.workers.length,count+1);
   }
+  assert.equal(h.canvas.style.top,'95px','CFD footprint follows the calibrated table markers');
   const current=h.workers.at(-1);
   current.onmessage({data:{generation:current.init.generation,type:'error',message:'test numerical failure'}});
   assert.equal(h.latest().active,false);assert.match(h.latest().phase,/test numerical failure/);

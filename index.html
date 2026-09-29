@@ -6,7 +6,7 @@
     <title>Interactive Map — dtcc-table</title>
     <!-- Load Leaflet CSS from CDN (no SRI attribute to avoid integrity mismatch blocks) -->
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
-    <link rel="stylesheet" href="style.css?v=20260922-tour-fixed-view" />
+    <link rel="stylesheet" href="style.css?v=20260928-lindholmen-table-extents" />
     <!-- Import map for Three.js ES modules -->
     <script type="importmap">
     {
@@ -245,9 +245,9 @@
     <script src="session/js/services.js"></script>
     <script src="georeference.js"></script>
     <script src="animations/introduction.js"></script>
-    <script src="main.js?v=20260922-ecom-presentation"></script>
+    <script src="main.js?v=20260928-sun-calibration"></script>
     <script src="performance-runtime.js?v=20260928-backport"></script>
-    <script src="animations/grid-animation.js"></script>
+    <script src="animations/grid-animation.js?v=20260928-lindholmen-grid-markers"></script>
     <script src="animations/street-glow-animation.js"></script>
     <script src="animations/isovist.js?v=20260928-performance"></script>
     <script src="animations/cultural-gravity.js"></script>
@@ -274,7 +274,7 @@
     <script src="animations/coolpaths-guide.js?v=20260922-tour-fixed-view"></script>
     <script src="animations/thermal-comfort.js?v=20260922-tour-fixed-view"></script>
     <script type="module" src="animations/sun-study.js?v=20260928-performance"></script>
-    <link rel="stylesheet" href="session/css/desktop.css?v=20260928-lindholmen-artwork-8">
+    <link rel="stylesheet" href="session/css/desktop.css?v=20260928-lindholmen-join-ribbon-1">
     <script src="https://unpkg.com/peerjs@1.5.5/dist/peerjs.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
     <script src="session/js/config.js"></script>
@@ -283,7 +283,7 @@
     <script src="session/js/adapter.js?v=20260928-lindholmen-artwork-8"></script>
     <script src="session/js/phone-state.js?v=20260928-lindholmen-artwork-8"></script>
     <script src="session/js/host.js?v=20260928-lindholmen-artwork-8"></script>
-    <script src="session/js/desktop.js?v=20260928-lindholmen-artwork-8"></script>
+    <script src="session/js/desktop.js?v=20260928-lindholmen-join-ribbon-1"></script>
     
     <!-- Auto-fullscreen when launched from launcher -->
     <script>
@@ -330,6 +330,13 @@
             }, 10000);
         }
     })();
+    </script>
+    <script>
+    if (new URLSearchParams(location.search).has('diagnostics')) {
+      const diagnostics = document.createElement('script');
+      diagnostics.src = 'scripts/demo-diagnostics.js';
+      document.body.appendChild(diagnostics);
+    }
     </script>
   </body>
 </html>

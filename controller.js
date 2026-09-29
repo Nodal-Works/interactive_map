@@ -22,7 +22,7 @@ function renderCfdState() {
     if (facadeLegend) {
         const color = cfdState.palette === 'monochrome' ? '#f5f5f5' : '#ffd58c';
         facadeLegend.style.background = color;
-        facadeLegend.style.boxShadow = `0 0 8px ${color}`;
+        facadeLegend.style.boxShadow = `0 0 4px ${color}`;
     }
     const description = document.getElementById('wind-style-description');
     if (description) description.textContent = CFDVisuals.STYLES[cfdState.visualStyle] || CFDVisuals.STYLES.ribbons;
@@ -1208,7 +1208,7 @@ function updateDashboard(targetId) {
                     </div>
 
                     <div class="legend-item">
-                        <div id="wind-impact-swatch" class="legend-color" style="background: #ffd58c; box-shadow: 0 0 8px #ffd58c;"></div>
+                        <div id="wind-impact-swatch" class="legend-color" style="background: #ffd58c; box-shadow: 0 0 4px #ffd58c;"></div>
                         <div>
                             <span class="legend-label">Wind impact on façades</span>
                             <div style="font-size: 0.75rem; color: #6b7280;">Dim → bright: less → more incoming wind. Independent of the speed color scale.</div>

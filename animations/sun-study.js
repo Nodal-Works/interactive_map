@@ -106,11 +106,22 @@ class SunStudy {
     this.offsetZ = window.APP_CONFIG.model.offsetZ;      // Z position offset (Y on screen in top-down)
     this.rotationOffset = 0; // Additional rotation in degrees
     this.scaleMultiplier = window.APP_CONFIG.model.scaleMultiplier; // Scale multiplier
+    this.mapScaleFactor = 1;
     
     this.controlPanel = null;
     this.dependenciesLoaded = false;
     
     this.initUI();
+
+    window.addEventListener('mr-calibration-change', () => {
+      if (!this.isActive) return;
+      this.syncMapCalibration();
+    });
+    // Calibration buttons animate the map before a preset is saved. Follow the
+    // actual camera so the shadows remain aligned throughout those moves.
+    window.map?.on('move', () => {
+      if (this.isActive) this.syncMapCalibration();
+    });
     
     // Listen for remote control messages
     this.channel = new BroadcastChannel('map_controller_channel');
@@ -211,6 +222,7 @@ class SunStudy {
     this.setupRenderer();
     this.setupScene();
     this.setupCamera();
+    this.syncMapCalibration();
     this.setupLights();
     this.setupDualShadowSystem();
     this.setupPostProcessing();
@@ -987,7 +999,7 @@ class SunStudy {
     if (!this.mesh || !this.baseScale) return;
     
     // Apply scale with multiplier
-    const scale = this.baseScale * this.scaleMultiplier;
+    const scale = this.baseScale * this.scaleMultiplier * this.mapScaleFactor;
     this.mesh.scale.set(scale, scale, scale);
     
     // Apply rotation (base rotation + offset)
@@ -1627,7 +1639,7 @@ class SunStudy {
         
         // Apply same transforms as buildings
         if (this.baseScale) {
-          const scale = this.baseScale * this.scaleMultiplier;
+          const scale = this.baseScale * this.scaleMultiplier * this.mapScaleFactor;
           this.meshTrees.scale.set(scale, scale, scale);
           console.log('Trees scale applied:', scale);
         }
@@ -1689,9 +1701,10 @@ class SunStudy {
     const scale = ((minCanvasDim * padding) / maxDim) * 2.0;
     
     // Apply scale
-    this.mesh.scale.set(scale * this.scaleMultiplier, scale * this.scaleMultiplier, scale * this.scaleMultiplier);
+    const modelScale = scale * this.scaleMultiplier * this.mapScaleFactor;
+    this.mesh.scale.setScalar(modelScale);
     if (this.meshTrees) {
-      this.meshTrees.scale.set(scale * this.scaleMultiplier, scale * this.scaleMultiplier, scale * this.scaleMultiplier);
+      this.meshTrees.scale.setScalar(modelScale);
     }
 
     this.baseScale = scale;
@@ -1700,7 +1713,8 @@ class SunStudy {
     // Instead of hardcoding 800, we use the actual model bounds.
     // We add a 20% buffer to ensure shadows don't clip at the edges.
     const worldRadius = (maxDim * scale) / 2;
-    this.optimalShadowSize = Math.max(worldRadius * 1.2, 100); 
+    this.baseShadowSize = Math.max(worldRadius * 1.2, 100);
+    this.optimalShadowSize = this.baseShadowSize * this.mapScaleFactor;
     // --- FIX END ---
 
     // Set Main Camera
@@ -1810,6 +1824,8 @@ class SunStudy {
   }
   
   async show() {
+    this.syncMapCalibration();
+
     if (!this.dependenciesLoaded) {
       await this.initThreeJS();
     }
@@ -1824,6 +1840,39 @@ class SunStudy {
       this.onResize();
       this.animate();
     }, 50);
+  }
+
+  syncMapCalibration() {
+    const map = window.map;
+    const origin = window.MR_CALIBRATION.original.center;
+    if (!map || !origin) return;
+
+    this.mapBearing = map.getBearing();
+    const originalZoom = window.MR_CALIBRATION.original.zoom;
+    const nextScale = 2 ** (map.getZoom() - originalZoom);
+    const scaleChanged = nextScale !== this.mapScaleFactor;
+    this.mapScaleFactor = nextScale;
+    const projectedOrigin = map.project([origin.lng, origin.lat]);
+    const container = map.getContainer();
+    const screenX = projectedOrigin.x - container.clientWidth / 2;
+    const screenY = projectedOrigin.y - container.clientHeight / 2;
+    if (!this.camera) return;
+    // Keep the original camera orientation. Convert the map's screen movement
+    // through the camera's actual axes instead of assuming a new orientation.
+    this.camera.updateMatrixWorld();
+    const axes = this.camera.matrixWorld.elements;
+    this.offsetX = axes[0] * screenX - axes[4] * screenY;
+    this.offsetZ = window.APP_CONFIG.model.offsetZ * this.mapScaleFactor
+      + axes[2] * screenX - axes[6] * screenY;
+    this.applyManualAdjustments();
+    if (scaleChanged && this.baseShadowSize) {
+      this.optimalShadowSize = this.baseShadowSize * this.mapScaleFactor;
+      if (this.sunLight) this.updateSunPosition();
+    }
+    this.shadowMapsDirty = true;
+    this.overlayDirty = true;
+    this.needsRender = true;
+    this.falseColorUniformsDirty = true;
   }
   
   // ==================== MEMORY PROFILING ====================

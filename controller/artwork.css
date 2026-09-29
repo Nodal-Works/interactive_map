@@ -19,7 +19,7 @@
 .artwork-stage { display:contents; }
 .artwork-view-wrap { width:min(100%,1000px); height:clamp(200px,calc(100dvh - 330px),640px); display:flex; align-items:center; justify-content:center; }
 #artwork-dashboard-view { width:100%; height:100%; background:#000; border-radius:2px; }
-.lens-active .artwork-view-wrap { width:min(720px,calc(100dvh - 395px),100%); height:auto; aspect-ratio:1; border-radius:50%; border:1px solid #494436; position:relative;box-shadow:0 0 22px #e1bd7126,0 0 75px #b69a5120,inset 0 0 24px #e9d9a810; }
+.lens-active .artwork-view-wrap { width:min(900px,calc(100dvh - 395px),100%); height:auto; aspect-ratio:1; border-radius:50%; border:1px solid #494436; position:relative;box-shadow:0 0 22px #e1bd7126,0 0 75px #b69a5120,inset 0 0 24px #e9d9a810; }
 .lens-active #artwork-dashboard-view { border-radius:50%; aspect-ratio:1; }
 .artwork-chapters { display:flex; gap:9px; margin:5px 0; }
 .artwork-chapters span { width:4px; height:4px; border-radius:50%; background:#363730; transition:background .6s,box-shadow .6s; }
@@ -35,7 +35,7 @@
 .artwork-zoom input { width:150px; accent-color:#ddc493; }
 .artwork-credit { color:#807b71; font-size:10px; margin:4px 0 0; letter-spacing:.03em; }
 .artwork-credit strong { color:#bcb4a3; font-weight:400; }
-@media(max-width:650px) { #main-panel.artwork-mode{padding:0 12px} #artwork-dashboard{gap:10px;padding:20px 0}.lens-active .artwork-view-wrap{width:min(720px,calc(100dvh - 390px),100%)} #artwork-hud{left:20px;right:20px;flex-wrap:wrap;bottom:12px}#artwork-hint{display:none}.artwork-controls button{padding:7px 9px} }
+@media(max-width:650px) { #main-panel.artwork-mode{padding:0 12px} #artwork-dashboard{gap:10px;padding:20px 0}.lens-active .artwork-view-wrap{width:min(810px,calc(100dvh - 390px),100%)} #artwork-hud{left:20px;right:20px;flex-wrap:wrap;bottom:12px}#artwork-hint{display:none}.artwork-controls button{padding:7px 9px} }
 
 body.artwork-presenting #laser-pointer { display:none !important; }
 /* All layer buttons remain reachable on shorter projection/control screens. */

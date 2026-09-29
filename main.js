@@ -70,6 +70,7 @@ const map = new maplibregl.Map({
   bearing: initialBearing,
   pitch: 0
 });
+window.map = map;
 
 window.mrIntroduction = window.createLindholmenIntroduction(map, window.MR_CALIBRATION.current);
 
@@ -647,7 +648,9 @@ ${JSON.stringify(calibration, null, 2)}`;
                 saved.unshift(calibration);
                 localStorage.setItem((window.APP_CONFIG.calibration.storagePrefix + 'calibrations'), JSON.stringify(saved));
                 localStorage.setItem((window.APP_CONFIG.calibration.storagePrefix + 'selected_calibration'), calibration.id);
+                window.MR_CALIBRATION.current = calibration;
                 window.MR_CALIBRATION.applyDimensions(calibration.dimensions);
+                window.dispatchEvent(new Event('mr-calibration-change'));
                 if (action === 'overwrite_default_calibration') {
                   localStorage.setItem((window.APP_CONFIG.calibration.storagePrefix + 'default_calibration'), JSON.stringify(calibration));
                   tableCenter = [calibration.center.lng, calibration.center.lat];
@@ -667,12 +670,14 @@ ${JSON.stringify(calibration, null, 2)}`;
               const calibration = data.calibration;
               if (!calibration?.center) return;
               localStorage.setItem((window.APP_CONFIG.calibration.storagePrefix + 'selected_calibration'), calibration.id || 'original');
+              window.MR_CALIBRATION.current = calibration;
               window.MR_CALIBRATION.applyDimensions(calibration.dimensions);
               map.jumpTo({
                 center: [calibration.center.lng, calibration.center.lat],
                 zoom: calibration.zoom,
                 bearing: calibration.bearing
               });
+              window.dispatchEvent(new Event('mr-calibration-change'));
               showToast(`Calibration restored: ${calibration.name || 'Saved calibration'}`);
             
         } else if (action === 'zoom_in') {

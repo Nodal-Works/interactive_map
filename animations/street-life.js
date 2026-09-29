@@ -234,13 +234,17 @@ function parseStreetPaths(geojson) {
   console.log(`✓ Street Life: Pre-calculated distances for ${streetPaths.length} paths`);
 }
 
+// Layout is constant during a synchronous draw; read it once for all entities.
+let streetLifeRects = null;
+
 // Project coordinates to canvas
 function projectToStreetLifeCanvas(lng, lat) {
   const point = map.project([lng, lat]);
-  const mapContainer = document.getElementById('map');
-  const mapRect = mapContainer.getBoundingClientRect();
-  const canvasRect = streetLifeCanvas.getBoundingClientRect();
-  
+  const {mapRect, canvasRect} = streetLifeRects || {
+    mapRect: document.getElementById('map').getBoundingClientRect(),
+    canvasRect: streetLifeCanvas.getBoundingClientRect()
+  };
+
   return {
     x: point.x - (canvasRect.left - mapRect.left),
     y: point.y - (canvasRect.top - mapRect.top)
@@ -1004,95 +1008,99 @@ function renderStaticLayer(width, height) {
 
 // Main draw function — optimized for lower-end GPUs
 function drawStreetLife() {
-  const width = streetLifeCanvas.width;
-  const height = streetLifeCanvas.height;
-  
-  // 1. CLEAR CANVAS
-  streetLifeCtx.clearRect(0, 0, width, height);
-  
-  // 2. PREPARE FOR DRAWING
-  streetLifeCtx.globalCompositeOperation = 'source-over';
-  
-  // GET MAP BEARING
-  const mapBearing = (map.getBearing() || 0) * (Math.PI / 180);
-  
-  // --- DRAW STATIC LAYERS (cached offscreen canvas) ---
-  // Only re-render streetlights + buildings when the map camera moves
-  if (staticLayerDirty || hasMapMoved()) {
-    renderStaticLayer(width, height);
-  }
-  streetLifeCtx.globalCompositeOperation = 'lighter';
-  streetLifeCtx.drawImage(staticLayerCanvas, 0, 0);
-  
-  // --- DRAW VEHICLES ---
-  vehicles.forEach(v => {
-    const point = getPointAlongPath(v.path, v.progress);
-    if (!point) return;
-    const pos = projectToStreetLifeCanvas(point.lng, point.lat);
-    
-    if (!isOnScreen(pos, width, height)) return;
-    
-    const screenAngle = getScreenPathAngle(v.path, point);
-    
-    if (v.type === 'car') {
-      drawFastLight(streetLifeCtx, pos, screenAngle, v.colors.body, 25, 8, v.direction);
-    } else if (v.type === 'taxi') {
-      drawFastLight(streetLifeCtx, pos, screenAngle, v.colors.body, 25, 8, v.direction);
-    } else if (v.type === 'bus') {
-      drawFastLight(streetLifeCtx, pos, screenAngle, v.colors.body, 35, 12, v.direction);
-    } else if (v.type === 'bicycle') {
-      drawFastLight(streetLifeCtx, pos, screenAngle, v.colors.frame, 10, 4, v.direction);
+  streetLifeRects = {mapRect: document.getElementById('map').getBoundingClientRect(),
+    canvasRect: streetLifeCanvas.getBoundingClientRect()};
+  try {
+    const width = streetLifeCanvas.width;
+    const height = streetLifeCanvas.height;
+
+    // 1. CLEAR CANVAS
+    streetLifeCtx.clearRect(0, 0, width, height);
+
+    // 2. PREPARE FOR DRAWING
+    streetLifeCtx.globalCompositeOperation = 'source-over';
+
+    // GET MAP BEARING
+    const mapBearing = (map.getBearing() || 0) * (Math.PI / 180);
+
+    // --- DRAW STATIC LAYERS (cached offscreen canvas) ---
+    // Only re-render streetlights + buildings when the map camera moves
+    if (staticLayerDirty || hasMapMoved()) {
+      renderStaticLayer(width, height);
     }
-  });
-  
-  // --- DRAW EMERGENCY VEHICLE (if active) ---
-  if (emergencyVehicle) {
-    const ePoint = getPointAlongPath(emergencyVehicle.path, emergencyVehicle.progress);
-    if (ePoint) {
-      const ePos = projectToStreetLifeCanvas(ePoint.lng, ePoint.lat);
-      if (isOnScreen(ePos, width, height)) {
-        const eAngle = getScreenPathAngle(emergencyVehicle.path, ePoint);
-        drawEmergencyVehicle(streetLifeCtx, ePos, eAngle, emergencyVehicle);
+    streetLifeCtx.globalCompositeOperation = 'lighter';
+    streetLifeCtx.drawImage(staticLayerCanvas, 0, 0);
+
+    // --- DRAW VEHICLES ---
+    vehicles.forEach(v => {
+      const point = getPointAlongPath(v.path, v.progress);
+      if (!point) return;
+      const pos = projectToStreetLifeCanvas(point.lng, point.lat);
+
+      if (!isOnScreen(pos, width, height)) return;
+
+      const screenAngle = getScreenPathAngle(v.path, point);
+
+      if (v.type === 'car') {
+        drawFastLight(streetLifeCtx, pos, screenAngle, v.colors.body, 25, 8, v.direction);
+      } else if (v.type === 'taxi') {
+        drawFastLight(streetLifeCtx, pos, screenAngle, v.colors.body, 25, 8, v.direction);
+      } else if (v.type === 'bus') {
+        drawFastLight(streetLifeCtx, pos, screenAngle, v.colors.body, 35, 12, v.direction);
+      } else if (v.type === 'bicycle') {
+        drawFastLight(streetLifeCtx, pos, screenAngle, v.colors.frame, 10, 4, v.direction);
+      }
+    });
+
+    // --- DRAW EMERGENCY VEHICLE (if active) ---
+    if (emergencyVehicle) {
+      const ePoint = getPointAlongPath(emergencyVehicle.path, emergencyVehicle.progress);
+      if (ePoint) {
+        const ePos = projectToStreetLifeCanvas(ePoint.lng, ePoint.lat);
+        if (isOnScreen(ePos, width, height)) {
+          const eAngle = getScreenPathAngle(emergencyVehicle.path, ePoint);
+          drawEmergencyVehicle(streetLifeCtx, ePos, eAngle, emergencyVehicle);
+        }
       }
     }
-  }
-  
-  // --- DRAW PEDESTRIANS (batched by color for minimal state changes) ---
-  streetLifeCtx.globalCompositeOperation = 'source-over';
-  
-  // Group pedestrians by color and draw each group in one path
-  const pedsByColor = {};
-  pedestrians.forEach(p => {
-    const point = getPointAlongPath(p.path, p.progress);
-    if (!point) return;
-    
-    const offsetMag = Math.sin(p.wobblePhase) * 1.5;
-    const perpAngle = -point.angle + mapBearing + Math.PI / 2;
-    const offsetX = Math.cos(perpAngle) * offsetMag;
-    const offsetY = Math.sin(perpAngle) * offsetMag;
-    
-    const pos = projectToStreetLifeCanvas(point.lng, point.lat);
-    if (!isOnScreen(pos, width, height)) return;
-    
-    if (!pedsByColor[p.color]) pedsByColor[p.color] = [];
-    pedsByColor[p.color].push(pos.x + offsetX, pos.y + offsetY);
-  });
-  
-  // One beginPath + fill per color group instead of per pedestrian
-  const PI2 = Math.PI * 2;
-  for (const color in pedsByColor) {
-    const coords = pedsByColor[color];
-    streetLifeCtx.fillStyle = color;
-    streetLifeCtx.beginPath();
-    for (let i = 0; i < coords.length; i += 2) {
-      streetLifeCtx.moveTo(coords[i] + 1.5, coords[i + 1]);
-      streetLifeCtx.arc(coords[i], coords[i + 1], 1.5, 0, PI2);
+
+    // --- DRAW PEDESTRIANS (batched by color for minimal state changes) ---
+    streetLifeCtx.globalCompositeOperation = 'source-over';
+
+    // Group pedestrians by color and draw each group in one path
+    const pedsByColor = {};
+    pedestrians.forEach(p => {
+      const point = getPointAlongPath(p.path, p.progress);
+      if (!point) return;
+
+      const offsetMag = Math.sin(p.wobblePhase) * 1.5;
+      const perpAngle = -point.angle + mapBearing + Math.PI / 2;
+      const offsetX = Math.cos(perpAngle) * offsetMag;
+      const offsetY = Math.sin(perpAngle) * offsetMag;
+
+      const pos = projectToStreetLifeCanvas(point.lng, point.lat);
+      if (!isOnScreen(pos, width, height)) return;
+
+      if (!pedsByColor[p.color]) pedsByColor[p.color] = [];
+      pedsByColor[p.color].push(pos.x + offsetX, pos.y + offsetY);
+    });
+
+    // One beginPath + fill per color group instead of per pedestrian
+    const PI2 = Math.PI * 2;
+    for (const color in pedsByColor) {
+      const coords = pedsByColor[color];
+      streetLifeCtx.fillStyle = color;
+      streetLifeCtx.beginPath();
+      for (let i = 0; i < coords.length; i += 2) {
+        streetLifeCtx.moveTo(coords[i] + 1.5, coords[i + 1]);
+        streetLifeCtx.arc(coords[i], coords[i + 1], 1.5, 0, PI2);
+      }
+      streetLifeCtx.fill();
     }
-    streetLifeCtx.fill();
-  }
-  
-  // Reset for next frame
-  streetLifeCtx.globalCompositeOperation = 'source-over';
+
+    // Reset for next frame
+    streetLifeCtx.globalCompositeOperation = 'source-over';
+  } finally { streetLifeRects = null; }
 }
 
 // Generate static streetlights along paths (called once on load)

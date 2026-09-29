@@ -1,11 +1,16 @@
 // Qualitative, planar wind around building footprints. Screen-clockwise flow direction.
-/* global CFD, CFDVisuals, map, computeOverlayPixelSize, showToast */
+/* global CFD, CFDVisuals, map, showToast */
 (function () {
   'use strict';
   const canvas = document.getElementById('cfd-simulation-canvas');
   const button = document.getElementById('cfd-simulation-btn');
   if (!canvas || !button || typeof CFD === 'undefined' || typeof CFDVisuals === 'undefined') return;
-  const ctx = canvas.getContext('2d');
+  // Hand transferred frames directly to the compositor; do not copy a full
+  // resolution bitmap into another 2D surface every frame.
+  const bitmapContext = typeof OffscreenCanvas !== 'undefined' && typeof Worker !== 'undefined'
+    ? canvas.getContext('bitmaprenderer') : null;
+  const ctx = bitmapContext ? null : canvas.getContext('2d');
+  const clearCanvas = () => bitmapContext ? bitmapContext.transferFromImageBitmap(null) : ctx.clearRect(0,0,canvas.width,canvas.height);
   const heat = document.createElement('canvas'), heatCtx = heat.getContext('2d');
   const walls = document.createElement('canvas'), wallCtx = walls.getContext('2d');
   const status = document.createElement('div');
@@ -22,10 +27,31 @@
   let active = false, generation = 0, worker = null, fallback = null, runnerTimer = null;
   let animation = null, rebuildTimer = null, field = null, visuals = null, lastTime = null;
   let renderWorker=null,renderReady=false,renderBusy=false;
+  let renderRequestTime=0;
+  function recordProfile(kind,value){
+    const samples=window.MR_CFD_PROFILE_SAMPLES?.[kind];
+    if(samples){samples.total=(samples.total||0)+1;samples.push(value);if(samples.length>2000)samples.shift();}
+  }
+  window.addEventListener('cfd-profile-pause',event=>{
+    if(window.MR_CFD_PROFILE)worker?.postMessage({type:'profile-pause',generation,paused:!!event.detail});
+  });
   let compatibilityMode = false;
   let phase = 'Stopped', lastStateTime = 0, heatImage = null, lastSnapshot = 0, lastHeatTime = 0;
   let targetField = null;
   const cache = new Map();
+  function projectedTableFootprint() {
+    const mapRect = map.getContainer().getBoundingClientRect();
+    const corners = window.APP_CONFIG.area.corners.map(coordinate => {
+      const point = map.project(coordinate);
+      return {x: point.x + mapRect.left, y: point.y + mapRect.top};
+    });
+    const left = Math.floor(Math.min(...corners.map(point => point.x)));
+    const top = Math.floor(Math.min(...corners.map(point => point.y)));
+    const right = Math.ceil(Math.max(...corners.map(point => point.x)));
+    const bottom = Math.ceil(Math.max(...corners.map(point => point.y)));
+    return {left, top, width: Math.max(2, right - left), height: Math.max(2, bottom - top),
+      clipPath: `polygon(${corners.map(point => `${point.x - left}px ${point.y - top}px`).join(',')})`};
+  }
   function loadJSON(url) {
     if (!cache.has(url)) cache.set(url, fetch(url).then(r => {
       if (!r.ok) throw new Error(`Unable to load ${url}`);
@@ -41,6 +67,7 @@
     if (phase !== value) { phase = value; status.textContent = value; sendState(); }
   }
   function haltRunner() {
+    if(window.MR_CFD_PROFILE)window.dispatchEvent(new CustomEvent('cfd-profile-state',{detail:false}));
     renderWorker?.terminate();renderWorker=null;renderReady=false;renderBusy=false;
     if (worker) { worker.terminate(); worker = null; }
     clearTimeout(runnerTimer); runnerTimer = null; fallback = null;
@@ -50,7 +77,7 @@
     (window.MR_FRAMES ? window.MR_FRAMES.cancel.bind(window.MR_FRAMES) : cancelAnimationFrame)(animation); animation = null;
     audio.pause(); audio.currentTime = 0;
     button.classList.remove('toggled-on');
-    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    clearCanvas();
     setPhase(`Wind stopped: ${message}`); status.hidden = false;
     channel.postMessage({ type: 'animation_state', animationId: button.id, isActive: false });
     console.error(message);
@@ -58,7 +85,8 @@
   function acceptSnapshot(data, id) {
     if (!active || generation !== id || !field) return;
     if (data.type === 'error') { fail(data.message); return; }
-    const { ux, uy, ...metadata } = data;
+    const { ux, uy, solverProfile, ...metadata } = data;
+    if(solverProfile)recordProfile('solver',solverProfile);
     Object.assign(field, metadata);
     if(renderWorker)renderWorker.postMessage({type:'snapshot',value:{...metadata,ux,uy}},[ux.buffer,uy.buffer]);else targetField = { ux, uy };
     setPhase((data.developing ? 'Developing flow' : 'Flow settled') + (compatibilityMode ? ' · compatibility mode' : ''));
@@ -92,10 +120,15 @@
     } catch (error) { fail(error.message); }
   }
   function startRunner(options, id) {
+    if(window.MR_CFD_PROFILE)window.dispatchEvent(new CustomEvent('cfd-profile-state',{detail:false}));
     if (compatibilityMode) { startFallback(options, id); return; }
     try {
       worker = new Worker('animations/cfd-worker.js');
       worker.onmessage = ({ data }) => {
+        if(data.type==='profile-paused'){
+          if(active && data.generation===generation)window.dispatchEvent(new CustomEvent('cfd-profile-state',{detail:data.paused}));
+          return;
+        }
         if (data.generation === id) acceptSnapshot(data, id);
       };
       worker.onerror = event => {
@@ -105,14 +138,14 @@
         console.warn('CFD worker unavailable; using bounded main-thread batches.');
         startFallback(options, id);
       };
-      worker.postMessage({ type: 'init', generation: id, options });
+      worker.postMessage({ type: 'init', generation: id, options, profile:!!window.MR_CFD_PROFILE });
     } catch (error) { startFallback(options, id); }
   }
   async function rebuild() {
     clearTimeout(rebuildTimer);
     const id = ++generation;
     haltRunner(); field = null; targetField = null; visuals = null;
-    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    clearCanvas();
     if (!active) return;
     setPhase('Loading wind geometry');
     try {
@@ -124,14 +157,15 @@
       const treeTask = settings.trees ? loadJSON(window.mrAsset('media/trees.geojson')) : Promise.resolve({ features: [] });
       const [buildings, trees] = await Promise.all([buildingTask, treeTask]);
       if (!active || generation !== id) return;
-      const size = computeOverlayPixelSize();
-      canvas.width = size.w; canvas.height = size.h;
-      canvas.style.width = size.w + 'px'; canvas.style.height = size.h + 'px';
-      const grid = CFD.domain(size.w, size.h, settings.resolution, settings.angle);
-      const mapRect = map.getContainer().getBoundingClientRect(), rect = canvas.getBoundingClientRect();
+      const footprint = projectedTableFootprint();
+      canvas.width = footprint.width; canvas.height = footprint.height;
+      Object.assign(canvas.style, {left: footprint.left + 'px', top: footprint.top + 'px',
+        width: footprint.width + 'px', height: footprint.height + 'px', clipPath: footprint.clipPath});
+      const grid = CFD.domain(footprint.width, footprint.height, settings.resolution, settings.angle);
+      const mapRect = map.getContainer().getBoundingClientRect();
       const project = coord => {
         const p = map.project(coord);
-        return { x: p.x + mapRect.left - rect.left, y: p.y + mapRect.top - rect.top };
+        return { x: p.x + mapRect.left - footprint.left, y: p.y + mapRect.top - footprint.top };
       };
       // Project a geodesic eastward displacement; MapLibre uses a 512px world tile.
       const radiusPixels = (coord, meters) => {
@@ -141,7 +175,8 @@
       const effectiveBuildings = [...(buildings.features || []), ...(window.MR_CFD_OBSTACLES || [])];
       const solid = CFD.rasterizeBuildings(effectiveBuildings, project, grid);
       const canopy = CFD.rasterizeTrees(trees.features || [], project, radiusPixels, grid);
-      const options = { ...grid, ...settings, solid, canopy, dragReferenceCellSize: Math.max(size.w, size.h) / 100 };
+      const options = { ...grid, ...settings, solid, canopy,
+        dragReferenceCellSize: Math.max(footprint.width, footprint.height) / 100 };
       // Only the worker owns distribution arrays. Main thread owns the mask and latest velocity snapshot.
       field = { ...options, ux: new Float32Array(grid.nx * grid.ny), uy: new Float32Array(grid.nx * grid.ny),
         latticeSpeed: Math.min(settings.windSpeed * .005, .05), steps: 0 };
@@ -154,16 +189,20 @@
         wallImage.data[(y * grid.vw + x) * 4 + 3] = solid[(y + grid.y0) * grid.nx + x + grid.x0] ? 255 : 0;
       }
       wallCtx.putImageData(wallImage, 0, 0);
-      if(typeof OffscreenCanvas!=='undefined' && typeof createImageBitmap==='function'){
+      if(typeof OffscreenCanvas!=='undefined' && typeof Worker==='function'){
         renderWorker=new Worker('animations/cfd-render-worker.js');
         renderWorker.onmessage=({data})=>{
           if(!active || generation!==id){data.bitmap?.close();return;}
           if(data.type==='error'){fail('Wind drawing failed: '+data.message);return;}
           if(data.type==='ready')renderReady=true;
-          if(data.type==='frame'){renderBusy=false;ctx.clearRect(0,0,canvas.width,canvas.height);ctx.drawImage(data.bitmap,0,0);data.bitmap.close();window.MR_FRAMES?.recordRender?.('wind');}
+          if(data.type==='frame'){
+            const received=data.profile?performance.now():0;
+            renderBusy=false;if(bitmapContext)bitmapContext.transferFromImageBitmap(data.bitmap);else{clearCanvas();ctx.drawImage(data.bitmap,0,0);}data.bitmap.close();window.MR_FRAMES?.recordRender?.('wind');
+            if(data.profile)recordProfile('frames',{...data.profile,roundTripMs:received-renderRequestTime,presentMs:performance.now()-received});
+          }
         };
         renderWorker.onerror=()=>{if(active && generation===id)fail('Wind drawing worker could not start.');};
-        renderWorker.postMessage({type:'init',field,settings,width:canvas.width,height:canvas.height,scale:window.mrTableScale?.()??1});
+        renderWorker.postMessage({type:'init',field,settings,width:canvas.width,height:canvas.height,scale:window.mrTableScale?.()??1,profile:!!window.MR_CFD_PROFILE});
       }else visuals = new CFDVisuals.Renderer(field, settings);
       startRunner(options, id);
     } catch (error) { if (active && generation === id) fail(error.message); }
@@ -189,12 +228,12 @@
   function draw(now) {
     if (!active) return;
     if(renderWorker){
-      if(renderReady && !renderBusy){renderBusy=true;renderWorker.postMessage({type:'frame',now});}
+      if(renderReady && !renderBusy){renderBusy=true;if(window.MR_CFD_PROFILE)renderRequestTime=performance.now();renderWorker.postMessage({type:'frame',now});}
       animation=(window.MR_FRAMES ? window.MR_FRAMES.request.bind(window.MR_FRAMES,'wind') : requestAnimationFrame)(draw);return;
     }
     const dt = lastTime === null ? 0 : Math.min(.05, Math.max(0, (now - lastTime) / 1000)); lastTime = now;
-    ctx.clearRect(0, 0, canvas.width, canvas.height);
-    if (field && visuals) {
+    clearCanvas();
+    if (ctx && field && visuals) {
       const g = field;
       if (targetField) CFD.smoothField(g, targetField, dt);
       if (now - lastHeatTime > 50) { updateHeat(); lastHeatTime = now; }
@@ -220,7 +259,7 @@
     field = null; targetField = null; visuals = null;
     canvas.classList.remove('active'); button.classList.remove('toggled-on');
     audio.pause(); audio.currentTime = 0; status.hidden = true;
-    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    clearCanvas();
     setPhase('Stopped');
     channel.postMessage({ type: 'animation_state', animationId: button.id, isActive: false });
   }

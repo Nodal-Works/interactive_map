@@ -49,6 +49,38 @@ let typeRevealProgress = 0;
 
 // Group segments by type for efficient rendering
 let segmentsByType = {};
+// Cache exactly the existing sampled geometry, retaining all glow and pulse styles.
+let streetGlowPaths = new Map(), streetGlowLayout = '';
+function invalidateStreetGlowPaths() { streetGlowPaths.clear(); }
+map.on('move', invalidateStreetGlowPaths);
+map.on('resize', invalidateStreetGlowPaths);
+function prepareStreetGlowPaths() {
+  const mapRect = map.getContainer().getBoundingClientRect();
+  const canvasRect = streetCanvas.getBoundingClientRect();
+  const offsetX = canvasRect.left - mapRect.left;
+  const offsetY = canvasRect.top - mapRect.top;
+  const layout = [offsetX, offsetY, mapRect.width, mapRect.height,
+    streetCanvas.width, streetCanvas.height].join(',');
+  if (layout !== streetGlowLayout) {
+    invalidateStreetGlowPaths();
+    streetGlowLayout = layout;
+  }
+  return {offsetX, offsetY};
+}
+function getStreetGlowPath(type, segments, offset) {
+  if (streetGlowPaths.has(type)) return streetGlowPaths.get(type);
+  const path = new Path2D();
+  const sampleRate = Math.max(1, Math.ceil(segments.length / 1500));
+  for (let i = 0; i < segments.length; i += sampleRate) {
+    const segment = segments[i];
+    const start = map.project([segment.start.lng, segment.start.lat]);
+    const end = map.project([segment.end.lng, segment.end.lat]);
+    path.moveTo(start.x - offset.offsetX, start.y - offset.offsetY);
+    path.lineTo(end.x - offset.offsetX, end.y - offset.offsetY);
+  }
+  streetGlowPaths.set(type, path);
+  return path;
+}
 
 // Load default street network on page load
 streetDataLoading = true;
@@ -95,6 +127,7 @@ function projectToCanvas(lng, lat, canvasWidth, canvasHeight) {
 
 // Parse GeoJSON and extract line segments with type info
 function parseStreetGeoJSON(geojson) {
+  invalidateStreetGlowPaths();
   streetSegments = [];
   segmentsByType = {};
   const typeSet = new Set();
@@ -170,6 +203,7 @@ function resizeStreetCanvas() {
 }
 
 function drawStreetGlow(time) {
+  const offset = prepareStreetGlowPaths();
   const width = streetCanvas.width;
   const height = streetCanvas.height;
   
@@ -199,10 +233,6 @@ function drawStreetGlow(time) {
     // Get color for this street type
     const colorBase = streetColors[type] || streetColors['default'];
     
-    // Reduced sampling: draw more segments for continuous roads
-    const maxSegments = 1500; // Reduced for low-end GPU performance
-    const sampleRate = Math.max(1, Math.ceil(segments.length / maxSegments));
-    
     // Set styles once per type (not per segment!)
     const pulse = Math.sin(elapsed * 0.003 + typeIndex) * 0.4 + 0.6;
     streetCtx.strokeStyle = colorBase + (baseGlow * pulse * 0.8 * fadeIn) + ')';
@@ -211,20 +241,8 @@ function drawStreetGlow(time) {
     streetCtx.shadowColor = colorBase + (pulse * 0.9 * fadeIn) + ')';
     streetCtx.lineCap = 'round';
     
-    // Begin a single path for all segments of this type
-    streetCtx.beginPath();
-    
-    for (let i = 0; i < segments.length; i += sampleRate) {
-      const segment = segments[i];
-      const start = projectToCanvas(segment.start.lng, segment.start.lat, width, height);
-      const end = projectToCanvas(segment.end.lng, segment.end.lat, width, height);
-      
-      streetCtx.moveTo(start.x, start.y);
-      streetCtx.lineTo(end.x, end.y);
-    }
-    
-    // Draw all segments of this type at once
-    streetCtx.stroke();
+    // Native cached path uses the same coordinates and drawing order.
+    streetCtx.stroke(getStreetGlowPath(type, segments, offset));
   });
   
   streetCtx.shadowBlur = 0;
