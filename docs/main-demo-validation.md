@@ -114,3 +114,19 @@ All valid samples held 318 DOM nodes and 12 canvases. No registered-layer errors
 Grid cycles also recorded 60 FPS, but the grid automatically ends before the 20-second sampling delay; these are cleanup/idle observations, not sustained grid rendering evidence. Registered states confirmed wind/runoff ready during their combination samples. Sun and slideshow are outside that registry, so their FPS alone does not prove every visual effect remained correct. The repeated switching exercise showed no progressive frame-rate decline in the measured cases. Visual quality and simulation density remain unchanged; the 60 FPS target is unmet for the computational layers on the GPU selected by this browser.
 
 No Mac archive arrived. ECOM calculations and CoolPaths routing/hour changes/inspection/tour with real inputs remain unvalidated. Service recovery is regression-tested but a live interruption/recovery exercise remains outstanding. Physical projector calibration and a complete visible four-hour run remain outstanding. Delivery publishes tested code repairs, not a claim that the entire installation is fully working. Earlier follow-up entries describe historical pending states.
+### CFD core optimization and GPU recheck — 29 September, 11:03 UTC
+
+After the user enabled NVIDIA for ChatGPT, fresh browser diagnostics still identified Intel UHD / ANGLE D3D11. No Quadro performance claim can be made until the renderer actually changes. Initial samples were wind 8.25 FPS and runoff 12.09 FPS, but include startup/developing flow and concurrent CPU test activity; they are not controlled GPU comparisons.
+
+The solver now caches fixed pull-streaming links and open-boundary source/type information per solver generation, and computes the nine shared inlet equilibrium values once per step. Arithmetic, Float32 writes, collision/forcing equations, timestep settings, density checks, convergence checks, rendering resolution, particles and effects are unchanged. This trades 1.75 MB (338×144 grid) / 4.18 MB (372×312 grid) of link indices for less repeated address/boundary work. Geometry changes already create a new solver generation.
+
+`node scripts/compare_cfd_core.cjs .runtime/cfd-core-before.cjs` compares a saved reference from commit `94e1152`. It verified bit-identical populations, velocities and diagnostics through 450 steps for all four boundary modes at four angles, including obstacles, canopy drag, channel forcing and inlet ramp. The full CFD numerical, geometry/tracer, lifecycle, worker, supported-resolution/speed and two 2,400-step campus suites passed. The complete visual suite passed, covering ribbons, particles, palettes, timing, facade glow and dashboard controls.
+
+Alternating five warmed 150-step batches, with other CPU tests finished and wind disabled, gave these Node solver microbenchmarks (default resolution 150, uniform flow):
+
+| Angle / grid | Before median ms/step | After median ms/step | CPU time reduction |
+| --- | ---: | ---: | ---: |
+| 0° / 338×144 | 10.76 | 7.38 | 31.4% |
+| 45° / 372×312 | 27.18 | 18.00 | 33.8% |
+
+These are solver-throughput measurements, not rendered FPS or timings for obstacle-rich campus flow. A controlled visible 1920×1080 display comparison, with matching 2283×1368 wind canvases and no parallel CPU test workloads, measured reference `94e1152` at 4.19 FPS (238.48 ms mean, 266.7 ms p95) and optimized working code at 4.14 FPS (241.38 ms mean, 266.8 ms p95). Both used Intel UHD and had zero hidden frames and long tasks. There is no demonstrated display-FPS improvement; rendering remains the practical bottleneck despite faster core steps. The viewport override was reset after testing. Raw samples are in `.runtime/benchmarks/8096.jsonl` and `8095.jsonl`.

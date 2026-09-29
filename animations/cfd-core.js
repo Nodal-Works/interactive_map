@@ -80,6 +80,28 @@
       this.uy = new Float32Array(this.size);
       this.rho = new Float32Array(this.size);
       this.sponge = new Float32Array(this.size);
+      // Geometry is fixed for a solver generation. Cache pull links, including
+      // halfway bounce-back and wrapped boundaries, instead of resolving them
+      // for every population on every timestep. -1 denotes an open exterior.
+      this.pull = new Int32Array(this.f.length);
+      this.edges = [];
+      this.inletEquilibrium = new Float64Array(9);
+      for (let y = 0; y < this.ny; y++) for (let x = 0; x < this.nx; x++) {
+        const n = y * this.nx + x, base = n * 9;
+        if (this.solid[n]) continue;
+        for (let k = 0; k < 9; k++) {
+          let sx = x - EX[k], sy = y - EY[k];
+          if (this.boundary === 'periodic' || this.boundary === 'channel') sx = (sx + this.nx) % this.nx;
+          if (this.boundary === 'periodic') sy = (sy + this.ny) % this.ny;
+          const outside = sx < 0 || sx >= this.nx || sy < 0 || sy >= this.ny;
+          this.pull[base + k] = outside ? (this.boundary === 'open' ? -1 : base + OPP[k])
+            : this.solid[sy * this.nx + sx] ? base + OPP[k] : (sy * this.nx + sx) * 9 + k;
+        }
+        if (this.boundary === 'open' && (!x || !y || x === this.nx - 1 || y === this.ny - 1)) {
+          const sx = Math.max(1, Math.min(this.nx - 2, x)), sy = Math.max(1, Math.min(this.ny - 2, y));
+          this.edges.push({ n, source: sy * this.nx + sx, type: this.boundaryType(x, y) });
+        }
+      }
       if (this.boundary === 'open' && options.vw && options.vh) {
         for (let y = 0; y < this.ny; y++) for (let x = 0; x < this.nx; x++) {
           // Absorb outgoing acoustic disturbances only in off-screen padding.
@@ -116,10 +138,12 @@
       return 'side';
     }
     step() {
-      const { nx, ny, size, f, post, next, solid, ux, uy, rho } = this;
+      const { size, f, post, next, solid, ux, uy, rho } = this;
       const plus = 1 / (.5 + 3 * this.viscosity);
       const minus = 1 / (.5 + .25 / (1 / plus - .5));
       const inletSpeed = this.latticeSpeed * (this.rampSteps ? .5 - .5 * Math.cos(Math.PI * Math.min(1, (this.steps + 1) / this.rampSteps)) : 1);
+      const inletEq = this.inletEquilibrium;
+      for (let k = 0; k < 9; k++) inletEq[k] = equilibrium(k, 1, this.wind.x * inletSpeed, this.wind.y * inletSpeed);
       // Collision reads only a complete macroscopic snapshot. Exact-difference
       // forcing changes population momentum by rho * du (no velocity-only drag).
       for (let n = 0; n < size; n++) {
@@ -141,32 +165,24 @@
             value += wr * (3 * (newCu - cu) + 4.5 * (newCu * newCu - cu * cu) - 1.5 * (newU2 - u2));
           }
           const absorb = this.sponge[n];
-          post[base + k] = absorb ? value * (1 - absorb) + absorb * equilibrium(k, 1, this.wind.x * inletSpeed, this.wind.y * inletSpeed) : value;
+          post[base + k] = absorb ? value * (1 - absorb) + absorb * inletEq[k] : value;
         }
       }
       // Pull streaming, reflecting links at the halfway fluid/solid boundary.
-      for (let y = 0; y < ny; y++) for (let x = 0; x < nx; x++) {
-        const n = y * nx + x, base = n * 9;
+      const pull = this.pull;
+      for (let n = 0; n < size; n++) {
+        const base = n * 9;
         if (solid[n]) continue;
         for (let k = 0; k < 9; k++) {
-          let sx = x - EX[k], sy = y - EY[k];
-          if (this.boundary === 'periodic' || this.boundary === 'channel') sx = (sx + nx) % nx;
-          if (this.boundary === 'periodic') sy = (sy + ny) % ny;
-          const outside = sx < 0 || sx >= nx || sy < 0 || sy >= ny;
-          if (outside) next[base + k] = this.boundary === 'open' ? 0 : post[base + OPP[k]];
-          else next[base + k] = solid[sy * nx + sx] ? post[base + OPP[k]] : post[(sy * nx + sx) * 9 + k];
+          const source = pull[base + k];
+          next[base + k] = source < 0 ? 0 : post[source];
         }
       }
       if (this.boundary === 'open') {
         // All source cells are interior cells from this step, never partially
         // updated boundary macros. Corners move inward on both axes.
-        for (let y = 0; y < ny; y++) for (let x = 0; x < nx; x++) {
-          if (x && y && x < nx - 1 && y < ny - 1) continue;
-          const n = y * nx + x;
-          if (solid[n]) continue;
-          const sx = Math.max(1, Math.min(nx - 2, x)), sy = Math.max(1, Math.min(ny - 2, y));
-          const source = sy * nx + sx;
-          if (this.boundaryType(x, y) === 'side' && !solid[source]) {
+        for (const { n, source, type } of this.edges) {
+          if (type === 'side' && !solid[source]) {
             // Open parallel boundaries allow lateral deflection to leave the
             // padded domain; they are not reflecting channel walls.
             for (let k = 0; k < 9; k++) next[n * 9 + k] = next[source * 9 + k];
@@ -178,7 +194,6 @@
           }
           if (solid[source]) { r = 1; u = this.wind.x * inletSpeed; v = this.wind.y * inletSpeed; }
           else { u /= r; v /= r; }
-          const type = this.boundaryType(x, y);
           const targetR = type === 'outlet' ? 1 : r;
           const targetU = type === 'inlet' ? this.wind.x * inletSpeed : u;
           const targetV = type === 'inlet' ? this.wind.y * inletSpeed : v;
