@@ -152,3 +152,37 @@ These are short samples, not a new endurance test. Initialization/developing flo
 A reversible experiment retained Path2D facade paths until edges changed their existing brightness bins. Exact stroke geometry/style/order and invalidation tests, the full CFD visual suite and lifecycle checks passed, but the glow-enabled display sample was 4.55 FPS (219.72 ms mean, 283.4 ms p95), showing no improvement over 4.75 FPS. The experiment and its temporary tests were discarded; production rendering is unchanged. Further work should instrument worker drawing/presentation separately and investigate glow stroke/raster cost, not assume that solver optimization or NVIDIA selection alone solves it. The earlier numerical core improvement remains in place.
 
 Raw labelled samples: `.runtime/benchmarks/quadro-layers.json`. The temporary viewport override was reset after tests. Glow remains enabled by default; no automatic quality reduction was introduced.
+
+### Wind pipeline breakdown and target benchmark — 29 September 2026
+
+Target: **60 newly rendered wind images/sec, 1920×1080 DPR 1, grid resolution 300, High density (1,000 particles), trees enabled, default 5 m/s wind, full effects including impact glow**. The actual padded solver is 675×288 (194,400 cells); the geographic drawing surface is 2283×1368. The NVIDIA Quadro RTX 3000 was confirmed for these samples. This target is **not met**. These are short developing-flow measurements, not a settled-flow endurance certification.
+
+Important correction to interpretation of earlier tables: requestAnimationFrame FPS measures browser callbacks, not unique wind images. The new opt-in diagnostics separately count transferred/presented wind bitmaps. Even that submission count is an upper bound on unique images physically displayed; the compositor can coalesce submissions. Example: the original particle/no-glow sample had 58.8 browser callbacks/sec but only 895 wind images in about 30 seconds (~29.8/sec).
+
+The benchmark now records bounded rendering-stage samples (mean/p95/max), solver step/snapshot timings, actual settings, new-image submission rate and whether the diagnostic solver pause is active. Normal launch does not enable profiling. An acknowledged, diagnostic-only pause/resume control permits isolating rendering from continuing calculations; paused samples are explicitly marked and must never be reported as a successful live simulation benchmark.
+
+Before this turn's optimizations, at grid 300 / High:
+
+| Style / glow | New wind images/sec (approx.) | Browser callbacks/sec | CPU-side render preparation mean |
+| --- | ---: | ---: | ---: |
+| Particles / on | 9.2 | 17.58 | 26.57 ms |
+| Particles / off | 29.8 | 58.80 | 22.51 ms |
+| Ribbons / on | 3.1 | 3.13 | 42.18 ms |
+| Ribbons / off | 4.9 | 7.26 | 42.32 ms |
+
+Ribbons spent ~14 ms in flow segment construction/draw submission alone, versus ~2–3 ms for particles. Canvas draw API timings do not include all deferred rasterization/compositing; therefore the small (~0.5 ms) glow submission time is not its total rendering cost. Solver steps took ~26–28 ms each in a separate worker, with velocity snapshots approximately every 80–100 ms; the renderer interpolates these independently.
+
+Implemented improvements: cache the fixed bilinear probe indices/weights used for facade exposure; hoist fixed array/scalar lookups from smoothing and heatmap loops; avoid computing invisible facade exposure while glow is disabled. When glow is re-enabled its existing intensity resumes the same rise/fall model; enabled-frame intensity calculations and Float32 smoothing were verified exactly against their reference arithmetic. No density, grid size, drawing resolution, stroke appearance or enabled effects were reduced. The earlier unsuccessful Path2D caching experiment remains discarded.
+
+Final particle results:
+
+| Configuration | New wind image submissions/sec | CPU-side render preparation mean |
+| --- | ---: | ---: |
+| Live solver, glow off | 34.34 | 9.60 ms |
+| Live solver, glow on | 10.08 | 17.04 ms |
+| Paused solver, glow off — diagnostic only | 35.96 | 8.57 ms |
+| Paused solver, glow on — diagnostic only | 9.61 | 17.14 ms |
+
+With live physics and glow enabled, mean per-frame stages were: smoothing 2.80 ms, heat preparation 2.85 ms, facade exposure 5.86 ms, particle advancement 2.43 ms, flow draw submission 2.23 ms, glow draw submission 0.65 ms, bitmap handoff 0.16 ms, and main-thread presentation call 0.02 ms. The overall request/response round trip was ~17.28 ms, yet only ~10 wind images/sec reached presentation. The gap and unchanged throughput with the solver paused strongly implicate rendering/presentation scheduling and deferred graphics work rather than solver contention as the main full-quality display bottleneck. These CPU-side timers cannot isolate the graphics driver's raster and compositor costs individually.
+
+Full visual regressions, lifecycle regressions, exact probe/smoothing comparisons, and the new real-worker timing/pause/resume test passed. Raw labelled evidence is `.runtime/benchmarks/wind-300-stages.json`. Physics was resumed and glow restored after isolation; temporary viewport settings were reset. Further work toward the full-quality 60 FPS target needs graphics-side profiling and likely a persistent GPU rendering path for flow/glow, with image comparisons to preserve appearance; another solver-only speedup will not address the measured bottleneck.

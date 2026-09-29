@@ -325,9 +325,10 @@
     // Exponential interpolation is independent of display refresh rate. Never
     // clamp the sign: sustained recirculation must remain visible.
     const blend = 1 - Math.exp(-dt / .25);
-    for (let n = 0; n < field.ux.length; n++) {
-      field.ux[n] += (target.ux[n] - field.ux[n]) * blend;
-      field.uy[n] += (target.uy[n] - field.uy[n]) * blend;
+    const {ux,uy}=field, targetX=target.ux,targetY=target.uy;
+    for (let n = 0; n < ux.length; n++) {
+      ux[n] += (targetX[n] - ux[n]) * blend;
+      uy[n] += (targetY[n] - uy[n]) * blend;
     }
   }
   // Grid traversal checks every crossed cell, including corner-touching cells.

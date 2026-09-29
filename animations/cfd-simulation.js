@@ -27,6 +27,14 @@
   let active = false, generation = 0, worker = null, fallback = null, runnerTimer = null;
   let animation = null, rebuildTimer = null, field = null, visuals = null, lastTime = null;
   let renderWorker=null,renderReady=false,renderBusy=false;
+  let renderRequestTime=0;
+  function recordProfile(kind,value){
+    const samples=window.MR_CFD_PROFILE_SAMPLES?.[kind];
+    if(samples){samples.total=(samples.total||0)+1;samples.push(value);if(samples.length>2000)samples.shift();}
+  }
+  window.addEventListener('cfd-profile-pause',event=>{
+    if(window.MR_CFD_PROFILE)worker?.postMessage({type:'profile-pause',generation,paused:!!event.detail});
+  });
   let compatibilityMode = false;
   let phase = 'Stopped', lastStateTime = 0, heatImage = null, lastSnapshot = 0, lastHeatTime = 0;
   let targetField = null;
@@ -46,6 +54,7 @@
     if (phase !== value) { phase = value; status.textContent = value; sendState(); }
   }
   function haltRunner() {
+    if(window.MR_CFD_PROFILE)window.dispatchEvent(new CustomEvent('cfd-profile-state',{detail:false}));
     renderWorker?.terminate();renderWorker=null;renderReady=false;renderBusy=false;
     if (worker) { worker.terminate(); worker = null; }
     clearTimeout(runnerTimer); runnerTimer = null; fallback = null;
@@ -63,7 +72,8 @@
   function acceptSnapshot(data, id) {
     if (!active || generation !== id || !field) return;
     if (data.type === 'error') { fail(data.message); return; }
-    const { ux, uy, ...metadata } = data;
+    const { ux, uy, solverProfile, ...metadata } = data;
+    if(solverProfile)recordProfile('solver',solverProfile);
     Object.assign(field, metadata);
     if(renderWorker)renderWorker.postMessage({type:'snapshot',value:{...metadata,ux,uy}},[ux.buffer,uy.buffer]);else targetField = { ux, uy };
     setPhase((data.developing ? 'Developing flow' : 'Flow settled') + (compatibilityMode ? ' · compatibility mode' : ''));
@@ -97,10 +107,15 @@
     } catch (error) { fail(error.message); }
   }
   function startRunner(options, id) {
+    if(window.MR_CFD_PROFILE)window.dispatchEvent(new CustomEvent('cfd-profile-state',{detail:false}));
     if (compatibilityMode) { startFallback(options, id); return; }
     try {
       worker = new Worker('animations/cfd-worker.js');
       worker.onmessage = ({ data }) => {
+        if(data.type==='profile-paused'){
+          if(active && data.generation===generation)window.dispatchEvent(new CustomEvent('cfd-profile-state',{detail:data.paused}));
+          return;
+        }
         if (data.generation === id) acceptSnapshot(data, id);
       };
       worker.onerror = event => {
@@ -110,7 +125,7 @@
         console.warn('CFD worker unavailable; using bounded main-thread batches.');
         startFallback(options, id);
       };
-      worker.postMessage({ type: 'init', generation: id, options });
+      worker.postMessage({ type: 'init', generation: id, options, profile:!!window.MR_CFD_PROFILE });
     } catch (error) { startFallback(options, id); }
   }
   async function rebuild() {
@@ -165,10 +180,14 @@
           if(!active || generation!==id){data.bitmap?.close();return;}
           if(data.type==='error'){fail('Wind drawing failed: '+data.message);return;}
           if(data.type==='ready')renderReady=true;
-          if(data.type==='frame'){renderBusy=false;if(bitmapContext)bitmapContext.transferFromImageBitmap(data.bitmap);else{clearCanvas();ctx.drawImage(data.bitmap,0,0);}data.bitmap.close();window.MR_FRAMES?.recordRender?.('wind');}
+          if(data.type==='frame'){
+            const received=data.profile?performance.now():0;
+            renderBusy=false;if(bitmapContext)bitmapContext.transferFromImageBitmap(data.bitmap);else{clearCanvas();ctx.drawImage(data.bitmap,0,0);}data.bitmap.close();window.MR_FRAMES?.recordRender?.('wind');
+            if(data.profile)recordProfile('frames',{...data.profile,roundTripMs:received-renderRequestTime,presentMs:performance.now()-received});
+          }
         };
         renderWorker.onerror=()=>{if(active && generation===id)fail('Wind drawing worker could not start.');};
-        renderWorker.postMessage({type:'init',field,settings,width:canvas.width,height:canvas.height,scale:window.mrTableScale?.()??1});
+        renderWorker.postMessage({type:'init',field,settings,width:canvas.width,height:canvas.height,scale:window.mrTableScale?.()??1,profile:!!window.MR_CFD_PROFILE});
       }else visuals = new CFDVisuals.Renderer(field, settings);
       startRunner(options, id);
     } catch (error) { if (active && generation === id) fail(error.message); }
@@ -194,7 +213,7 @@
   function draw(now) {
     if (!active) return;
     if(renderWorker){
-      if(renderReady && !renderBusy){renderBusy=true;renderWorker.postMessage({type:'frame',now});}
+      if(renderReady && !renderBusy){renderBusy=true;if(window.MR_CFD_PROFILE)renderRequestTime=performance.now();renderWorker.postMessage({type:'frame',now});}
       animation=(window.MR_FRAMES ? window.MR_FRAMES.request.bind(window.MR_FRAMES,'wind') : requestAnimationFrame)(draw);return;
     }
     const dt = lastTime === null ? 0 : Math.min(.05, Math.max(0, (now - lastTime) / 1000)); lastTime = now;
