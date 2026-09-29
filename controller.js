@@ -136,6 +136,9 @@ function isAnimationButton(targetId) {
 
 // Called when we receive actual state from the main window
 function setAnimationState(targetId, isActive, follow = true) {
+    // Background animations (for example auto-starting transit) also publish
+    // lifecycle state, but have no controller dashboard to navigate to.
+    if (!isAnimationButton(targetId)) return;
     const newlyActive = isActive && !activeAnimations.includes(targetId);
     if (isActive) {
         if (!activeAnimations.includes(targetId)) {

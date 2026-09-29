@@ -113,10 +113,14 @@
   function placeRibbon(){
     const session=window.MR_SESSION?.getState();
     ribbon.hidden=!inviteUrl||!!session?.endedAt||!window.streetLifeAnimation?.isActive()||Object.values(session?.layers||{}).some(Boolean);
-    if(ribbon.hidden)return;
     const t=MR_ADAPTER.table(),g=MR_TABLE.geometry();
     const free=Math.max(0,innerHeight-Math.max(...g.points.map(p=>p.y)));
     const h=Math.min(free,innerWidth/window.MR_CALIBRATION.dimensions.screenWidth*ribbonCm);
+    // Publish sizing even while Street Life is hidden so other table ribbons
+    // occupy the same calibrated space below the model.
+    document.documentElement.style.setProperty('--mr-bottom-ribbon-height',h+'px');
+    window.dispatchEvent(new CustomEvent('mr-ribbon-size',{detail:{height:h}}));
+    if(ribbon.hidden)return;
     ribbon.hidden=h<48;
     if(ribbon.hidden)return;
     ribbon.style.cssText=`top:${window.innerHeight-h}px;height:${h}px;--ribbon-size:${h}px`;

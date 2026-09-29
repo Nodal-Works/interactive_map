@@ -2230,6 +2230,45 @@
         setFlowHour(hour);
         reportForSound(hour, stored);
         reportVehicles(hour);
+        reportEnergyFlow(hour);
+    }
+
+    // Use the same hourly dispatch as the map. Roof-to-host links are omitted
+    // from map geometry, so recover direct solar from served building demand.
+    function reportEnergyFlow(hour) {
+        if (!nodeData || !flowData) return;
+        const reading = { hour: hour, demand: 0, solar: 0, direct: 0,
+            solarToBattery: 0, solarToGrid: 0, gridToDemand: 0,
+            gridToBattery: 0, batteryToDemand: 0, batteryToGrid: 0,
+            batteryIn: 0, batteryOut: 0,
+            hasBattery: nodeData.features.some(f => f.properties.kind === 'battery') };
+        const at = p => Math.max(0, Number((p.flow_hourly || [])[hour]) || 0);
+        nodeData.features.forEach(function (f) {
+            if (f.properties.kind === 'building') {
+                reading.demand += Math.max(0, Number((f.properties.demand_hourly || [])[hour]) || 0);
+            }
+        });
+        flowData.features.forEach(function (f) {
+            const p = f.properties, value = at(p);
+            const load = p.target_kind === 'building' || p.target_kind === 'charge_point';
+            const solar = p.kind === 'pv' || p.kind === 'building';
+            if (p.target_kind === 'charge_point') reading.demand += value;
+            if (load && p.kind === 'grid') reading.gridToDemand += value;
+            if (load && p.kind === 'battery') reading.batteryToDemand += value;
+            if (p.target_kind === 'battery') {
+                reading.batteryIn += value;
+                if (solar) reading.solarToBattery += value;
+                if (p.kind === 'grid') reading.gridToBattery += value;
+            }
+            if (p.kind === 'battery') reading.batteryOut += value;
+            if (p.target_kind === 'grid') {
+                if (solar) reading.solarToGrid += value;
+                if (p.kind === 'battery') reading.batteryToGrid += value;
+            }
+        });
+        reading.direct = Math.max(0, reading.demand - reading.gridToDemand - reading.batteryToDemand);
+        reading.solar = reading.direct + reading.solarToBattery + reading.solarToGrid;
+        ecomChannel.postMessage({ type: 'ecom_energy_flow', reading: reading });
     }
 
     // Where the cars are this hour, sent to animations/ecom-vehicles.js.
@@ -3407,6 +3446,10 @@
         // and then no tick would ever arrive to tell them where to be.
         if (data.type === 'ecom_vehicles_request') {
             if (isActive) reportVehicles(currentHour);
+            return;
+        }
+        if (data.type === 'ecom_energy_flow_request') {
+            if (isActive) reportEnergyFlow(currentHour);
             return;
         }
 

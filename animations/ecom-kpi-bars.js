@@ -1,364 +1,143 @@
-// ECOM KPI bars - the community's figures along the table's edges.
-//
-// One along the top of the display and one along the bottom. Numbers glide to
-// their new values and a chip says by how much, green for the better way and
-// red for the worse, so a touch on the panel reads on the table as a
-// consequence and not only as a picture.
-//
-// WHICH ONES. One figure for each control on the panel, so every touch moves
-// something, and the result underneath:
-//
-//   top      Members      buildings in the community     the member switches
-//            Solar        kWh a day from the roofs       the PV controls
-//            Chargers     charge points                  add / remove a CP
-//            EV charging  kWh a day to the cars          the same
-//
-//   bottom   Self-sufficiency   share of demand met on campus
-//            Grid import        kWh a day
-//            Grid export        kWh a day
-//
-// Why not only the results: measured one change at a time, a charge point
-// moves grid import by about 15 kWh a day against 62,000 and self-sufficiency
-// not at all, and switching MC2 off moves self-sufficiency by 0.3 pt. Honest,
-// and invisible. The top bar is what was changed, the bottom what it did.
-//
-// PER DAY. The opening picture is a one-day export and the panel dispatches its
-// own span (two days by default), so a raw total would double on the first
-// touch. And when the span itself changes the new figures are the reference and
-// no chip is claimed: what moved is the calendar, not the community.
-//
-// Hidden during the introduction and faded in when it ends - or as soon as the
-// community is changed, whatever the introduction is doing.
-//
-// Listens on the controller channel for: ecom_kpis (from ecom-energy.js, with
-// the hours they cover and the member, charger and EV counts), ecom_caption,
-// ecom_release, ecom_change, animation_state.
-//
-// Exposes globals: ecomKpiBars
-
+// Hourly energy story at the near edge of the projection table.
+// The map owns the calculation; this panel only presents its dispatch reading.
 (function () {
     'use strict';
-
-    // Whether the top bar is turned to face the far side of the table.
-    const FACE_FAR_SIDE = false;
-
-    // Clear of the display's own sidebars.
-    const EDGE_PX = 60;
-    const GLIDE_MS = 1200;
-    const CHIP_MS = 6000;
-
     const palette = (window.ECOM_PALETTE && window.ECOM_PALETTE.semantic) || {};
-    const COLOURS = {
-        building: palette.building || '#ff2bd6',
-        pv: palette.pv || '#eaff00',
-        grid: palette.grid || '#00ffe5',
-        ev: palette.ev || palette.charge_point || '#39ff88',
-        better: '#4ade80',
-        worse: '#f87171'
-    };
-
-    const whole = function (v) { return Math.round(v).toLocaleString('en-GB'); };
-    const percent = function (v) { return (v < 10 ? v.toFixed(1) : v.toFixed(0)) + '%'; };
-
-    // kind: 'count' (whole numbers, chip in units), 'amount' (kWh/day, chip in
-    // kWh), 'share' (percent, chip in points). better: which way is good, or
-    // null for a figure that is neither (more members is not better or worse).
-    const BARS = {
-        top: [
-            { key: 'members', label: 'Members', unit: 'buildings', kind: 'count',
-              colour: COLOURS.building, better: null,
-              value: function (k) { return k.members || 0; } },
-            { key: 'solar', label: 'Solar', unit: 'kWh / day', kind: 'amount',
-              colour: COLOURS.pv, better: 'up',
-              value: function (k, days) { return (k.total_pv_gen || 0) / days; } },
-            { key: 'chargers', label: 'Chargers', unit: 'charge points', kind: 'count',
-              colour: COLOURS.ev, better: null,
-              value: function (k) { return k.chargers || 0; } },
-            { key: 'ev', label: 'EV charging', unit: 'kWh / day', kind: 'amount',
-              colour: COLOURS.ev, better: null,
-              value: function (k, days) { return (k.total_ev_charging || 0) / days; } }
-        ],
-        bottom: [
-            { key: 'self_sufficiency', label: 'Self-sufficiency', unit: 'met on campus',
-              kind: 'share', colour: COLOURS.pv, better: 'up', track: true,
-              value: function (k) { return k.self_sufficiency || 0; } },
-            { key: 'import', label: 'Grid import', unit: 'kWh / day', kind: 'amount',
-              colour: COLOURS.grid, better: 'down',
-              value: function (k, days) { return (k.total_grid_import || 0) / days; } },
-            { key: 'export', label: 'Grid export', unit: 'kWh / day', kind: 'amount',
-              colour: COLOURS.pv, better: 'up',
-              value: function (k, days) { return (k.total_grid_export || 0) / days; } }
-        ]
-    };
-
-    // ------------------------------------------------------------------ DOM
-
     const style = document.createElement('style');
-    style.textContent = [
-        '.ecom-kpi-bar{position:fixed;left:' + EDGE_PX + 'px;right:' + EDGE_PX + 'px;',
-        'height:52px;z-index:850;display:flex;align-items:stretch;',
-        'padding:0 12px;box-sizing:border-box;pointer-events:none;',
-        'background:rgba(6,9,12,0.84);color:#e8eef6;',
-        'font-family:system-ui,-apple-system,Segoe UI,sans-serif;',
-        'opacity:0;transition:opacity 700ms ease}',
-        '.ecom-kpi-bar.is-on{opacity:1}',
-        '.ecom-kpi-top{top:0;border-bottom:1px solid rgba(255,255,255,0.08)}',
-        // Room on the right for the display's own "Open Controller" button.
-        '.ecom-kpi-bottom{bottom:0;border-top:1px solid rgba(255,255,255,0.08);',
-        'padding-right:150px}',
-        '.ecom-kpi-top.faces-far{transform:rotate(180deg)}',
-        '.ecom-kpi-cell{flex:1;min-width:0;display:flex;align-items:center;gap:10px;',
-        'padding:0 14px;border-left:1px solid rgba(255,255,255,0.07)}',
-        '.ecom-kpi-cell:first-child{border-left:none}',
-        '.ecom-kpi-words{display:flex;flex-direction:column;line-height:1.15;min-width:0}',
-        '.ecom-kpi-label{font-size:11px;letter-spacing:0.12em;text-transform:uppercase;',
-        'opacity:0.72;white-space:nowrap}',
-        '.ecom-kpi-unit{font-size:11px;opacity:0.5;white-space:nowrap}',
-        '.ecom-kpi-value{font-size:24px;font-weight:650;font-variant-numeric:tabular-nums;',
-        'white-space:nowrap;margin-left:auto}',
-        '.ecom-kpi-track{flex:1;min-width:40px;height:8px;border-radius:4px;position:relative;',
-        'background:rgba(255,255,255,0.09);overflow:hidden}',
-        '.ecom-kpi-fill{position:absolute;left:0;top:0;bottom:0;border-radius:4px}',
-        '.ecom-kpi-chip{font-size:13px;font-weight:650;padding:3px 8px;border-radius:10px;',
-        'white-space:nowrap;opacity:0;transition:opacity 400ms ease;color:#081014;',
-        'font-variant-numeric:tabular-nums}',
-        '.ecom-kpi-chip.is-on{opacity:1}'
-    ].join('');
+    style.textContent = `
+        .ecom-flow-panel{--solar:${palette.pv || '#eaff00'};--battery:${palette.battery || '#fa3600'};--grid:${palette.grid || '#00ffe5'};
+            position:fixed;left:60px;right:60px;bottom:42px;z-index:850;box-sizing:border-box;
+            transform:scaleY(.81);transform-origin:bottom center;
+            padding:15px 22px 17px;border:1px solid #34404b;border-radius:16px;
+            background:rgba(6,12,18,.95);color:#f1f5f9;font-family:system-ui,-apple-system,Segoe UI,sans-serif;
+            pointer-events:none;opacity:0;visibility:hidden;transition:opacity .5s;box-shadow:0 8px 32px #0008}
+        .ecom-flow-panel.is-on{opacity:1;visibility:visible}
+        .ecom-flow-header{display:flex;align-items:baseline;gap:16px;margin-bottom:14px;padding-right:135px}
+        .ecom-flow-header strong{font-size:17px}.ecom-flow-time{font-size:14px;color:#c2ceda}
+        .ecom-flow-context{margin-left:auto;font-size:12px;color:#b3c2ce}
+        .ecom-flow-body{display:grid;grid-template-columns:1fr 1.25fr 1.1fr 2fr;gap:22px}
+        .ecom-flow-card{min-width:0;border-left:1px solid #34404b;padding-left:22px}
+        .ecom-flow-card:first-child{border:0;padding:0}
+        .ecom-flow-label{font-size:12px;font-weight:650;letter-spacing:.1em;text-transform:uppercase;color:#c2ceda}
+        .ecom-flow-number{font-size:30px;font-weight:700;line-height:1.25;font-variant-numeric:tabular-nums;white-space:nowrap}
+        .ecom-flow-number small{font-size:14px;font-weight:500;color:#c2ceda}
+        .ecom-flow-note{font-size:13px;color:#c2ceda;margin-top:5px;line-height:1.45}
+        .ecom-flow-solar{color:var(--solar)}.ecom-flow-battery{color:var(--battery)}.ecom-flow-grid{color:var(--grid)}
+        .ecom-flow-route{display:flex;align-items:center;gap:8px;font-size:13px;line-height:1.8;color:#c2ceda}
+        .ecom-flow-route b{margin-left:auto;white-space:nowrap;font-variant-numeric:tabular-nums;color:#f1f5f9}
+        .ecom-flow-arrow{color:#667582}.ecom-flow-route.is-active .ecom-flow-arrow{color:var(--solar);animation:ecom-flow-pulse 1.8s ease-in-out infinite}
+        .ecom-flow-track{height:18px;display:flex;overflow:hidden;border-radius:6px;background:#28333e;margin:9px 0}
+        .ecom-flow-segment{height:100%;transition:width .5s ease}
+        .ecom-flow-key{display:flex;flex-wrap:wrap;gap:6px 14px;font-size:12px;line-height:1.5}
+        .ecom-flow-key span:before{content:'';display:inline-block;width:8px;height:8px;border-radius:2px;margin-right:5px;background:currentColor}
+        @keyframes ecom-flow-pulse{50%{opacity:.35;transform:translateX(3px)}}
+        @media(prefers-reduced-motion:reduce){.ecom-flow-panel,.ecom-flow-segment{transition:none}.ecom-flow-route.is-active .ecom-flow-arrow{animation:none}}
+        @media(min-width:1800px){.ecom-flow-panel{padding:20px 28px 24px}.ecom-flow-number{font-size:38px}.ecom-flow-route,.ecom-flow-note,.ecom-flow-key{font-size:16px}.ecom-flow-label{font-size:14px}}
+        @media(max-width:1050px){.ecom-flow-panel{left:18px;right:18px}.ecom-flow-body{gap:12px;grid-template-columns:1fr 1.2fr 1fr 1.6fr}.ecom-flow-card{padding-left:12px}.ecom-flow-number{font-size:24px}.ecom-flow-context{display:none}}
+        @media(max-width:720px){.ecom-flow-body{grid-template-columns:1fr 1fr;gap:14px}.ecom-flow-card:nth-child(3){border:0;padding:0}.ecom-flow-header{padding-right:0;flex-wrap:wrap;gap:5px 12px}.ecom-flow-panel{bottom:48px;padding:12px}}
+    `;
     document.head.appendChild(style);
-
-    const bars = {};
-    const cells = {};
-
-    function makeBar(position) {
-        const bar = document.createElement('div');
-        bar.className = 'ecom-kpi-bar ecom-kpi-' + position +
-            (position === 'top' && FACE_FAR_SIDE ? ' faces-far' : '');
-        BARS[position].forEach(function (spec) {
-            const cell = document.createElement('div');
-            cell.className = 'ecom-kpi-cell';
-            cell.innerHTML =
-                '<span class="ecom-kpi-words">' +
-                    '<span class="ecom-kpi-label"></span>' +
-                    '<span class="ecom-kpi-unit"></span>' +
-                '</span>' +
-                (spec.track ? '<div class="ecom-kpi-track"><div class="ecom-kpi-fill"></div></div>' : '') +
-                '<span class="ecom-kpi-value"></span>' +
-                '<span class="ecom-kpi-chip"></span>';
-            cell.querySelector('.ecom-kpi-label').textContent = spec.label;
-            cell.querySelector('.ecom-kpi-unit').textContent = spec.unit;
-            cell.querySelector('.ecom-kpi-value').style.color = spec.colour;
-            const fill = cell.querySelector('.ecom-kpi-fill');
-            if (fill) fill.style.background = spec.colour;
-            bar.appendChild(cell);
-            cells[position + ':' + spec.key] = {
-                value: cell.querySelector('.ecom-kpi-value'),
-                chip: cell.querySelector('.ecom-kpi-chip'),
-                fill: fill
-            };
-        });
-        document.body.appendChild(bar);
-        return bar;
+    const panel = document.createElement('section');
+    panel.className = 'ecom-flow-panel ecom-kpi-bottom';
+    panel.setAttribute('aria-label', 'Community energy flow for the displayed simulation hour');
+    panel.innerHTML = `
+        <div class="ecom-flow-header"><strong>Community energy flow</strong><span class="ecom-flow-time"></span><span class="ecom-flow-context"></span></div>
+        <div class="ecom-flow-body">
+            <div class="ecom-flow-card"><div class="ecom-flow-label">☀ Solar PV</div><div class="ecom-flow-number ecom-flow-solar" data-value="solar"></div><div class="ecom-flow-note" data-value="solarState"></div></div>
+            <div class="ecom-flow-card"><div class="ecom-flow-label">Where solar goes</div>
+                <div class="ecom-flow-route" data-route="direct"><span class="ecom-flow-arrow">→</span> Used directly <b></b></div>
+                <div class="ecom-flow-route" data-route="solarToBattery"><span class="ecom-flow-arrow">→</span> To battery <b></b></div>
+                <div class="ecom-flow-route" data-route="solarToGrid"><span class="ecom-flow-arrow">→</span> To grid <b></b></div>
+            </div>
+            <div class="ecom-flow-card"><div class="ecom-flow-label">▰ Battery</div><div class="ecom-flow-number ecom-flow-battery" data-value="battery"></div><div class="ecom-flow-note" data-value="batteryState"></div><div class="ecom-flow-note" data-value="batterySource"></div></div>
+            <div class="ecom-flow-card"><div class="ecom-flow-label">Buildings + EV demand</div><div class="ecom-flow-number" data-value="demand"></div>
+                <div class="ecom-flow-track" role="img"><div class="ecom-flow-segment" data-segment="direct" style="background:var(--solar)"></div><div class="ecom-flow-segment" data-segment="batteryToDemand" style="background:var(--battery)"></div><div class="ecom-flow-segment" data-segment="gridToDemand" style="background:var(--grid)"></div></div>
+                <div class="ecom-flow-key"><span class="ecom-flow-solar" data-share="direct"></span><span class="ecom-flow-battery" data-share="batteryToDemand"></span><span class="ecom-flow-grid" data-share="gridToDemand"></span></div>
+                <div class="ecom-flow-note" data-value="gridState"></div>
+            </div>
+        </div>`;
+    document.body.appendChild(panel);
+    // Match the Street Life QR ribbon's calibrated height, including settings
+    // and table-transform changes. Measure untransformed content to avoid drift.
+    function fitRibbon() {
+        const height = parseFloat(getComputedStyle(document.documentElement)
+            .getPropertyValue('--mr-bottom-ribbon-height'));
+        if (!Number.isFinite(height) || !panel.offsetHeight) return;
+        panel.style.bottom = '0px';
+        panel.style.transform = 'scaleY(' + Math.max(0, height) / panel.offsetHeight + ')';
     }
-
-    bars.top = makeBar('top');
-    bars.bottom = makeBar('bottom');
-
-    // Per bar: what is on screen now, and where it is heading ({key: number}).
-    const shown = { top: null, bottom: null };
-    const target = { top: null, bottom: null };
-    const chipTimers = {};
-    let glideFrame = null;
-    let glides = [];
-
-    function format(spec, v) {
-        if (spec.kind === 'share') return percent(v);
-        return whole(v);
-    }
-
-    function paint(position, values) {
-        BARS[position].forEach(function (spec) {
-            const cell = cells[position + ':' + spec.key];
-            const v = values[spec.key];
-            cell.value.textContent = format(spec, v);
-            if (cell.fill) cell.fill.style.width = Math.max(0, Math.min(100, v)) + '%';
-        });
-    }
-
-    function chipText(spec, delta) {
-        if (spec.kind === 'share') {
-            return Math.abs(delta) >= 0.05
-                ? (delta > 0 ? '+' : '−') + Math.abs(delta).toFixed(1) + ' pts' : '';
-        }
-        return Math.round(Math.abs(delta)) >= 1
-            ? (delta > 0 ? '+' : '−') + whole(Math.abs(delta)) : '';
-    }
-
-    function showChip(position, spec, from, to) {
-        const id = position + ':' + spec.key;
-        const chip = cells[id].chip;
-        const text = chipText(spec, to - from);
-        if (!text) return;      // this figure did not move; any chip it has stays
-        if (chipTimers[id]) clearTimeout(chipTimers[id]);
-        const delta = to - from;
-        chip.textContent = text;
-        chip.style.background = spec.better === null
-            ? '#e8eef6'
-            : ((spec.better === 'up' ? delta > 0 : delta < 0) ? COLOURS.better : COLOURS.worse);
-        chip.classList.add('is-on');
-        chipTimers[id] = setTimeout(function () {
-            chip.classList.remove('is-on');
-        }, CHIP_MS);
-    }
-
-    function clearChips(position) {
-        BARS[position].forEach(function (spec) {
-            const id = position + ':' + spec.key;
-            if (chipTimers[id]) clearTimeout(chipTimers[id]);
-            cells[id].chip.classList.remove('is-on');
-        });
-    }
-
-    function step(now) {
-        glideFrame = null;
-        let running = false;
-        glides.forEach(function (glide) {
-            const t = Math.min(1, (now - glide.startedAt) / GLIDE_MS);
-            const eased = 1 - Math.pow(1 - t, 3);
-            const current = {};
-            Object.keys(glide.to).forEach(function (key) {
-                current[key] = glide.from[key] + (glide.to[key] - glide.from[key]) * eased;
-            });
-            shown[glide.position] = current;
-            paint(glide.position, current);
-            if (t < 1) running = true;
-        });
-        glides = glides.filter(function (glide) {
-            return now - glide.startedAt < GLIDE_MS;
-        });
-        if (running) glideFrame = requestAnimationFrame(step);
-    }
-
-    // The span the last figures covered, to tell a change of calendar from a
-    // change of community.
-    let lastHours = null;
-
-    function same(a, b) {
-        return Object.keys(a).every(function (key) {
-            return Math.abs(a[key] - b[key]) < 1e-6;
-        });
-    }
-
-    function update(kpis, hours) {
-        const span = Math.max(1, hours || 24);
-        const days = span / 24;
-        const newPeriod = lastHours !== null && span !== lastHours;
-        lastHours = span;
-        let changed = false;
-
-        ['top', 'bottom'].forEach(function (position) {
-            const to = {};
-            BARS[position].forEach(function (spec) {
-                to[spec.key] = spec.value(kpis, days);
-            });
-            const was = target[position];
-            if (was === null) {
-                target[position] = to;
-                shown[position] = to;
-                paint(position, to);
-                return;
-            }
-            // The same figures again - the display announces a layer more than
-            // once as it settles. Nothing to glide, and above all no chip: a
-            // repeat used to be measured from mid-glide and claimed a fraction
-            // of the real change.
-            if (same(was, to)) return;
-            changed = true;
-            target[position] = to;
-
-            if (newPeriod) {
-                clearChips(position);
-            } else {
-                // Measured from where it was heading, never from what happens
-                // to be on screen mid-glide.
-                BARS[position].forEach(function (spec) {
-                    showChip(position, spec, was[spec.key], to[spec.key]);
-                });
-            }
-            glides = glides.filter(function (g) { return g.position !== position; });
-            glides.push({ position: position, from: shown[position], to: to,
-                          startedAt: performance.now() });
-        });
-        if (glideFrame === null && glides.length) {
-            glideFrame = requestAnimationFrame(step);
-        }
-        return changed;
-    }
-
-    // ------------------------------------------------------------ visibility
-
-    let layerOn = false;
-    let inIntroduction = false;
-    let haveFigures = false;
-    // The figures arrive the moment the layer comes up, a beat before the
-    // controller starts the introduction; shown at once, the bars flashed on
-    // and straight back off. So they wait to see whether one is starting.
-    let settled = false;
-
-    function syncVisibility() {
-        const on = layerOn && haveFigures && settled && !inIntroduction;
-        bars.top.classList.toggle('is-on', on);
-        bars.bottom.classList.toggle('is-on', on);
-    }
-
+    window.addEventListener('mr-ribbon-size', fitRibbon);
+    new ResizeObserver(fitRibbon).observe(panel);
+    fitRibbon();
     const channel = new BroadcastChannel('map_controller_channel');
+    let layerOn = false, inIntroduction = false, settled = false, reading = null, settleTimer = null;
+    const number = v => v > 0 && v < .1 ? '<0.1' : v.toLocaleString('en-GB', { maximumFractionDigits: v < 100 ? 1 : 0 });
+    const power = v => number(v) + ' kW';
+    const put = (key, text) => { panel.querySelector('[data-value="' + key + '"]').textContent = text; };
+    function syncVisibility() {
+        const on = layerOn && !!reading && settled && !inIntroduction;
+        panel.classList.toggle('is-on', on);
+        panel.setAttribute('aria-hidden', String(!on));
+    }
+    function render(r) {
+        reading = r;
+        const hour = String(r.hour % 24).padStart(2, '0');
+        panel.querySelector('.ecom-flow-time').textContent = 'Day ' + (Math.floor(r.hour / 24) + 1) + ' · ' + hour + ':00 · hourly average';
+        put('solar', power(r.solar));
+        put('solarState', r.solar > 0 ? 'Generating power' : 'No solar generation');
+        ['direct', 'solarToBattery', 'solarToGrid'].forEach(key => {
+            const row = panel.querySelector('[data-route="' + key + '"]');
+            row.querySelector('b').textContent = power(r[key]);
+            row.classList.toggle('is-active', r[key] > 0);
+        });
+        put('battery', r.hasBattery ? power(Math.max(r.batteryIn, r.batteryOut)) : '—');
+        put('batteryState', !r.hasBattery ? 'No battery installed' : r.batteryIn > 0 && r.batteryOut > 0 ? 'Charging + discharging' : r.batteryIn > 0 ? 'Charging' : r.batteryOut > 0 ? 'Discharging' : 'Idle');
+        const batteryDetails = [];
+        if (r.solarToBattery > 0) batteryDetails.push(power(r.solarToBattery) + ' from solar');
+        if (r.gridToBattery > 0) batteryDetails.push(power(r.gridToBattery) + ' from grid');
+        if (r.batteryToDemand > 0) batteryDetails.push(power(r.batteryToDemand) + ' to demand');
+        if (r.batteryToGrid > 0) batteryDetails.push(power(r.batteryToGrid) + ' to grid');
+        put('batterySource', batteryDetails.join(' · '));
+        put('demand', power(r.demand));
+        const shares = [];
+        [['direct', 'Solar'], ['batteryToDemand', 'Battery'], ['gridToDemand', 'Grid']].forEach(([key, label]) => {
+            const share = r.demand > 0 ? Math.max(0, Math.min(100, r[key] / r.demand * 100)) : 0;
+            panel.querySelector('[data-segment="' + key + '"]').style.width = share + '%';
+            const text = label + ' ' + number(share) + '%';
+            panel.querySelector('[data-share="' + key + '"]').textContent = text;
+            shares.push(text);
+        });
+        panel.querySelector('.ecom-flow-track').setAttribute('aria-label', 'Demand supplied by: ' + shares.join(', '));
+        put('gridState', r.demand === 0 ? 'No demand this hour' : r.gridToDemand > 0 ? power(r.gridToDemand) + ' of demand supplied by grid' : 'Demand fully met on campus');
+        syncVisibility();
+    }
     channel.addEventListener('message', function (event) {
         const data = event.data || {};
-
-        if (data.type === 'ecom_kpis' && data.kpis) {
+        if (data.type === 'ecom_energy_flow' && data.reading) {
             layerOn = true;
-            if (!haveFigures) {
-                setTimeout(function () { settled = true; syncVisibility(); }, 1800);
-            }
-            haveFigures = true;
-            update(data.kpis, data.hours);
-            syncVisibility();
-            return;
-        }
-        if (data.type === 'animation_state' && data.animationId === 'ecom-energy-btn') {
+            if (!reading && !settleTimer) settleTimer = setTimeout(() => { settled = true; syncVisibility(); }, 1800);
+            render(data.reading);
+        } else if (data.type === 'ecom_kpis' && data.kpis) {
+            panel.querySelector('.ecom-flow-context').textContent = (data.kpis.members || 0) + ' buildings · ' + (data.kpis.chargers || 0) + (data.kpis.chargers === 1 ? ' charge point' : ' charge points');
+        } else if (data.type === 'animation_state' && data.animationId === 'ecom-energy-btn') {
             layerOn = !!data.isActive;
+            if (layerOn) channel.postMessage({ type: 'ecom_energy_flow_request' });
             syncVisibility();
-            return;
-        }
-        // Someone changed the community: whatever the introduction was doing,
-        // the room now wants to see what that did. The controller opens with
-        // the introduction running, and a person who starts using the controls
-        // without finishing it used to get bars that never came up at all.
-        if (data.type === 'ecom_change') {
+        } else if (data.type === 'ecom_caption') {
+            inIntroduction = !!(data.caption && typeof data.caption.step === 'number');
+            syncVisibility();
+        } else if (data.type === 'ecom_release' || data.type === 'ecom_change') {
             inIntroduction = false;
             settled = true;
             syncVisibility();
-            return;
-        }
-        if (data.type === 'ecom_caption') {
-            inIntroduction = !!(data.caption && typeof data.caption.step === 'number');
-            syncVisibility();
-            return;
-        }
-        if (data.type === 'ecom_release') {
-            inIntroduction = false;
-            syncVisibility();
         }
     });
-
+    syncVisibility();
+    channel.postMessage({ type: 'ecom_energy_flow_request' });
     window.ecomKpiBars = {
-        bars: { top: BARS.top.map(function (s) { return s.key; }),
-                bottom: BARS.bottom.map(function (s) { return s.key; }) },
-        isShowing: function () { return bars.top.classList.contains('is-on'); },
-        why: function () {
-            return { layerOn: layerOn, haveFigures: haveFigures, settled: settled,
-                     inIntroduction: inIntroduction };
-        },
-        shown: function () { return { top: shown.top, bottom: shown.bottom }; },
-        target: function () { return { top: target.top, bottom: target.bottom }; }
+        isShowing: () => panel.classList.contains('is-on'),
+        why: () => ({ layerOn, haveFigures: !!reading, settled, inIntroduction }),
+        shown: () => reading,
+        target: () => reading
     };
 })();
