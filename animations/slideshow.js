@@ -543,6 +543,28 @@ function awaitSlide(promise, signal, timeout = 15000) {
     Promise.resolve(promise).then(value=>finish(null,value),finish);
   });
 }
+// Submit video only when the decoder produces a frame. The fallback preserves
+// playback on browsers without video-frame callbacks; abort cancels either API.
+function drawSlideVideo(media, signal) {
+  const decodedFrames = typeof media.requestVideoFrameCallback === 'function';
+  let pending = null;
+  const cancel = () => {
+    if (pending !== null) {
+      if (decodedFrames) media.cancelVideoFrameCallback(pending);
+      else cancelAnimationFrame(pending);
+      pending = null;
+    }
+  };
+  const draw = () => {
+    pending = null;
+    if (signal.aborted || media.paused || media.ended) return;
+    drawMediaOnCanvas(media, currentMediaFitMode, currentMediaRotation);
+    pending = decodedFrames ? media.requestVideoFrameCallback(draw) : requestAnimationFrame(draw);
+  };
+  signal.addEventListener('abort', cancel, {once: true});
+  draw();
+}
+
 function cancelSlide() {
   slideJob?.abort();
   clearTimeout(slideshowTimer);slideshowTimer=null;
@@ -579,7 +601,7 @@ async function displaySlide(index) {
         if(slide.type==='video') {media.currentTime=0;await awaitSlide(media.play(),job.signal);}
         await awaitSlide(animateTransition(oldMedia,media,slide.transition || 'fade',500,oldRotation,currentMediaRotation,oldFit,currentMediaFitMode),job.signal);
         if(slide.type==='video') {
-          const draw=()=>{if(job.signal.aborted || media.paused || media.ended)return;drawMediaOnCanvas(media,currentMediaFitMode,currentMediaRotation);(window.MR_FRAMES ? window.MR_FRAMES.request.bind(window.MR_FRAMES, 'slides') : requestAnimationFrame)(draw);};draw();
+          drawSlideVideo(media, job.signal);
         }
       }
     }

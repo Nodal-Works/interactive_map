@@ -5,7 +5,7 @@
 
 const canvas = document.getElementById('bg-canvas');
 const ctx = canvas.getContext('2d');
-let animationId;
+let animationId = null;
 let particles = [];
 let currentEffect = 'default';
 
@@ -361,6 +361,8 @@ function drawParticles() {
 }
 
 function animate() {
+    animationId = null;
+    if (!backgroundVisible()) return;
     updateParticles();
     drawParticles();
     animationId = requestAnimationFrame(animate);
@@ -373,5 +375,22 @@ function setEffect(effectName) {
     }
 }
 
-// Start animation loop
-animate();
+// A hidden welcome panel must not compete with the active map/dashboard.
+const backgroundWelcome = document.getElementById('welcome-screen');
+function backgroundVisible() {
+    return !document.hidden && !backgroundWelcome?.classList.contains('hidden');
+}
+function syncBackgroundAnimation() {
+    if (!backgroundVisible()) {
+        if (animationId !== null) cancelAnimationFrame(animationId);
+        animationId = null;
+    } else if (animationId === null) {
+        animationId = requestAnimationFrame(animate);
+    }
+}
+if (backgroundWelcome) {
+    new MutationObserver(syncBackgroundAnimation).observe(backgroundWelcome,
+        {attributes: true, attributeFilter: ['class']});
+}
+document.addEventListener('visibilitychange', syncBackgroundAnimation);
+syncBackgroundAnimation();

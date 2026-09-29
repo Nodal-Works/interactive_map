@@ -1019,6 +1019,7 @@ function renderStaticLayer(width, height) {
 let streetLifeRects=null;
 function drawStreetLife() {
   streetLifeRects={mapRect:map.getContainer().getBoundingClientRect(),canvasRect:streetLifeCanvas.getBoundingClientRect()};
+  try {
   if(geographicSymbols)symbolPixelsPerMetre=window.MR_TABLE.pixelsPerMetre(map.getZoom(),map.getCenter().lat);
   const width = streetLifeCanvas.width;
   const height = streetLifeCanvas.height;
@@ -1112,6 +1113,7 @@ function drawStreetLife() {
   
   // Reset for next frame
   streetLifeCtx.globalCompositeOperation = 'source-over';
+  } finally { streetLifeRects=null; }
 }
 
 // Generate static streetlights along paths (called once on load)

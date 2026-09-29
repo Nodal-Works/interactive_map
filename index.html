@@ -335,5 +335,12 @@
         document.body.appendChild(diagnostic);
       }
     </script>
+    <script>
+    if (new URLSearchParams(location.search).has('diagnostics')) {
+      const diagnostics = document.createElement('script');
+      diagnostics.src = 'scripts/demo-diagnostics.js';
+      document.body.appendChild(diagnostics);
+    }
+    </script>
   </body>
 </html>

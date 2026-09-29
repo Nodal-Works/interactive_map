@@ -45,6 +45,13 @@ def allowed_service(service, path, method):
 
 
 class HostHandler(SimpleHTTPRequestHandler):
+    def end_headers(self):
+        # Local source assets change when the checkout is updated. A cached
+        # host script can otherwise issue invitations for an older release.
+        if self._path().endswith(('.html', '.js', '.css')) or self._path() == '/':
+            self.send_header('Cache-Control', 'no-store')
+        super().end_headers()
+
     def _reply(self, data, content_type='application/json', code=200):
         body = data if isinstance(data, bytes) else json.dumps(data).encode()
         self.send_response(code)

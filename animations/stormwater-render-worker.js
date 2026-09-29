@@ -18,7 +18,8 @@ onmessage=({data})=>{
     p.x=values[n];p.y=values[n+1];p.age=values[n+2];p.size=values[n+3];p.poolingIntensity=values[n+4];p.isPooling=!!values[n+5];p.trail.length=values[n+6];
     for(let j=0;j<p.trail.length;j++){const point=p.trail[j] || (p.trail[j]={});point.x=values[n+7+j*2];point.y=values[n+8+j*2];}
    }
-   state.drawParticles();const bitmap=canvas.transferToImageBitmap();postMessage({type:'frame',bitmap,values},[bitmap,values.buffer]);
+   state.debugFlowLines=!!data.debugLines;state.flowData={flow_lines_screen:data.debugLines};
+   state.drawParticles();const bitmap=canvas.transferToImageBitmap();postMessage({type:'frame',revision:data.revision,bitmap,values},[bitmap,values.buffer]);
   }
  }catch(error){postMessage({type:'error',message:error.message});}
 };

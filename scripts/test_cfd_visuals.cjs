@@ -139,6 +139,15 @@ function particles() {
   console.log('PASS Particles: 30/60/120 FPS, short tails, fine tips, safe recycling, walls, reverse flow, color and style switching');
 }
 function facadeGlow() {
+  const smoothed={ux:new Float32Array([.02,-.03,0,.11]),uy:new Float32Array([-.04,.01,.07,0])};
+  const target={ux:new Float32Array([-.05,.06,.01,-.02]),uy:new Float32Array([.02,-.03,0,.08])};
+  for(const dt of [0,1/120,1/60,1/30,.05]){
+    const expected={ux:smoothed.ux.slice(),uy:smoothed.uy.slice()},blend=1-Math.exp(-dt/.25);
+    for(let n=0;n<expected.ux.length;n++){
+      expected.ux[n]+=(target.ux[n]-expected.ux[n])*blend;expected.uy[n]+=(target.uy[n]-expected.uy[n])*blend;
+    }
+    C.smoothField(smoothed,target,dt);assert.deepEqual(smoothed,expected,'Smoothing retains identical Float32 results');
+  }
   const ring=(x,y,w,h)=>[[x,y],[x+w,y],[x+w,y+h],[x,y+h],[x,y]];
   const project=p=>({x:p[0],y:p[1]});
   const features=[{geometry:{type:'MultiPolygon',coordinates:[
@@ -150,6 +159,22 @@ function facadeGlow() {
     return g;
   };
   const f=setup(),glow=new V.FacadeGlow(f,f.facadeEdges);
+  // Fixed probe stencils must preserve sample() exactly, including obstacle
+  // exclusions and the interpolation order, under changing velocity fields.
+  const probeField=setup(),probeGlow=new V.FacadeGlow(probeField,probeField.facadeEdges);
+  for(let frame=0;frame<12;frame++){
+    for(let n=0;n<probeField.ux.length;n++){
+      probeField.ux[n]=Math.sin(n*.17+frame)*.025;probeField.uy[n]=Math.cos(n*.13-frame)*.02;
+    }
+    const expected=probeGlow.edges.map(e=>{
+      let incoming=0;
+      for(const p of e.probes){const v=C.sample(probeField,p.x,p.y);incoming=Math.max(incoming,-(v.x*e.nx+v.y*e.ny)*probeField.windSpeed/probeField.latticeSpeed);}
+      const target=1-Math.exp(-incoming*incoming/9);
+      return e.intensity+(target-e.intensity)*(1-Math.exp(-.016/(target>e.intensity?1.5:.3)));
+    });
+    probeGlow.update(.016);
+    assert.deepEqual(probeGlow.edges.map(e=>e.intensity),expected,'Cached probes retain exact intensities');
+  }
   assert.ok(glow.edges.length>0);assert.ok(glow.edges.length<f.facadeEdges.length+1);
   glow.update(2);
   const left=glow.edges.filter(e=>e.nx<-.9),right=glow.edges.filter(e=>e.nx>.9),parallel=glow.edges.filter(e=>Math.abs(e.ny)>.9);
@@ -193,6 +218,10 @@ function facadeGlow() {
   let strokes=0;const ctx={beginPath(){},moveTo(){},lineTo(){},stroke(){strokes++;}};
   view.drawFacades(ctx);assert.ok(strokes>0&&strokes<=48);
   view.configure({facadeGlow:false});strokes=0;view.drawFacades(ctx);assert.equal(strokes,0);
+  const hiddenValues=view.facades.edges.map(e=>e.intensity);
+  const realUpdate=view.facades.update;view.facades.update=()=>{throw new Error('Disabled glow must not sample probes');};
+  view.update(.1);assert.deepEqual(view.facades.edges.map(e=>e.intensity),hiddenValues);
+  view.facades.update=realUpdate;view.configure({facadeGlow:true});view.update(.1);
   console.log('PASS facade glow: windward/parallel/leeward faces, speed response, courtyards, polygon parts, winding, shelter, frame rates, resolution, controls');
 }
 function dashboard() {
