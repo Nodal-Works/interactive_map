@@ -2,7 +2,7 @@
 
 ## Delivery state
 
-Code repairs are implemented and regression-tested. This is **not yet a fully validated working installation**: ECOM demand data and the prepared CoolPaths campus study have not been recovered, and the four-hour soak is running (restarted 28 September at 22:07:20 UTC; due 29 September at approximately 02:07 UTC). No synthetic demand or substitute thermal study has been introduced.
+Code repairs are implemented and regression-tested. This is **not yet a fully validated working installation**: ECOM demand data and the prepared CoolPaths campus study have not been recovered, and the elapsed four-hour soak contains only about three hours of valid visible-display samples. No synthetic demand or substitute thermal study has been introduced.
 
 Checkpoints: `d2e49d2` geographic alignment; `6d13fb6` audio/EPC; `4a91890` dataset readiness and supervisor; `11b8fb2` presentation, Canvas and invitations. `a83ca97` adds the lifecycle/performance validation fixes, including bird initialization after map load, the calibration preview, Sun Study camera orientation, audio cleanup, stale runoff frames and bounded session history.
 
@@ -94,3 +94,23 @@ At 22:05 UTC, only the first three cycle samples existed and the browser had no 
 At 23:05 UTC the retained tab was still alive and had reached cycle 49, with no reported registered-layer errors or new Mac files. However, all 43 completed samples inspected at the start of this check had hidden frames and zero rendered-frame samples. The browser had also reverted to 1280×720 between turns. These samples provide no valid full-resolution performance evidence and cannot satisfy the requested four-hour visible-display soak. DOM/canvas counts stayed at 318/12 in the inspected tail; this alone is not proof of leak-free operation.
 
 The existing run was left intact, and browser visibility was explicitly enabled. The live DOM then reported visible and 1920×1080. Future checks must inspect each sample's visibility, viewport and run identifier; do not assume these settings survive a turn. If the remaining samples stay invalid, report the browser test limitation rather than claiming a completed endurance pass or repeatedly restarting without evidence that the cause is resolved.
+
+### Completed run assessment — 29 September 2026
+
+Run `2026-09-28T22:07:20.859Z` has a matching completion record at `2026-09-29T02:08:00.114Z`: 14,439,254 ms elapsed and 231 scheduled cycles. Of 226 recorded samples, 182 were visible at 1920×1080 and 44 were invalid. Valid samples span 23:06:47–02:07:51 UTC. This is **not a successful four-hour visible-display soak**. The temporary viewport override was reset after completion.
+
+All valid samples held 318 DOM nodes and 12 canvases. No registered-layer errors or main-thread long tasks were recorded. End-of-sample JS heap ranged approximately 46–95 MB with garbage collection; idle median heap over the first/last five idle samples was 56.39/54.04 MB. There is no progressive idle heap, DOM or canvas growth in these observations; GPU/native memory and audio hardware output were not measured, so this does not establish leak-free permanent operation.
+
+| Case | Valid samples | Median FPS | First/last five sample median FPS |
+| --- | ---: | ---: | ---: |
+| Birds | 22 | 60.00 | 60.00 / 59.97 |
+| Wind | 23 | 4.15 | 4.22 / 4.16 |
+| Runoff | 23 | 8.87 | 8.82 / 11.20 |
+| Sun Study | 23 | 60.00 | 60.00 / 60.00 |
+| Slideshow | 23 | 60.00 | 60.00 / 60.00 |
+| Wind + runoff | 23 | 3.02 | 3.05 / 3.02 |
+| Idle | 22 | 60.00 | 60.00 / 60.00 |
+
+Grid cycles also recorded 60 FPS, but the grid automatically ends before the 20-second sampling delay; these are cleanup/idle observations, not sustained grid rendering evidence. Registered states confirmed wind/runoff ready during their combination samples. Sun and slideshow are outside that registry, so their FPS alone does not prove every visual effect remained correct. The repeated switching exercise showed no progressive frame-rate decline in the measured cases. Visual quality and simulation density remain unchanged; the 60 FPS target is unmet for the computational layers on the GPU selected by this browser.
+
+No Mac archive arrived. ECOM calculations and CoolPaths routing/hour changes/inspection/tour with real inputs remain unvalidated. Service recovery is regression-tested but a live interruption/recovery exercise remains outstanding. Physical projector calibration and a complete visible four-hour run remain outstanding. Delivery publishes tested code repairs, not a claim that the entire installation is fully working. Earlier follow-up entries describe historical pending states.
