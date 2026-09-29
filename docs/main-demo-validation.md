@@ -130,3 +130,25 @@ Alternating five warmed 150-step batches, with other CPU tests finished and wind
 | 45° / 372×312 | 27.18 | 18.00 | 33.8% |
 
 These are solver-throughput measurements, not rendered FPS or timings for obstacle-rich campus flow. A controlled visible 1920×1080 display comparison, with matching 2283×1368 wind canvases and no parallel CPU test workloads, measured reference `94e1152` at 4.19 FPS (238.48 ms mean, 266.7 ms p95) and optimized working code at 4.14 FPS (241.38 ms mean, 266.8 ms p95). Both used Intel UHD and had zero hidden frames and long tasks. There is no demonstrated display-FPS improvement; rendering remains the practical bottleneck despite faster core steps. The viewport override was reset after testing. Raw samples are in `.runtime/benchmarks/8096.jsonl` and `8095.jsonl`.
+
+### Full-resolution Quadro layer tests — 29 September 2026
+
+The browser now confirms NVIDIA Quadro RTX 3000 / ANGLE Direct3D11. All samples below were 30 seconds, visible (`hiddenFrames=0`), at 1920×1080, DPR 1. No simulation resolution, particle density or effects were reduced; glow was explicitly toggled only for comparison and restored enabled afterward.
+
+| Layer / combination | FPS |
+| --- | ---: |
+| Wind, impact glow enabled | 4.75 |
+| Wind, impact glow disabled | 9.71 |
+| Stormwater | 59.57 |
+| Bird sounds | 59.80 |
+| Sun Study | 60.00 |
+| Slideshow | 60.00 |
+| Wind + stormwater, glow disabled | 9.10 |
+| Wind + stormwater, glow enabled | 3.92 |
+| Street Life + transit after switching | 56.17 |
+
+These are short samples, not a new endurance test. Initialization/developing flow and browser/OS variability affect exact comparisons. Disabling glow approximately doubled wind throughput in this run, but did not get wind near 60 FPS. Stormwater's earlier poor Intel results do not represent this Quadro configuration. Static/interactive layers and the short grid animation were not given sustained FPS claims. ECOM/CoolPaths real-data validation remains blocked by absent private inputs.
+
+A reversible experiment retained Path2D facade paths until edges changed their existing brightness bins. Exact stroke geometry/style/order and invalidation tests, the full CFD visual suite and lifecycle checks passed, but the glow-enabled display sample was 4.55 FPS (219.72 ms mean, 283.4 ms p95), showing no improvement over 4.75 FPS. The experiment and its temporary tests were discarded; production rendering is unchanged. Further work should instrument worker drawing/presentation separately and investigate glow stroke/raster cost, not assume that solver optimization or NVIDIA selection alone solves it. The earlier numerical core improvement remains in place.
+
+Raw labelled samples: `.runtime/benchmarks/quadro-layers.json`. The temporary viewport override was reset after tests. Glow remains enabled by default; no automatic quality reduction was introduced.
