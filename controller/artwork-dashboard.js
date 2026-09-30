@@ -102,7 +102,7 @@
   function keys(e){if(!visible||!canControl()||!state?.isActive||e.repeat||e.target.id==='artwork-navigator'||e.target.closest?.('input,textarea,select,[contenteditable="true"]'))return;
     const a=e.key==='ArrowRight'?'next':e.key==='ArrowLeft'?'previous':e.key.toLowerCase()==='m'?'set_lens':e.key==='Escape'&&state.lens.enabled?'set_lens':null;
     if(a){e.preventDefault();e.stopImmediatePropagation();send(a,a==='set_lens'?(e.key==='Escape'?false:!state.lens.enabled):undefined);}}
-  channel.onmessage=({data})=>{if(data.type!=='artwork_state')return;const changed=state?.isActive!==data.isActive;state=data;if(changed&&typeof setAnimationState==='function')setAnimationState('artwork-btn',state.isActive,false);clockOffset=data.sentAt-Date.now();
+  channel.onmessage=({data})=>{if(data.type!=='artwork_state')return;const newlyActivated=state?.isActive===false&&data.isActive;const changed=state?.isActive!==data.isActive;state=data;if(changed&&typeof setAnimationState==='function')setAnimationState('artwork-btn',state.isActive,newlyActivated);clockOffset=data.sentAt-Date.now();
     if(!state.isActive){cancelAnimationFrame(frame);frame=0;lens?.dispose();lens=null;scene=null;load?.abort();load=null;}
     refresh();};
   window.ArtworkDashboard={show,hide,getState:()=>state};

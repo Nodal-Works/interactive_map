@@ -37,7 +37,7 @@
   console.log('Street View module loaded (v3.4 - with SAM segmentation)');
 
   // --- SAM Segmentation Integration ---
-  const SAM_SERVER_URL = 'http://localhost:8000';
+  const SAM_SERVER_URL = window.MR_SERVICES?.sam || 'http://127.0.0.1:8012';
   let samServerAvailable = false;
 
   // Check if the SAM server is running

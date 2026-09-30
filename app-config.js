@@ -2,6 +2,7 @@
 window.APP_CONFIG = {
   "app": {
     "title": "KultVis Lindholmen",
+    "launcherTitle": "Lindholmen Launcher",
     "welcomeTitle": "Welcome to KultVis Lindholmen"
   },
   "area": {
