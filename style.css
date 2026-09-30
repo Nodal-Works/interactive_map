@@ -529,6 +529,33 @@ html, body {
 }
 
 /* Isovist mode styles */
+.bottom-ribbon-selector {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  margin: 0 auto 0 24px;
+  color: #aab5c0;
+  font-size: 11px;
+  white-space: nowrap;
+}
+.bottom-ribbon-selector button {
+  min-height: 30px;
+  padding: 4px 9px;
+  border: 1px solid #465466;
+  border-radius: 7px;
+  background: #18212b;
+  color: #dfe7ed;
+  font: inherit;
+  cursor: pointer;
+}
+.bottom-ribbon-selector button[aria-pressed="true"] {
+  border-color: #82dfc2;
+  background: #24413b;
+  color: #b9f3e1;
+}
+.bottom-ribbon-selector button:disabled { opacity: .45; cursor: default; }
+.bottom-ribbon-selector button:focus-visible { outline: 2px solid #82dfc2; outline-offset: 2px; }
+
 .isovist-active {
   cursor: crosshair !important;
 }

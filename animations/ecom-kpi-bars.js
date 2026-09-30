@@ -309,6 +309,7 @@
         const on = layerOn && haveFigures && settled && !inIntroduction;
         bars.top.classList.toggle('is-on', on);
         bars.bottom.classList.toggle('is-on', on);
+        window.dispatchEvent(new CustomEvent('mr-bottom-ribbon-availability', { detail: { id: 'ecom', available: on } }));
     }
 
     const channel = new BroadcastChannel('map_controller_channel');

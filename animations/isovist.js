@@ -124,6 +124,7 @@
   
   // Function to broadcast isovist statistics to controller
   function broadcastIsovistStats(stats) {
+    window.dispatchEvent(new CustomEvent('mr-isovist-stats', { detail: stats }));
     channel.postMessage({
       type: 'isovist_stats',
       data: stats
