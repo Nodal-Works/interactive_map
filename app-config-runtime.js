@@ -3,9 +3,11 @@
   window.mrAsset = path => window.APP_CONFIG.assets[path] || path;
   document.addEventListener('DOMContentLoaded', () => {
     const config = window.APP_CONFIG;
-    document.title = config.app.title + (location.pathname.endsWith('launcher.html') ? ' Launcher' : location.pathname.endsWith('controller.html') ? ' Controller' : '');
-    const launcherTitle = document.querySelector('.header h1');
-    if (location.pathname.endsWith('launcher.html') && launcherTitle) launcherTitle.textContent = config.app.title + ' Launcher';
+    const isLauncher = location.pathname.endsWith('launcher.html');
+    const launcherName = config.app.launcherTitle || config.app.title + ' Launcher';
+    document.title = isLauncher ? launcherName : config.app.title + (location.pathname.endsWith('controller.html') ? ' Controller' : '');
+    const launcherTitle = document.querySelector('header h1, .header h1');
+    if (isLauncher && launcherTitle) launcherTitle.textContent = launcherName;
     const heading=document.querySelector('header h1');
     if(location.pathname.endsWith('controller.html') && heading)heading.textContent=config.app.title+' Dashboard';
     const phoneTitle=document.querySelector('.app-header strong');

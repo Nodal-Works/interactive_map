@@ -1,0 +1,13 @@
+const assert=require('node:assert/strict'),fs=require('node:fs'),vm=require('node:vm');
+const workers=[];let transfers=0,contexts=0,size={w:800,h:600};
+const canvas={width:800,height:600,style:{},classList:{add(){},remove(){}},getContext(){contexts++;return {clearRect(){}};},transferControlToOffscreen(){transfers++;return {};},cloneNode(){return {...this,style:{...this.style}};},replaceWith(other){this.replacement=other;}};
+const env={console,window:{mrAsset:p=>p,addEventListener(){},removeEventListener(){}},document:{readyState:'loading',addEventListener(){}},Audio:function(){this.pause=()=>{};},BroadcastChannel:function(){this.postMessage=()=>{};this.close=()=>{};},cancelAnimationFrame(){},computeOverlayPixelSize:()=>size,Worker:class{constructor(){this.sent=[];workers.push(this);}postMessage(m){this.sent.push(m);}terminate(){this.terminated=true;}}};
+vm.createContext(env);vm.runInContext(fs.readFileSync('animations/stormwater-flow.js','utf8'),env);const Flow=vm.runInContext('StormwaterFlowAnimation',env);
+const app=new Flow({off(){}},canvas);assert.equal(contexts,0,'Select transfer before acquiring a display context');app.startGeneration=1;app.isActive=true;app.handleResize();app.startRenderer(1);const worker=workers[0];assert.equal(transfers,1);
+worker.onmessage({data:{type:'ready',generation:1}});assert.equal(app.renderReady,true);
+app.stop();app.startGeneration=3;app.isActive=true;app.startRenderer(3);assert.equal(workers.length,1);assert.equal(transfers,1);
+worker.onmessage({data:{type:'ready',generation:1}});assert.equal(app.renderReady,false);worker.onmessage({data:{type:'ready',generation:3}});assert.equal(app.renderReady,true);
+Object.defineProperty(canvas,'width',{get:()=>800,set:()=>{throw Error('Transferred canvas resized on host');}});size={w:1000,h:700};app.handleResize();assert.equal(worker.sent.at(-1).width,1000);app.demWidth=10;app.demHeight=10;assert.equal(app.cellToScreen(0,0).x,1000);
+app.fallbackRenderer('test failure');assert.equal(worker.terminated,true);assert.equal(app.canvas,canvas.replacement);assert.equal(app.canvas.width,1000);assert.equal(env.window.MR_STORMWATER_RENDERER.backend,'main-canvas2d');
+worker.onmessage({data:{type:'error',generation:3,message:'late'}});assert.equal(env.window.MR_STORMWATER_RENDERER.fallbackReason,'test failure');
+console.log('PASS stormwater host: context ownership, persistent restart, stale messages, worker resize, projection and canvas replacement fallback');

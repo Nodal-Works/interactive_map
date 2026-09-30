@@ -550,6 +550,7 @@ function updateDashboard(targetId) {
     const ecomGroups = document.getElementById('ecom-groups');
     const metadataTitle = document.getElementById('metadata-title');
     const metadataBody = document.getElementById('metadata-content');
+    if (mainPanel) mainPanel.classList.toggle('ecom-mode', targetId === 'ecom-energy-btn');
     if (ecomGroups) ecomGroups.style.display = 'none';
     if (metadataBody) metadataBody.style.display = '';
     if (metadataTitle) metadataTitle.textContent = 'Metadata';

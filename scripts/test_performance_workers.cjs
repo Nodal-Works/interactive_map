@@ -12,7 +12,7 @@ function worker(file){
   transferToImageBitmap(){return {width:this.width,height:this.height};}
  }
  const context=vm.createContext({console,OffscreenCanvas:Canvas,postMessage:(message,transfer)=>messages.push({message,transfer})});
- context.self=context;context.importScripts=(...files)=>files.forEach(f=>vm.runInContext(fs.readFileSync(path.join(__dirname,'../animations',f),'utf8'),context));
+ context.self=context;context.importScripts=(...files)=>files.forEach(f=>vm.runInContext(fs.readFileSync(path.join(__dirname,'../animations',f.split('?')[0]),'utf8'),context));
  context.importScripts(file);
  return {context,messages,canvases,send:data=>context.onmessage({data})};
 }
@@ -28,6 +28,25 @@ const workerOps=water.canvases[0].ops.slice();water.canvases[0].ops.length=0;
 vm.runInContext('state.drawParticles()',water.context);
 assert.deepEqual(water.canvases[0].ops,workerOps,'Worker delegates to the exact main-thread water renderer');
 assert.equal(water.canvases[0].ops.filter(op=>op[0]==='stroke').length,2,'Both pooled and flowing trails are drawn');
+// The transferred display path draws identically, without allocating a bitmap.
+const surface=water.canvases[0];surface.transferToImageBitmap=()=>{throw Error('Unexpected bitmap allocation');};
+water.send({type:'init',generation:1,canvas:surface,settings:{glowSpriteSize:24,particleLifetime:200,glowIntensity:.8,poolingGlowIntensity:1}});
+surface.ops.length=0;
+water.send({type:'frame',generation:1,revision:43,values,width:1920,height:1080,scale:1});
+assert.deepEqual(surface.ops,workerOps);assert.equal(water.messages.at(-1).message.bitmap,undefined);
+assert.equal(water.messages.at(-1).transfer[0],values.buffer);
+water.send({type:'stop',generation:2});const stopped=surface.ops.length;
+water.send({type:'frame',generation:1,revision:43,values,width:1920,height:1080,scale:1});assert.equal(surface.ops.length,stopped);
+water.send({type:'resume',generation:3});water.send({type:'resize',generation:3,revision:44,width:800,height:600});
+water.send({type:'frame',generation:3,revision:43,values,width:1920,height:1080,scale:1});assert.equal(surface.width,800);
+water.send({type:'frame',generation:3,revision:44,values,width:800,height:600,scale:1});assert.equal(water.messages.at(-1).message.generation,3);
+let callback=null;water.context.requestAnimationFrame=fn=>{callback=fn;return 1;};water.context.cancelAnimationFrame=()=>{callback=null;};
+const beforePaced=surface.ops.length;
+water.send({type:'frame',generation:3,revision:44,values,width:800,height:600,scale:1});
+assert.equal(surface.ops.length,beforePaced,'Persistent drawing waits for the worker display tick');
+callback();assert.ok(surface.ops.length>beforePaced);
+water.send({type:'frame',generation:3,revision:44,values,width:800,height:600,scale:1});
+water.send({type:'stop',generation:4});assert.equal(callback,null,'Stop cancels queued display work');
 const wind=worker('cfd-render-worker.js'),C=require('../animations/cfd-core.js');
 const domain=C.domain(320,240,50,0),length=domain.nx*domain.ny;
 const field={...domain,resolution:50,angle:0,windSpeed:5,latticeSpeed:.025,solid:new Uint8Array(length),ux:new Float32Array(length).fill(.025),uy:new Float32Array(length)};

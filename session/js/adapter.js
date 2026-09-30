@@ -41,6 +41,14 @@
   }
   function setLayer(layer, enabled) {
     if (!(layer in active) || typeof enabled !== 'boolean') throw Error('Unknown layer');
+    // Campus Vision is controlled by messages; the map has no toolbar button.
+    if (layer === 'campus-demo-btn') {
+      if (active[layer] !== enabled) {
+        active[layer] = enabled;
+        channel.postMessage({type:'control_action',target:layer,action:'click',sessionAction:true});
+      }
+      return;
+    }
     if (layer === 'ecom-energy-btn') {
       if (!window.ecomEnergyLayer) throw Error('ECOM is still starting. Please try again.');
       return window.ecomEnergyLayer.setEnabled(enabled);

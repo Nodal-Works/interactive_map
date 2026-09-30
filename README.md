@@ -71,6 +71,10 @@ in actual m/s, with selectable **0–5+, 0–10+, 0–20+, or 0–40+ m/s** lege
   `set_color_palette` (`classic`, `ocean`, `ember`, `monochrome`),
   `set_color_range` (5, 10, 20, 40), and `set_facade_glow` (boolean). `cfd_state` returns `visualStyle`, `palette`,
   `colorMaxMps`, and `facadeGlow`. Existing density/playback messages remain compatible.
+- The default WebGL2 renderer uses a persistent GPU canvas and pipelined visual
+  workers without lowering quality, with automatic Canvas fallback. Use
+  `?cfdBackend=canvas2d` for the reference backend. Compositor verification remains
+  outstanding. See [wind GPU rendering and measurements](docs/wind-gpu-rendering.md).
 - Buildings use halfway bounce-back; all visible MultiPolygon parts and courtyards
   are preserved. The model includes complete footprints and canopies intersecting
   the table; off-table city blocks are excluded from the far-field buffers.

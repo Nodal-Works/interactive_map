@@ -1,0 +1,6 @@
+{
+  "projection": [1920, 1200],
+  "browserZoom": 0.75,
+  "anchors": [[117, 22], [1803, 23], [117, 1030]],
+  "source": "Fullscreen Edge app, visible Grid Animation, observed 2026-09-29. Anchors correspond to APP_CONFIG.area.corners indices 3, 2, 0. Measured to approximately one screen pixel; not an exported calibration."
+}

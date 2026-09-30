@@ -142,22 +142,23 @@ function geometryAndTracerTests() {
   assert.deepEqual(C.speedColor(20),C.speedColor(30));assert.notDeepEqual(C.speedColor(5),C.speedColor(10));
   console.log('PASS geometry/tracers: polygon parts, holes, passages, projected trees, frame rates, walls, trails, inlet flux');
 }
-function makeAppHarness(bitmapMode=false) {
+function makeAppHarness(bitmapMode=false,gpuMode=false,search='') {
   let now=0, sequence=0, frame=null, strokeCount=0;
   const timers=new Map(), events={}, mapEvents={}, messages=[], workers=[], requests=[];
-  const context2d={clearRect(){},drawImage(){},putImageData(){},beginPath(){},moveTo(){},lineTo(){},stroke(){strokeCount++;},
+  const context2d={getContextAttributes:()=>({stencil:true,antialias:true}),getExtension:()=>null,clearRect(){},drawImage(){},putImageData(){},beginPath(){},moveTo(){},lineTo(){},stroke(){strokeCount++;},
     createImageData(w,h){return {data:new Uint8ClampedArray(w*h*4)};}};
   const element=()=>({style:{},classList:{add(){},remove(){}},addEventListener(type,fn){this[type]=fn;},
     getContext(){return context2d;},getBoundingClientRect(){return {left:0,top:0};},
     insertAdjacentElement(){},setAttribute(){}});
   const presented=[];const canvas=element(),button=element();if(bitmapMode)canvas.getContext=()=>({transferFromImageBitmap:bitmap=>presented.push(bitmap)});button.id='cfd-simulation-btn';
+  if(gpuMode){canvas.transferControlToOffscreen=()=>({display:true});canvas.cloneNode=()=>({...element(),replaceWith(){},cloneNode:canvas.cloneNode});canvas.replaceWith=()=>{};}
   const map={getSource(){return null;},getContainer(){return canvas;},project(c){return {x:c[0],y:c[1]};},
     on(type,fn){mapEvents[type]=fn;}};
-  class Worker {constructor(){workers.push(this);}postMessage(data){this.init=data;}terminate(){this.terminated=true;}}
-  const window={mrAsset:path=>path,addEventListener(type,fn){events[type]=fn;}};
+  class Worker {constructor(url){this.url=url;this.sent=[];workers.push(this);}postMessage(data){this.init=data;this.sent.push(data);}terminate(){this.terminated=true;}}
+  const window={location:{search},mrAsset:path=>path,addEventListener(type,fn){events[type]=fn;}};
   let channel;
-  const sandbox={CFD:C,CFDVisuals:V,console:{...console,error(){},warn(){}},Math,Number,Float32Array,Uint8Array,Map,Worker,window,map,
-    document:{getElementById:id=>id===button.id?button:canvas,createElement:element,addEventListener(){}},
+  const sandbox={CFD:C,CFDVisuals:V,console:{...console,error(){},warn(){}},Math,Number,Float32Array,Uint8Array,Map,URLSearchParams,Worker,window,map,
+    document:{hidden:false,getElementById:id=>id===button.id?button:canvas,createElement:element,addEventListener(type,fn){events[type]=fn;}},
     performance:{now:()=>now},setTimeout(fn){const id=++sequence;timers.set(id,fn);return id;},clearTimeout(id){timers.delete(id);},
     requestAnimationFrame(fn){frame=fn;return ++sequence;},cancelAnimationFrame(){frame=null;},computeOverlayPixelSize:()=>({w:1000,h:600}),
     Audio:function(){this.play=()=>Promise.resolve();this.pause=()=>{};},
@@ -165,7 +166,7 @@ function makeAppHarness(bitmapMode=false) {
     fetch(url){return new Promise(resolve=>requests.push({url,resolve}));}};
   if(bitmapMode)sandbox.OffscreenCanvas=class{};
   vm.runInNewContext(fs.readFileSync(path.join(__dirname,'../animations/cfd-simulation.js'),'utf8'),sandbox);
-  return {button,workers,requests,messages,events,mapEvents,channel,presented,
+  return {button,workers,requests,messages,events,mapEvents,channel,presented,window,document:sandbox.document,
     render(time){now=time;strokeCount=0;frame?.(time);return strokeCount;},
     runTimers(){const jobs=[...timers.values()];timers.clear();jobs.forEach(f=>f());},
     resolveRequests(){requests.splice(0).forEach(r=>r.resolve({ok:true,json:async()=>({features:[]})}));},
@@ -309,4 +310,5 @@ async function workerTests() {
   }finally{await worker.terminate();}
   console.log('PASS worker: advancing, timestamped transferable snapshots preserve solver buffers');
 }
-(async()=>{if(process.argv.includes('--lifecycle-only')){await lifecycleTests();return;}numericalTests();geometryAndTracerTests();await lifecycleTests();await workerTests();resolutionTests();campusTests();})().catch(e=>{console.error(e);process.exitCode=1;});
+module.exports={makeAppHarness};
+if(require.main===module)(async()=>{if(process.argv.includes('--lifecycle-only')){await lifecycleTests();return;}numericalTests();geometryAndTracerTests();await lifecycleTests();await workerTests();resolutionTests();campusTests();})().catch(e=>{console.error(e);process.exitCode=1;});

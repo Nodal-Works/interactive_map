@@ -1,0 +1,11 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Wind renderer visual regression</title>
+<style>body{background:#162330;color:#edf4ff;font:15px system-ui;margin:24px}canvas{background:transparent;border:1px solid #506174;width:600px;height:400px}section{display:flex;gap:20px}pre{white-space:pre-wrap}button{padding:10px}</style>
+<h1>Wind renderer visual regression</h1>
+<p>Identical seeded particles, field sequence, stroke buckets and facade intensities. Left: Canvas 2D. Right: WebGL2.</p>
+<button id="run">Run all visual fixtures</button> <button id="loss">Exercise context loss / restore</button>
+<section><div><h2>Canvas reference</h2><canvas id="reference" width="600" height="400"></canvas></div><div><h2>GPU</h2><canvas id="gpu" width="600" height="400"></canvas></div></section>
+<pre id="result">Ready</pre>
+<script src="../animations/cfd-core.js"></script><script src="../animations/cfd-visuals.js"></script><script src="../animations/cfd-gpu.js"></script>
+<script src="cfd-render-comparison.js"></script>

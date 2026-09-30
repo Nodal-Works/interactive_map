@@ -699,6 +699,66 @@
 /* In the band a group is a card in its own right, not one of a stack. */
 .ecom-groups .ecom-ctl-group { background: #2f2f2f; }
 
+/* Give the parameter controls a taller, easier-to-reach band while ECOM is
+   active. The default metadata row is deliberately short for other layers. */
+#main-panel.ecom-mode {
+    grid-template-rows: minmax(220px, 0.82fr) minmax(340px, 1.18fr);
+}
+
+#main-panel.ecom-mode #metadata-section {
+    min-height: 0;
+    padding: 0.9rem 1rem 1rem;
+    overflow-y: auto;
+    border-color: #46566b;
+    box-shadow: 0 5px 18px rgba(0, 0, 0, 0.35);
+}
+
+#main-panel.ecom-mode #metadata-title {
+    margin: 0 0 0.7rem;
+    color: #e8eef6;
+    font-size: 0.92rem;
+}
+
+#main-panel.ecom-mode .ecom-groups {
+    grid-template-columns: repeat(auto-fit, minmax(min(255px, 100%), 1fr));
+    gap: 0.8rem;
+}
+
+#main-panel.ecom-mode .ecom-ctl-group {
+    padding: 0.15rem;
+}
+
+#main-panel.ecom-mode .ecom-ctl-head {
+    min-height: 44px;
+    padding: 0.6rem 0.75rem;
+}
+
+#main-panel.ecom-mode .ecom-ctl-body {
+    padding: 0.7rem 0.75rem 0.8rem;
+}
+
+#main-panel.ecom-mode .ecom-ctl-actions {
+    gap: 0.7rem;
+    margin-top: 0.7rem;
+}
+
+#main-panel.ecom-mode .ecom-ctl-actions .ecom-ctl-btn {
+    min-height: 42px;
+    padding: 0.55rem 0.85rem;
+}
+
+@media (max-height: 720px) {
+    #main-panel.ecom-mode {
+        grid-template-rows: minmax(185px, 0.72fr) minmax(300px, 1.28fr);
+    }
+}
+
+@media (max-width: 900px) {
+    #main-panel.ecom-mode {
+        grid-template-rows: minmax(200px, 0.8fr) minmax(360px, 1.2fr);
+    }
+}
+
 /* --------------------------------------------- colour and branding
 
    Each parameter group takes the colour of what it governs, so a group header

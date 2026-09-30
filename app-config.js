@@ -2,6 +2,7 @@
 window.APP_CONFIG = {
   "app": {
     "title": "ACE MR Studio",
+    "launcherTitle": "Chalmers Campus Launcher",
     "welcomeTitle": "Welcome to the ACE MR Studio"
   },
   "area": {

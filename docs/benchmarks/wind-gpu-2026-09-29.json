@@ -1,0 +1,2637 @@
+{
+  "date": "2026-09-29",
+  "notes": [
+    "Historical Canvas measurements are not a fresh controlled baseline rerun. That rerun was blocked by a local benchmark-server Git subprocess permission error.",
+    "The six acceptance minute runs and first part of the ten-minute run had the translucent startup veil present. The veil was dismissed in the latter part of the sustained run.",
+    "The final manual sample at 14:08:57 is an unobstructed wind-only ribbon run on the final renderer. The preceding manual sample at 14:06:52 has stormwater active.",
+    "Initial traceMs measured ribbon preparation; final diagnostics separate ribbonPrepareMs and the 5 Hz traceMs.",
+    "GPU fence completions do not prove physical presentation. Compositor traces remain outstanding."
+  ],
+  "historicalCanvas": {
+    "finalGlow": {
+      "label": "manual",
+      "soakRun": null,
+      "graphics": "ANGLE (NVIDIA, NVIDIA Quadro RTX 3000 (0x00001F36) Direct3D11 vs_5_0 ps_5_0, D3D11)",
+      "date": "2026-09-29T13:00:41.615Z",
+      "viewport": [
+        1920,
+        1080
+      ],
+      "screen": [
+        1920,
+        1080
+      ],
+      "devicePixelRatio": 1,
+      "elapsedMs": 30055.10000000894,
+      "windFrameHz": 10.081483674980614,
+      "samples": 305,
+      "hiddenFrames": 0,
+      "meanMs": 98.51934426229506,
+      "fps": 10.150290864072632,
+      "p95Ms": 116.80000000001746,
+      "longTasks": 0,
+      "nodes": 318,
+      "canvases": 12,
+      "activeButtons": [
+        "cfd-simulation-btn"
+      ],
+      "memoryStart": 29478059,
+      "memoryEnd": 29736620,
+      "layers": {
+        "isovist-btn": {
+          "requested": false,
+          "active": false,
+          "status": "off",
+          "error": null
+        },
+        "cfd-simulation-btn": {
+          "requested": true,
+          "active": true,
+          "status": "ready",
+          "error": null
+        },
+        "bird-sounds-btn": {
+          "requested": false,
+          "active": false,
+          "status": "off",
+          "error": null
+        },
+        "trafik-btn": {
+          "requested": false,
+          "active": false,
+          "status": "off",
+          "error": null
+        },
+        "stormwater-btn": {
+          "requested": false,
+          "active": false,
+          "status": "off",
+          "error": null
+        }
+      },
+      "scheduler": {
+        "canvasSubmissions": {
+          "wind": {
+            "hz": 14,
+            "samples": 600
+          }
+        },
+        "pending": 1,
+        "owners": [
+          "wind"
+        ],
+        "costs": {
+          "streetlife": {
+            "meanMs": 1.102071171449202,
+            "maxMs": 5.700000002980232
+          },
+          "transit": {
+            "meanMs": 0.9631651854053452,
+            "maxMs": 3
+          },
+          "wind": {
+            "meanMs": 0.04218333860299139,
+            "maxMs": 0.4000000059604645
+          }
+        }
+      },
+      "windProfile": {
+        "frames": {
+          "count": 303,
+          "style": "particles",
+          "glow": true,
+          "resolution": {
+            "mean": 300,
+            "p95": 300,
+            "max": 300
+          },
+          "particles": {
+            "mean": 1000,
+            "p95": 1000,
+            "max": 1000
+          },
+          "smoothMs": {
+            "mean": 2.8026402637903445,
+            "p95": 3.5,
+            "max": 5.799999997019768
+          },
+          "heatMs": {
+            "mean": 2.847194719285068,
+            "p95": 3.7000000029802322,
+            "max": 5.5
+          },
+          "heatDrawMs": {
+            "mean": 0.029372937460937124,
+            "p95": 0.10000000894069672,
+            "max": 0.10000000894069672
+          },
+          "facadeUpdateMs": {
+            "mean": 5.862706270941807,
+            "p95": 7.200000002980232,
+            "max": 44
+          },
+          "tracerUpdateMs": {
+            "mean": 2.432673267110346,
+            "p95": 3.0999999940395355,
+            "max": 4.9000000059604645
+          },
+          "visualUpdateMs": {
+            "mean": 8.297359736052284,
+            "p95": 9.800000011920929,
+            "max": 46
+          },
+          "flowDrawMs": {
+            "mean": 2.2280528054575717,
+            "p95": 2.7999999970197678,
+            "max": 4.700000002980232
+          },
+          "maskMs": {
+            "mean": 0.028382838214978133,
+            "p95": 0.10000000894069672,
+            "max": 0.20000000298023224
+          },
+          "glowDrawMs": {
+            "mean": 0.6478547856162483,
+            "p95": 1.1000000089406967,
+            "max": 1.8999999910593033
+          },
+          "bitmapMs": {
+            "mean": 0.15841584148580093,
+            "p95": 0.29999999701976776,
+            "max": 0.5
+          },
+          "totalMs": {
+            "mean": 17.03993399333049,
+            "p95": 20.5,
+            "max": 59.5
+          },
+          "roundTripMs": {
+            "mean": 17.283828383231715,
+            "p95": 20.799999997019768,
+            "max": 59.79999999701977
+          },
+          "presentMs": {
+            "mean": 0.022112211083421613,
+            "p95": 0.10000000894069672,
+            "max": 0.20000000298023224
+          }
+        },
+        "solver": {
+          "count": 322,
+          "stepMs": {
+            "mean": 78.34409937901157,
+            "p95": 85.49999998509884,
+            "max": 103.30000001192093
+          },
+          "stepCount": {
+            "mean": 2.987577639751553,
+            "p95": 3,
+            "max": 3
+          },
+          "snapshotMs": {
+            "mean": 0.37950310481261024,
+            "p95": 0.6000000089406967,
+            "max": 4.9000000059604645
+          },
+          "nx": {
+            "mean": 675,
+            "p95": 675,
+            "max": 675
+          },
+          "ny": {
+            "mean": 288,
+            "p95": 288,
+            "max": 288
+          }
+        }
+      }
+    },
+    "ribbonGlow": {
+      "label": "manual",
+      "soakRun": null,
+      "graphics": "ANGLE (NVIDIA, NVIDIA Quadro RTX 3000 (0x00001F36) Direct3D11 vs_5_0 ps_5_0, D3D11)",
+      "date": "2026-09-29T12:53:55.177Z",
+      "viewport": [
+        1920,
+        1080
+      ],
+      "screen": [
+        1920,
+        1080
+      ],
+      "devicePixelRatio": 1,
+      "samples": 94,
+      "hiddenFrames": 0,
+      "meanMs": 319.66382978723396,
+      "fps": 3.128286364665008,
+      "p95Ms": 399.9000000000233,
+      "longTasks": 0,
+      "nodes": 318,
+      "canvases": 12,
+      "activeButtons": [
+        "cfd-simulation-btn"
+      ],
+      "memoryStart": 28239361,
+      "memoryEnd": 27558115,
+      "layers": {
+        "isovist-btn": {
+          "requested": false,
+          "active": false,
+          "status": "off",
+          "error": null
+        },
+        "cfd-simulation-btn": {
+          "requested": true,
+          "active": true,
+          "status": "ready",
+          "error": null
+        },
+        "bird-sounds-btn": {
+          "requested": false,
+          "active": false,
+          "status": "off",
+          "error": null
+        },
+        "trafik-btn": {
+          "requested": false,
+          "active": false,
+          "status": "off",
+          "error": null
+        },
+        "stormwater-btn": {
+          "requested": false,
+          "active": false,
+          "status": "off",
+          "error": null
+        }
+      },
+      "scheduler": {
+        "canvasSubmissions": {
+          "wind": {
+            "hz": 6,
+            "samples": 600
+          }
+        },
+        "pending": 1,
+        "owners": [
+          "wind"
+        ],
+        "costs": {
+          "streetlife": {
+            "meanMs": 0.9734299749447215,
+            "maxMs": 6.700000002980232
+          },
+          "transit": {
+            "meanMs": 0.5998944891522502,
+            "maxMs": 1
+          },
+          "wind": {
+            "meanMs": 0.07075095695818763,
+            "maxMs": 6.299999997019768
+          }
+        }
+      },
+      "windProfile": {
+        "frames": {
+          "count": 94,
+          "style": "ribbons",
+          "glow": true,
+          "resolution": {
+            "mean": 300,
+            "p95": 300,
+            "max": 300
+          },
+          "particles": {
+            "mean": 1000,
+            "p95": 1000,
+            "max": 1000
+          },
+          "smoothMs": {
+            "mean": 4.298936170624926,
+            "p95": 6.5,
+            "max": 7.200000002980232
+          },
+          "heatMs": {
+            "mean": 7.093617020769322,
+            "p95": 10.299999997019768,
+            "max": 10.799999997019768
+          },
+          "heatDrawMs": {
+            "mean": 0.030851064210242415,
+            "p95": 0.10000000894069672,
+            "max": 0.20000000298023224
+          },
+          "visualUpdateMs": {
+            "mean": 16.088297872467244,
+            "p95": 34.80000001192093,
+            "max": 42.70000000298023
+          },
+          "flowDrawMs": {
+            "mean": 13.91276595725658,
+            "p95": 17.799999997019768,
+            "max": 36.29999999701977
+          },
+          "maskMs": {
+            "mean": 0.03829787227701634,
+            "p95": 0.10000000894069672,
+            "max": 0.19999998807907104
+          },
+          "glowDrawMs": {
+            "mean": 0.5053191486191242,
+            "p95": 0.9000000059604645,
+            "max": 1
+          },
+          "bitmapMs": {
+            "mean": 0.21595744677680603,
+            "p95": 0.4000000059604645,
+            "max": 0.7999999970197678
+          },
+          "totalMs": {
+            "mean": 42.18404255300126,
+            "p95": 64.1000000089407,
+            "max": 76.1000000089407
+          },
+          "roundTripMs": {
+            "mean": 43.13404255281103,
+            "p95": 65.5,
+            "max": 77.20000000298023
+          },
+          "presentMs": {
+            "mean": 0.026595744997897047,
+            "p95": 0.10000000894069672,
+            "max": 0.20000000298023224
+          }
+        },
+        "solver": {
+          "count": 322,
+          "stepMs": {
+            "mean": 79.07577639748776,
+            "p95": 92,
+            "max": 108.79999999701977
+          },
+          "stepCount": {
+            "mean": 2.9906832298136647,
+            "p95": 3,
+            "max": 3
+          },
+          "snapshotMs": {
+            "mean": 0.4080745341337245,
+            "p95": 0.699999988079071,
+            "max": 2.7000000029802322
+          },
+          "nx": {
+            "mean": 675,
+            "p95": 675,
+            "max": 675
+          },
+          "ny": {
+            "mean": 288,
+            "p95": 288,
+            "max": 288
+          }
+        }
+      }
+    }
+  },
+  "measurements": [
+    {
+      "label": "wind acceptance particles 1",
+      "soakRun": null,
+      "graphics": "ANGLE (NVIDIA, NVIDIA Quadro RTX 3000 (0x00001F36) Direct3D11 vs_5_0 ps_5_0, D3D11)",
+      "date": "2026-09-29T13:49:56.154Z",
+      "viewport": [
+        1920,
+        1080
+      ],
+      "screen": [
+        1920,
+        1080
+      ],
+      "devicePixelRatio": 1,
+      "elapsedMs": 60017.30000001192,
+      "windFrameHz": 59.999366849213224,
+      "solverPaused": false,
+      "pausedDuringSample": false,
+      "samples": 3601,
+      "hiddenFrames": 0,
+      "meanMs": 16.665731741183006,
+      "fps": 60.00336592055427,
+      "p95Ms": 16.80000000000291,
+      "longTasks": 0,
+      "nodes": 341,
+      "canvases": 12,
+      "activeButtons": [
+        "cfd-simulation-btn"
+      ],
+      "memoryStart": 23353926,
+      "memoryEnd": 24503799,
+      "layers": {
+        "isovist-btn": {
+          "requested": false,
+          "active": false,
+          "status": "off",
+          "error": null
+        },
+        "cfd-simulation-btn": {
+          "requested": true,
+          "active": true,
+          "status": "ready",
+          "error": null
+        },
+        "bird-sounds-btn": {
+          "requested": false,
+          "active": false,
+          "status": "off",
+          "error": null
+        },
+        "trafik-btn": {
+          "requested": false,
+          "active": false,
+          "status": "off",
+          "error": null
+        },
+        "stormwater-btn": {
+          "requested": false,
+          "active": false,
+          "status": "off",
+          "error": null
+        }
+      },
+      "scheduler": {
+        "canvasSubmissions": {
+          "wind": {
+            "hz": 60,
+            "samples": 600
+          }
+        },
+        "pending": 0,
+        "owners": [],
+        "costs": {
+          "wind": {
+            "meanMs": 0.043046724848676776,
+            "maxMs": 0.10000000894069672
+          }
+        }
+      },
+      "windProfile": {
+        "frames": {
+          "count": 3601,
+          "retained": 2000,
+          "backend": "webgl2",
+          "style": "particles",
+          "glow": true,
+          "resolution": {
+            "mean": 300,
+            "p95": 300,
+            "max": 300
+          },
+          "particles": {
+            "mean": 1000,
+            "p95": 1000,
+            "max": 1000
+          },
+          "intervalMs": {
+            "mean": 16.66575,
+            "p95": 16.80000000000291,
+            "max": 17
+          },
+          "smoothMs": {
+            "mean": 1.3009500000029803,
+            "p95": 2.0999999940395355,
+            "max": 4.800000011920929
+          },
+          "facadeUpdateMs": {
+            "mean": 0.0008999999985098839,
+            "p95": 0,
+            "max": 0.10000000894069672
+          },
+          "tracerUpdateMs": {
+            "mean": 1.4482000002115964,
+            "p95": 2,
+            "max": 4.0999999940395355
+          },
+          "visualUpdateMs": {
+            "mean": 1.607950000166893,
+            "p95": 2.2000000029802322,
+            "max": 4.399999991059303
+          },
+          "traceMs": {
+            "mean": 0,
+            "p95": 0,
+            "max": 0
+          },
+          "exposureWorkerMs": {
+            "mean": 4.36905000025779,
+            "p95": 5.299999997019768,
+            "max": 7
+          },
+          "collectMs": {
+            "mean": 2.845450000181794,
+            "p95": 3.7000000029802322,
+            "max": 6.200000002980232
+          },
+          "drawMs": {
+            "mean": 3.5492500001341103,
+            "p95": 4.600000008940697,
+            "max": 7.200000002980232
+          },
+          "totalMs": {
+            "mean": 6.459600000284612,
+            "p95": 8.5,
+            "max": 13.900000005960464
+          }
+        },
+        "solver": {
+          "count": 667,
+          "retained": 667,
+          "stepMs": {
+            "mean": 75.46131934049069,
+            "p95": 85.49999998509884,
+            "max": 105.6000000089407
+          },
+          "stepCount": {
+            "mean": 2.997001499250375,
+            "p95": 3,
+            "max": 3
+          },
+          "snapshotMs": {
+            "mean": 0.3479760118733639,
+            "p95": 0.6000000089406967,
+            "max": 4.9000000059604645
+          },
+          "nx": {
+            "mean": 675,
+            "p95": 675,
+            "max": 675
+          },
+          "ny": {
+            "mean": 288,
+            "p95": 288,
+            "max": 288
+          }
+        },
+        "gpu": {
+          "count": 3602,
+          "retained": 2000,
+          "frameId": {
+            "mean": 4974.5,
+            "p95": 5875,
+            "max": 5974
+          },
+          "completionLatencyMs": {
+            "mean": 13.780649999894202,
+            "p95": 14.5,
+            "max": 31
+          },
+          "gpuMs": {
+            "mean": 1.4316679360000006,
+            "p95": 2.754528,
+            "max": 3.778496
+          }
+        }
+      },
+      "windSettings": {
+        "windSpeed": 5,
+        "angle": 0,
+        "viscosity": 0.03,
+        "resolution": 300,
+        "particles": 1000,
+        "playback": 20,
+        "trees": true,
+        "visualStyle": "particles",
+        "palette": "classic",
+        "colorMaxMps": 20,
+        "facadeGlow": true,
+        "active": true,
+        "phase": "Developing flow"
+      },
+      "windCanvas": [
+        2283,
+        1368
+      ],
+      "renderer": {
+        "requested": "webgl2",
+        "backend": "webgl2",
+        "submitted": 5974,
+        "completed": 5974,
+        "geometryCompleted": 0,
+        "backpressure": 0,
+        "width": 2283,
+        "height": 1368,
+        "graphics": "ANGLE (NVIDIA, NVIDIA Quadro RTX 3000 (0x00001F36) Direct3D11 vs_5_0 ps_5_0, D3D11)"
+      },
+      "submittedHz": 59.999366849213224,
+      "gpuCompletedHz": 60.01602871170953,
+      "ribbonGeometryHz": 0,
+      "backpressureFrames": 0,
+      "windIntervals": {
+        "count": 3601,
+        "p95": 16.8,
+        "over33ms": 0
+      },
+      "revision": "working"
+    },
+    {
+      "label": "wind acceptance particles 2",
+      "soakRun": null,
+      "graphics": "ANGLE (NVIDIA, NVIDIA Quadro RTX 3000 (0x00001F36) Direct3D11 vs_5_0 ps_5_0, D3D11)",
+      "date": "2026-09-29T13:50:56.167Z",
+      "viewport": [
+        1920,
+        1080
+      ],
+      "screen": [
+        1920,
+        1080
+      ],
+      "devicePixelRatio": 1,
+      "elapsedMs": 60004.5,
+      "windFrameHz": 60.0121657542351,
+      "solverPaused": false,
+      "pausedDuringSample": false,
+      "samples": 3600,
+      "hiddenFrames": 0,
+      "meanMs": 16.665722222222218,
+      "fps": 60.0034001926776,
+      "p95Ms": 16.80000000000291,
+      "longTasks": 0,
+      "nodes": 341,
+      "canvases": 12,
+      "activeButtons": [
+        "cfd-simulation-btn"
+      ],
+      "memoryStart": 24503799,
+      "memoryEnd": 25912597,
+      "layers": {
+        "isovist-btn": {
+          "requested": false,
+          "active": false,
+          "status": "off",
+          "error": null
+        },
+        "cfd-simulation-btn": {
+          "requested": true,
+          "active": true,
+          "status": "ready",
+          "error": null
+        },
+        "bird-sounds-btn": {
+          "requested": false,
+          "active": false,
+          "status": "off",
+          "error": null
+        },
+        "trafik-btn": {
+          "requested": false,
+          "active": false,
+          "status": "off",
+          "error": null
+        },
+        "stormwater-btn": {
+          "requested": false,
+          "active": false,
+          "status": "off",
+          "error": null
+        }
+      },
+      "scheduler": {
+        "canvasSubmissions": {
+          "wind": {
+            "hz": 60,
+            "samples": 600
+          }
+        },
+        "pending": 0,
+        "owners": [],
+        "costs": {
+          "wind": {
+            "meanMs": 0.043046724848676776,
+            "maxMs": 0.10000000894069672
+          }
+        }
+      },
+      "windProfile": {
+        "frames": {
+          "count": 3601,
+          "retained": 2000,
+          "backend": "webgl2",
+          "style": "particles",
+          "glow": true,
+          "resolution": {
+            "mean": 300,
+            "p95": 300,
+            "max": 300
+          },
+          "particles": {
+            "mean": 1000,
+            "p95": 1000,
+            "max": 1000
+          },
+          "intervalMs": {
+            "mean": 16.665699999999998,
+            "p95": 16.800000000017462,
+            "max": 16.900000000023283
+          },
+          "smoothMs": {
+            "mean": 1.2474000001847745,
+            "p95": 2.1000000089406967,
+            "max": 4.9000000059604645
+          },
+          "facadeUpdateMs": {
+            "mean": 0.0006499999910593033,
+            "p95": 0,
+            "max": 0.10000000894069672
+          },
+          "tracerUpdateMs": {
+            "mean": 1.4594999998360871,
+            "p95": 2.2999999970197678,
+            "max": 3.2999999970197678
+          },
+          "visualUpdateMs": {
+            "mean": 1.6261499999836087,
+            "p95": 2.5999999940395355,
+            "max": 3.5999999940395355
+          },
+          "traceMs": {
+            "mean": 0,
+            "p95": 0,
+            "max": 0
+          },
+          "exposureWorkerMs": {
+            "mean": 4.430849999785424,
+            "p95": 5.9000000059604645,
+            "max": 8.5
+          },
+          "collectMs": {
+            "mean": 2.9150499999523163,
+            "p95": 4.299999997019768,
+            "max": 6.299999997019768
+          },
+          "drawMs": {
+            "mean": 3.61664999999851,
+            "p95": 5.199999988079071,
+            "max": 7.799999997019768
+          },
+          "totalMs": {
+            "mean": 6.491950000189245,
+            "p95": 9.400000005960464,
+            "max": 14.100000008940697
+          }
+        },
+        "solver": {
+          "count": 655,
+          "retained": 655,
+          "stepMs": {
+            "mean": 77.10427480929225,
+            "p95": 89.90000000596046,
+            "max": 134.20000000298023
+          },
+          "stepCount": {
+            "mean": 2.9618320610687023,
+            "p95": 3,
+            "max": 3
+          },
+          "snapshotMs": {
+            "mean": 0.3644274808068312,
+            "p95": 0.699999988079071,
+            "max": 5.9000000059604645
+          },
+          "nx": {
+            "mean": 675,
+            "p95": 675,
+            "max": 675
+          },
+          "ny": {
+            "mean": 288,
+            "p95": 288,
+            "max": 288
+          }
+        },
+        "gpu": {
+          "count": 3601,
+          "retained": 2000,
+          "frameId": {
+            "mean": 8575.5,
+            "p95": 9476,
+            "max": 9575
+          },
+          "completionLatencyMs": {
+            "mean": 13.845249999985098,
+            "p95": 14.700000002980232,
+            "max": 30.799999997019768
+          },
+          "gpuMs": {
+            "mean": 1.3904899199999994,
+            "p95": 2.773184,
+            "max": 4.15744
+          }
+        }
+      },
+      "windSettings": {
+        "windSpeed": 5,
+        "angle": 0,
+        "viscosity": 0.03,
+        "resolution": 300,
+        "particles": 1000,
+        "playback": 20,
+        "trees": true,
+        "visualStyle": "particles",
+        "palette": "classic",
+        "colorMaxMps": 20,
+        "facadeGlow": true,
+        "active": true,
+        "phase": "Developing flow"
+      },
+      "windCanvas": [
+        2283,
+        1368
+      ],
+      "renderer": {
+        "requested": "webgl2",
+        "backend": "webgl2",
+        "submitted": 9575,
+        "completed": 9575,
+        "geometryCompleted": 0,
+        "backpressure": 0,
+        "width": 2283,
+        "height": 1368,
+        "graphics": "ANGLE (NVIDIA, NVIDIA Quadro RTX 3000 (0x00001F36) Direct3D11 vs_5_0 ps_5_0, D3D11)"
+      },
+      "submittedHz": 60.0121657542351,
+      "gpuCompletedHz": 60.0121657542351,
+      "ribbonGeometryHz": 0,
+      "backpressureFrames": 0,
+      "windIntervals": {
+        "count": 3601,
+        "p95": 16.8,
+        "over33ms": 0
+      },
+      "revision": "working"
+    },
+    {
+      "label": "wind acceptance particles 3",
+      "soakRun": null,
+      "graphics": "ANGLE (NVIDIA, NVIDIA Quadro RTX 3000 (0x00001F36) Direct3D11 vs_5_0 ps_5_0, D3D11)",
+      "date": "2026-09-29T13:51:56.180Z",
+      "viewport": [
+        1920,
+        1080
+      ],
+      "screen": [
+        1920,
+        1080
+      ],
+      "devicePixelRatio": 1,
+      "elapsedMs": 60004.89999999106,
+      "windFrameHz": 60.01176570580964,
+      "solverPaused": false,
+      "pausedDuringSample": false,
+      "samples": 3600,
+      "hiddenFrames": 0,
+      "meanMs": 16.665750000000003,
+      "fps": 60.00330018150997,
+      "p95Ms": 16.800000000017462,
+      "longTasks": 0,
+      "nodes": 341,
+      "canvases": 12,
+      "activeButtons": [
+        "cfd-simulation-btn"
+      ],
+      "memoryStart": 25912597,
+      "memoryEnd": 23132761,
+      "layers": {
+        "isovist-btn": {
+          "requested": false,
+          "active": false,
+          "status": "off",
+          "error": null
+        },
+        "cfd-simulation-btn": {
+          "requested": true,
+          "active": true,
+          "status": "ready",
+          "error": null
+        },
+        "bird-sounds-btn": {
+          "requested": false,
+          "active": false,
+          "status": "off",
+          "error": null
+        },
+        "trafik-btn": {
+          "requested": false,
+          "active": false,
+          "status": "off",
+          "error": null
+        },
+        "stormwater-btn": {
+          "requested": false,
+          "active": false,
+          "status": "off",
+          "error": null
+        }
+      },
+      "scheduler": {
+        "canvasSubmissions": {
+          "wind": {
+            "hz": 60,
+            "samples": 600
+          }
+        },
+        "pending": 0,
+        "owners": [],
+        "costs": {
+          "wind": {
+            "meanMs": 0.043046724848676776,
+            "maxMs": 0.10000000894069672
+          }
+        }
+      },
+      "windProfile": {
+        "frames": {
+          "count": 3601,
+          "retained": 2000,
+          "backend": "webgl2",
+          "style": "particles",
+          "glow": true,
+          "resolution": {
+            "mean": 300,
+            "p95": 300,
+            "max": 300
+          },
+          "particles": {
+            "mean": 1000,
+            "p95": 1000,
+            "max": 1000
+          },
+          "intervalMs": {
+            "mean": 16.665699999999998,
+            "p95": 16.800000000017462,
+            "max": 17
+          },
+          "smoothMs": {
+            "mean": 1.2892500001043081,
+            "p95": 2.199999988079071,
+            "max": 5.5999999940395355
+          },
+          "facadeUpdateMs": {
+            "mean": 0.0006999999955296516,
+            "p95": 0,
+            "max": 0.10000000894069672
+          },
+          "tracerUpdateMs": {
+            "mean": 1.4773499998748303,
+            "p95": 2.300000011920929,
+            "max": 4.5999999940395355
+          },
+          "visualUpdateMs": {
+            "mean": 1.6481000000089407,
+            "p95": 2.5999999940395355,
+            "max": 4.799999997019768
+          },
+          "traceMs": {
+            "mean": 0,
+            "p95": 0,
+            "max": 0
+          },
+          "exposureWorkerMs": {
+            "mean": 4.419600000046193,
+            "p95": 5.799999997019768,
+            "max": 8.299999997019768
+          },
+          "collectMs": {
+            "mean": 2.909850000038743,
+            "p95": 4.399999991059303,
+            "max": 5.9000000059604645
+          },
+          "drawMs": {
+            "mean": 3.6087999998405578,
+            "p95": 5.200000002980232,
+            "max": 9.700000002980232
+          },
+          "totalMs": {
+            "mean": 6.548099999956786,
+            "p95": 9.799999997019768,
+            "max": 14.900000005960464
+          }
+        },
+        "solver": {
+          "count": 662,
+          "retained": 662,
+          "stepMs": {
+            "mean": 75.97265860985323,
+            "p95": 86.6000000089407,
+            "max": 95.6000000089407
+          },
+          "stepCount": {
+            "mean": 3,
+            "p95": 3,
+            "max": 3
+          },
+          "snapshotMs": {
+            "mean": 0.32870090665053747,
+            "p95": 0.5999999940395355,
+            "max": 2.7999999970197678
+          },
+          "nx": {
+            "mean": 675,
+            "p95": 675,
+            "max": 675
+          },
+          "ny": {
+            "mean": 288,
+            "p95": 288,
+            "max": 288
+          }
+        },
+        "gpu": {
+          "count": 3601,
+          "retained": 2000,
+          "frameId": {
+            "mean": 12176.5,
+            "p95": 13077,
+            "max": 13176
+          },
+          "completionLatencyMs": {
+            "mean": 13.876149999976159,
+            "p95": 14.599999994039536,
+            "max": 31.100000008940697
+          },
+          "gpuMs": {
+            "mean": 1.4331595679999996,
+            "p95": 2.75536,
+            "max": 3.666208
+          }
+        }
+      },
+      "windSettings": {
+        "windSpeed": 5,
+        "angle": 0,
+        "viscosity": 0.03,
+        "resolution": 300,
+        "particles": 1000,
+        "playback": 20,
+        "trees": true,
+        "visualStyle": "particles",
+        "palette": "classic",
+        "colorMaxMps": 20,
+        "facadeGlow": true,
+        "active": true,
+        "phase": "Developing flow"
+      },
+      "windCanvas": [
+        2283,
+        1368
+      ],
+      "renderer": {
+        "requested": "webgl2",
+        "backend": "webgl2",
+        "submitted": 13176,
+        "completed": 13176,
+        "geometryCompleted": 0,
+        "backpressure": 0,
+        "width": 2283,
+        "height": 1368,
+        "graphics": "ANGLE (NVIDIA, NVIDIA Quadro RTX 3000 (0x00001F36) Direct3D11 vs_5_0 ps_5_0, D3D11)"
+      },
+      "submittedHz": 60.01176570580964,
+      "gpuCompletedHz": 60.01176570580964,
+      "ribbonGeometryHz": 0,
+      "backpressureFrames": 0,
+      "windIntervals": {
+        "count": 3601,
+        "p95": 16.8,
+        "over33ms": 0
+      },
+      "revision": "working"
+    },
+    {
+      "label": "wind acceptance ribbons 1",
+      "soakRun": null,
+      "graphics": "ANGLE (NVIDIA, NVIDIA Quadro RTX 3000 (0x00001F36) Direct3D11 vs_5_0 ps_5_0, D3D11)",
+      "date": "2026-09-29T13:53:06.195Z",
+      "viewport": [
+        1920,
+        1080
+      ],
+      "screen": [
+        1920,
+        1080
+      ],
+      "devicePixelRatio": 1,
+      "elapsedMs": 60006,
+      "windFrameHz": 59.99400059994001,
+      "solverPaused": false,
+      "pausedDuringSample": false,
+      "samples": 3600,
+      "hiddenFrames": 0,
+      "meanMs": 16.665750000000003,
+      "fps": 60.00330018150997,
+      "p95Ms": 16.800000000017462,
+      "longTasks": 0,
+      "nodes": 341,
+      "canvases": 12,
+      "activeButtons": [
+        "cfd-simulation-btn"
+      ],
+      "memoryStart": 23862781,
+      "memoryEnd": 22747189,
+      "layers": {
+        "isovist-btn": {
+          "requested": false,
+          "active": false,
+          "status": "off",
+          "error": null
+        },
+        "cfd-simulation-btn": {
+          "requested": true,
+          "active": true,
+          "status": "ready",
+          "error": null
+        },
+        "bird-sounds-btn": {
+          "requested": false,
+          "active": false,
+          "status": "off",
+          "error": null
+        },
+        "trafik-btn": {
+          "requested": false,
+          "active": false,
+          "status": "off",
+          "error": null
+        },
+        "stormwater-btn": {
+          "requested": false,
+          "active": false,
+          "status": "off",
+          "error": null
+        }
+      },
+      "scheduler": {
+        "canvasSubmissions": {
+          "wind": {
+            "hz": 60,
+            "samples": 600
+          }
+        },
+        "pending": 0,
+        "owners": [],
+        "costs": {
+          "wind": {
+            "meanMs": 0.043046724848676776,
+            "maxMs": 0.10000000894069672
+          }
+        }
+      },
+      "windProfile": {
+        "frames": {
+          "count": 3600,
+          "retained": 2000,
+          "backend": "webgl2",
+          "style": "ribbons",
+          "glow": true,
+          "resolution": {
+            "mean": 300,
+            "p95": 300,
+            "max": 300
+          },
+          "particles": {
+            "mean": 1000,
+            "p95": 1000,
+            "max": 1000
+          },
+          "intervalMs": {
+            "mean": 16.67405,
+            "p95": 16.800000000017462,
+            "max": 33.39999999999418
+          },
+          "smoothMs": {
+            "mean": 1.3903499999344349,
+            "p95": 2.5,
+            "max": 5.700000002980232
+          },
+          "facadeUpdateMs": {
+            "mean": 0.0006000000238418579,
+            "p95": 0,
+            "max": 0.10000000894069672
+          },
+          "tracerUpdateMs": {
+            "mean": 0.0006999999955296516,
+            "p95": 0,
+            "max": 0.10000000894069672
+          },
+          "visualUpdateMs": {
+            "mean": 0.1555999998524785,
+            "p95": 0.29999999701976776,
+            "max": 0.5
+          },
+          "traceMs": {
+            "mean": 6.049099999807775,
+            "p95": 8.400000005960464,
+            "max": 12.700000002980232
+          },
+          "exposureWorkerMs": {
+            "mean": 4.922949999891221,
+            "p95": 6.5999999940395355,
+            "max": 9
+          },
+          "drawMs": {
+            "mean": 0.8316000000834465,
+            "p95": 1.2999999970197678,
+            "max": 2.0999999940395355
+          },
+          "totalMs": {
+            "mean": 2.379299999892712,
+            "p95": 4.100000008940697,
+            "max": 7.5
+          }
+        },
+        "solver": {
+          "count": 649,
+          "retained": 649,
+          "stepMs": {
+            "mean": 77.82403698003347,
+            "p95": 88.5,
+            "max": 99.99999998509884
+          },
+          "stepCount": {
+            "mean": 2.9969183359013867,
+            "p95": 3,
+            "max": 3
+          },
+          "snapshotMs": {
+            "mean": 0.3237288138027,
+            "p95": 0.6000000089406967,
+            "max": 2.2999999970197678
+          },
+          "nx": {
+            "mean": 675,
+            "p95": 675,
+            "max": 675
+          },
+          "ny": {
+            "mean": 288,
+            "p95": 288,
+            "max": 288
+          }
+        },
+        "gpu": {
+          "count": 3600,
+          "retained": 2000,
+          "frameId": {
+            "mean": 16376.5,
+            "p95": 17277,
+            "max": 17376
+          },
+          "completionLatencyMs": {
+            "mean": 15.096450000025332,
+            "p95": 15.799999997019768,
+            "max": 34.79999999701977
+          },
+          "gpuMs": {
+            "mean": 2.0211037920000026,
+            "p95": 3.433184,
+            "max": 5.031072
+          }
+        }
+      },
+      "windSettings": {
+        "windSpeed": 5,
+        "angle": 0,
+        "viscosity": 0.03,
+        "resolution": 300,
+        "particles": 1000,
+        "playback": 20,
+        "trees": true,
+        "visualStyle": "ribbons",
+        "palette": "classic",
+        "colorMaxMps": 20,
+        "facadeGlow": true,
+        "active": true,
+        "phase": "Developing flow"
+      },
+      "windCanvas": [
+        2283,
+        1368
+      ],
+      "renderer": {
+        "requested": "webgl2",
+        "backend": "webgl2",
+        "submitted": 17377,
+        "completed": 17376,
+        "geometryCompleted": 4159,
+        "backpressure": 0,
+        "width": 2283,
+        "height": 1368,
+        "graphics": "ANGLE (NVIDIA, NVIDIA Quadro RTX 3000 (0x00001F36) Direct3D11 vs_5_0 ps_5_0, D3D11)"
+      },
+      "submittedHz": 59.99400059994001,
+      "gpuCompletedHz": 59.99400059994001,
+      "ribbonGeometryHz": 59.560710595607105,
+      "backpressureFrames": 0,
+      "windIntervals": {
+        "count": 3600,
+        "p95": 16.8,
+        "over33ms": 0.0002777777777777778
+      },
+      "revision": "working"
+    },
+    {
+      "label": "wind acceptance ribbons 2",
+      "soakRun": null,
+      "graphics": "ANGLE (NVIDIA, NVIDIA Quadro RTX 3000 (0x00001F36) Direct3D11 vs_5_0 ps_5_0, D3D11)",
+      "date": "2026-09-29T13:54:06.214Z",
+      "viewport": [
+        1920,
+        1080
+      ],
+      "screen": [
+        1920,
+        1080
+      ],
+      "devicePixelRatio": 1,
+      "elapsedMs": 60012.09999999404,
+      "windFrameHz": 60.004565745913865,
+      "solverPaused": false,
+      "pausedDuringSample": false,
+      "samples": 3600,
+      "hiddenFrames": 0,
+      "meanMs": 16.66577777777779,
+      "fps": 60.003200170675726,
+      "p95Ms": 16.79999999998836,
+      "longTasks": 0,
+      "nodes": 341,
+      "canvases": 12,
+      "activeButtons": [
+        "cfd-simulation-btn"
+      ],
+      "memoryStart": 22747189,
+      "memoryEnd": 24240401,
+      "layers": {
+        "isovist-btn": {
+          "requested": false,
+          "active": false,
+          "status": "off",
+          "error": null
+        },
+        "cfd-simulation-btn": {
+          "requested": true,
+          "active": true,
+          "status": "ready",
+          "error": null
+        },
+        "bird-sounds-btn": {
+          "requested": false,
+          "active": false,
+          "status": "off",
+          "error": null
+        },
+        "trafik-btn": {
+          "requested": false,
+          "active": false,
+          "status": "off",
+          "error": null
+        },
+        "stormwater-btn": {
+          "requested": false,
+          "active": false,
+          "status": "off",
+          "error": null
+        }
+      },
+      "scheduler": {
+        "canvasSubmissions": {
+          "wind": {
+            "hz": 60,
+            "samples": 600
+          }
+        },
+        "pending": 0,
+        "owners": [],
+        "costs": {
+          "wind": {
+            "meanMs": 0.043046724848676776,
+            "maxMs": 0.10000000894069672
+          }
+        }
+      },
+      "windProfile": {
+        "frames": {
+          "count": 3601,
+          "retained": 2000,
+          "backend": "webgl2",
+          "style": "ribbons",
+          "glow": true,
+          "resolution": {
+            "mean": 300,
+            "p95": 300,
+            "max": 300
+          },
+          "particles": {
+            "mean": 1000,
+            "p95": 1000,
+            "max": 1000
+          },
+          "intervalMs": {
+            "mean": 16.66580000000002,
+            "p95": 16.79999999998836,
+            "max": 17
+          },
+          "smoothMs": {
+            "mean": 1.4521500000283123,
+            "p95": 2.7999999970197678,
+            "max": 5.200000002980232
+          },
+          "facadeUpdateMs": {
+            "mean": 0.00035000000149011613,
+            "p95": 0,
+            "max": 0.10000000894069672
+          },
+          "tracerUpdateMs": {
+            "mean": 0.0005,
+            "p95": 0,
+            "max": 0.10000000894069672
+          },
+          "visualUpdateMs": {
+            "mean": 0.15550000002235173,
+            "p95": 0.29999999701976776,
+            "max": 0.9000000059604645
+          },
+          "traceMs": {
+            "mean": 6.04049999987334,
+            "p95": 8.299999997019768,
+            "max": 11.199999988079071
+          },
+          "exposureWorkerMs": {
+            "mean": 4.915650000229478,
+            "p95": 6.5,
+            "max": 8.899999991059303
+          },
+          "drawMs": {
+            "mean": 0.808700000114739,
+            "p95": 1.2000000029802322,
+            "max": 1.7999999970197678
+          },
+          "totalMs": {
+            "mean": 2.4176000001505016,
+            "p95": 4.300000011920929,
+            "max": 6.899999991059303
+          }
+        },
+        "solver": {
+          "count": 650,
+          "retained": 650,
+          "stepMs": {
+            "mean": 77.60153846094242,
+            "p95": 87.09999997913837,
+            "max": 97.50000001490116
+          },
+          "stepCount": {
+            "mean": 2.9984615384615383,
+            "p95": 3,
+            "max": 3
+          },
+          "snapshotMs": {
+            "mean": 0.30307692321447227,
+            "p95": 0.6000000089406967,
+            "max": 2.6000000089406967
+          },
+          "nx": {
+            "mean": 675,
+            "p95": 675,
+            "max": 675
+          },
+          "ny": {
+            "mean": 288,
+            "p95": 288,
+            "max": 288
+          }
+        },
+        "gpu": {
+          "count": 3601,
+          "retained": 2000,
+          "frameId": {
+            "mean": 19977.5,
+            "p95": 20878,
+            "max": 20977
+          },
+          "completionLatencyMs": {
+            "mean": 15.029899999961257,
+            "p95": 15.799999997019768,
+            "max": 20.19999998807907
+          },
+          "gpuMs": {
+            "mean": 1.9962710079999983,
+            "p95": 3.438752,
+            "max": 5.011264
+          }
+        }
+      },
+      "windSettings": {
+        "windSpeed": 5,
+        "angle": 0,
+        "viscosity": 0.03,
+        "resolution": 300,
+        "particles": 1000,
+        "playback": 20,
+        "trees": true,
+        "visualStyle": "ribbons",
+        "palette": "classic",
+        "colorMaxMps": 20,
+        "facadeGlow": true,
+        "active": true,
+        "phase": "Developing flow"
+      },
+      "windCanvas": [
+        2283,
+        1368
+      ],
+      "renderer": {
+        "requested": "webgl2",
+        "backend": "webgl2",
+        "submitted": 20978,
+        "completed": 20977,
+        "geometryCompleted": 7742,
+        "backpressure": 0,
+        "width": 2283,
+        "height": 1368,
+        "graphics": "ANGLE (NVIDIA, NVIDIA Quadro RTX 3000 (0x00001F36) Direct3D11 vs_5_0 ps_5_0, D3D11)"
+      },
+      "submittedHz": 60.004565745913865,
+      "gpuCompletedHz": 60.004565745913865,
+      "ribbonGeometryHz": 59.704626233715466,
+      "backpressureFrames": 0,
+      "windIntervals": {
+        "count": 3601,
+        "p95": 16.8,
+        "over33ms": 0
+      },
+      "revision": "working"
+    },
+    {
+      "label": "wind acceptance ribbons 3",
+      "soakRun": null,
+      "graphics": "ANGLE (NVIDIA, NVIDIA Quadro RTX 3000 (0x00001F36) Direct3D11 vs_5_0 ps_5_0, D3D11)",
+      "date": "2026-09-29T13:55:06.238Z",
+      "viewport": [
+        1920,
+        1080
+      ],
+      "screen": [
+        1920,
+        1080
+      ],
+      "devicePixelRatio": 1,
+      "elapsedMs": 60012.70000000298,
+      "windFrameHz": 60.0206289668657,
+      "solverPaused": false,
+      "pausedDuringSample": false,
+      "samples": 3601,
+      "hiddenFrames": 0,
+      "meanMs": 16.665759511246865,
+      "fps": 60.00326593727405,
+      "p95Ms": 16.79999999998836,
+      "longTasks": 0,
+      "nodes": 341,
+      "canvases": 12,
+      "activeButtons": [
+        "cfd-simulation-btn"
+      ],
+      "memoryStart": 24240401,
+      "memoryEnd": 23630209,
+      "layers": {
+        "isovist-btn": {
+          "requested": false,
+          "active": false,
+          "status": "off",
+          "error": null
+        },
+        "cfd-simulation-btn": {
+          "requested": true,
+          "active": true,
+          "status": "ready",
+          "error": null
+        },
+        "bird-sounds-btn": {
+          "requested": false,
+          "active": false,
+          "status": "off",
+          "error": null
+        },
+        "trafik-btn": {
+          "requested": false,
+          "active": false,
+          "status": "off",
+          "error": null
+        },
+        "stormwater-btn": {
+          "requested": false,
+          "active": false,
+          "status": "off",
+          "error": null
+        }
+      },
+      "scheduler": {
+        "canvasSubmissions": {
+          "wind": {
+            "hz": 60,
+            "samples": 600
+          }
+        },
+        "pending": 0,
+        "owners": [],
+        "costs": {
+          "wind": {
+            "meanMs": 0.043046724848676776,
+            "maxMs": 0.10000000894069672
+          }
+        }
+      },
+      "windProfile": {
+        "frames": {
+          "count": 3602,
+          "retained": 2000,
+          "backend": "webgl2",
+          "style": "ribbons",
+          "glow": true,
+          "resolution": {
+            "mean": 300,
+            "p95": 300,
+            "max": 300
+          },
+          "particles": {
+            "mean": 1000,
+            "p95": 1000,
+            "max": 1000
+          },
+          "intervalMs": {
+            "mean": 16.66570000000001,
+            "p95": 16.79999999998836,
+            "max": 20
+          },
+          "smoothMs": {
+            "mean": 1.385300000026822,
+            "p95": 2.7999999970197678,
+            "max": 5.5
+          },
+          "facadeUpdateMs": {
+            "mean": 0.0007500000149011612,
+            "p95": 0,
+            "max": 0.10000000894069672
+          },
+          "tracerUpdateMs": {
+            "mean": 0.0008499999791383744,
+            "p95": 0,
+            "max": 0.10000000894069672
+          },
+          "visualUpdateMs": {
+            "mean": 0.1564500000104308,
+            "p95": 0.29999999701976776,
+            "max": 0.5
+          },
+          "traceMs": {
+            "mean": 6.072300000190735,
+            "p95": 8.599999994039536,
+            "max": 10.400000005960464
+          },
+          "exposureWorkerMs": {
+            "mean": 4.935750000067055,
+            "p95": 6.699999988079071,
+            "max": 8.100000008940697
+          },
+          "drawMs": {
+            "mean": 0.8271999999657274,
+            "p95": 1.2999999970197678,
+            "max": 2.2000000029802322
+          },
+          "totalMs": {
+            "mean": 2.3703499999940396,
+            "p95": 4.399999991059303,
+            "max": 7
+          }
+        },
+        "solver": {
+          "count": 650,
+          "retained": 650,
+          "stepMs": {
+            "mean": 77.85307692326032,
+            "p95": 89.70000000298023,
+            "max": 99
+          },
+          "stepCount": {
+            "mean": 2.9953846153846153,
+            "p95": 3,
+            "max": 3
+          },
+          "snapshotMs": {
+            "mean": 0.3244615385165581,
+            "p95": 0.7000000029802322,
+            "max": 4.200000002980232
+          },
+          "nx": {
+            "mean": 675,
+            "p95": 675,
+            "max": 675
+          },
+          "ny": {
+            "mean": 288,
+            "p95": 288,
+            "max": 288
+          }
+        },
+        "gpu": {
+          "count": 3602,
+          "retained": 2000,
+          "frameId": {
+            "mean": 23579.5,
+            "p95": 24480,
+            "max": 24579
+          },
+          "completionLatencyMs": {
+            "mean": 15.091800000019372,
+            "p95": 15.799999997019768,
+            "max": 18.900000005960464
+          },
+          "gpuMs": {
+            "mean": 2.0352565119999992,
+            "p95": 3.66048,
+            "max": 5.0144
+          }
+        }
+      },
+      "windSettings": {
+        "windSpeed": 5,
+        "angle": 0,
+        "viscosity": 0.03,
+        "resolution": 300,
+        "particles": 1000,
+        "playback": 20,
+        "trees": true,
+        "visualStyle": "ribbons",
+        "palette": "classic",
+        "colorMaxMps": 20,
+        "facadeGlow": true,
+        "active": true,
+        "phase": "Flow settled"
+      },
+      "windCanvas": [
+        2283,
+        1368
+      ],
+      "renderer": {
+        "requested": "webgl2",
+        "backend": "webgl2",
+        "submitted": 24580,
+        "completed": 24579,
+        "geometryCompleted": 11321,
+        "backpressure": 0,
+        "width": 2283,
+        "height": 1368,
+        "graphics": "ANGLE (NVIDIA, NVIDIA Quadro RTX 3000 (0x00001F36) Direct3D11 vs_5_0 ps_5_0, D3D11)"
+      },
+      "submittedHz": 60.0206289668657,
+      "gpuCompletedHz": 60.0206289668657,
+      "ribbonGeometryHz": 59.63737675525051,
+      "backpressureFrames": 0,
+      "windIntervals": {
+        "count": 3602,
+        "p95": 16.8,
+        "over33ms": 0
+      },
+      "revision": "working"
+    },
+    {
+      "label": "wind acceptance ribbons sustained 10 minutes",
+      "soakRun": null,
+      "graphics": "ANGLE (NVIDIA, NVIDIA Quadro RTX 3000 (0x00001F36) Direct3D11 vs_5_0 ps_5_0, D3D11)",
+      "date": "2026-09-29T14:05:06.266Z",
+      "viewport": [
+        1920,
+        1080
+      ],
+      "screen": [
+        1920,
+        1080
+      ],
+      "devicePixelRatio": 1,
+      "elapsedMs": 600019.400000006,
+      "windFrameHz": 60.003059901062606,
+      "solverPaused": false,
+      "pausedDuringSample": false,
+      "samples": 36002,
+      "hiddenFrames": 0,
+      "meanMs": 16.665735236932296,
+      "fps": 60.00335333444746,
+      "p95Ms": 16.800000000046566,
+      "longTasks": 0,
+      "nodes": 338,
+      "canvases": 12,
+      "activeButtons": [
+        "cfd-simulation-btn"
+      ],
+      "memoryStart": 23630209,
+      "memoryEnd": 26615053,
+      "layers": {
+        "isovist-btn": {
+          "requested": false,
+          "active": false,
+          "status": "off",
+          "error": null
+        },
+        "cfd-simulation-btn": {
+          "requested": true,
+          "active": true,
+          "status": "ready",
+          "error": null
+        },
+        "bird-sounds-btn": {
+          "requested": false,
+          "active": false,
+          "status": "off",
+          "error": null
+        },
+        "trafik-btn": {
+          "requested": false,
+          "active": false,
+          "status": "off",
+          "error": null
+        },
+        "stormwater-btn": {
+          "requested": false,
+          "active": false,
+          "status": "off",
+          "error": null
+        }
+      },
+      "scheduler": {
+        "canvasSubmissions": {
+          "wind": {
+            "hz": 60,
+            "samples": 600
+          }
+        },
+        "pending": 0,
+        "owners": [],
+        "costs": {
+          "wind": {
+            "meanMs": 0.043046724848676776,
+            "maxMs": 0.10000000894069672
+          }
+        }
+      },
+      "windProfile": {
+        "frames": {
+          "count": 36003,
+          "retained": 2000,
+          "backend": "webgl2",
+          "style": "ribbons",
+          "glow": true,
+          "resolution": {
+            "mean": 300,
+            "p95": 300,
+            "max": 300
+          },
+          "particles": {
+            "mean": 1000,
+            "p95": 1000,
+            "max": 1000
+          },
+          "intervalMs": {
+            "mean": 16.66575,
+            "p95": 16.800000000046566,
+            "max": 18.600000000093132
+          },
+          "smoothMs": {
+            "mean": 2.2376000000610947,
+            "p95": 4.299999997019768,
+            "max": 7.0999999940395355
+          },
+          "facadeUpdateMs": {
+            "mean": 0.0006000000089406968,
+            "p95": 0,
+            "max": 0.10000000894069672
+          },
+          "tracerUpdateMs": {
+            "mean": 0.0005500000044703484,
+            "p95": 0,
+            "max": 0.10000000894069672
+          },
+          "visualUpdateMs": {
+            "mean": 0.1566999999731779,
+            "p95": 0.29999999701976776,
+            "max": 0.6000000089406967
+          },
+          "traceMs": {
+            "mean": 6.096749999947846,
+            "p95": 8.099999994039536,
+            "max": 10.200000002980232
+          },
+          "exposureWorkerMs": {
+            "mean": 4.950650000035763,
+            "p95": 6.399999991059303,
+            "max": 9.599999994039536
+          },
+          "drawMs": {
+            "mean": 0.8101999998688698,
+            "p95": 1.2000000029802322,
+            "max": 2.2999999970197678
+          },
+          "totalMs": {
+            "mean": 3.2060999999418853,
+            "p95": 5.4000000059604645,
+            "max": 8.700000002980232
+          }
+        },
+        "solver": {
+          "count": 6521,
+          "retained": 2000,
+          "stepMs": {
+            "mean": 77.20955000000447,
+            "p95": 87.59999999403954,
+            "max": 107.90000000596046
+          },
+          "stepCount": {
+            "mean": 2.998,
+            "p95": 3,
+            "max": 3
+          },
+          "snapshotMs": {
+            "mean": 0.3535500000566244,
+            "p95": 0.7000000029802322,
+            "max": 2.9000000059604645
+          },
+          "nx": {
+            "mean": 675,
+            "p95": 675,
+            "max": 675
+          },
+          "ny": {
+            "mean": 288,
+            "p95": 288,
+            "max": 288
+          }
+        },
+        "gpu": {
+          "count": 36003,
+          "retained": 2000,
+          "frameId": {
+            "mean": 59582.5,
+            "p95": 60483,
+            "max": 60582
+          },
+          "completionLatencyMs": {
+            "mean": 14.241199999846518,
+            "p95": 15,
+            "max": 19.5
+          },
+          "gpuMs": {
+            "mean": 1.9931935359999986,
+            "p95": 3.531456,
+            "max": 4.901856
+          }
+        }
+      },
+      "windSettings": {
+        "windSpeed": 5,
+        "angle": 0,
+        "viscosity": 0.03,
+        "resolution": 300,
+        "particles": 1000,
+        "playback": 20,
+        "trees": true,
+        "visualStyle": "ribbons",
+        "palette": "classic",
+        "colorMaxMps": 20,
+        "facadeGlow": true,
+        "active": true,
+        "phase": "Flow settled"
+      },
+      "windCanvas": [
+        2283,
+        1368
+      ],
+      "renderer": {
+        "requested": "webgl2",
+        "backend": "webgl2",
+        "submitted": 60583,
+        "completed": 60582,
+        "geometryCompleted": 46839,
+        "backpressure": 0,
+        "width": 2283,
+        "height": 1368,
+        "graphics": "ANGLE (NVIDIA, NVIDIA Quadro RTX 3000 (0x00001F36) Direct3D11 vs_5_0 ps_5_0, D3D11)"
+      },
+      "submittedHz": 60.003059901062606,
+      "gpuCompletedHz": 60.003059901062606,
+      "ribbonGeometryHz": 59.19475270299535,
+      "backpressureFrames": 0,
+      "windIntervals": {
+        "count": 36003,
+        "p95": 16.8,
+        "over33ms": 0
+      },
+      "revision": "working"
+    },
+    {
+      "label": "manual",
+      "soakRun": null,
+      "graphics": "ANGLE (NVIDIA, NVIDIA Quadro RTX 3000 (0x00001F36) Direct3D11 vs_5_0 ps_5_0, D3D11)",
+      "date": "2026-09-29T14:06:52.441Z",
+      "viewport": [
+        1920,
+        1080
+      ],
+      "screen": [
+        1920,
+        1080
+      ],
+      "devicePixelRatio": 1,
+      "elapsedMs": 30024.60000000894,
+      "windFrameHz": 37.03629690319501,
+      "solverPaused": false,
+      "pausedDuringSample": false,
+      "samples": 1588,
+      "hiddenFrames": 0,
+      "meanMs": 18.890617128463507,
+      "fps": 52.93633305887325,
+      "p95Ms": 33.39999999990687,
+      "longTasks": 0,
+      "nodes": 338,
+      "canvases": 12,
+      "activeButtons": [
+        "cfd-simulation-btn"
+      ],
+      "memoryStart": 39163089,
+      "memoryEnd": 71560088,
+      "layers": {
+        "isovist-btn": {
+          "requested": false,
+          "active": false,
+          "status": "off",
+          "error": null
+        },
+        "cfd-simulation-btn": {
+          "requested": true,
+          "active": true,
+          "status": "ready",
+          "error": null
+        },
+        "bird-sounds-btn": {
+          "requested": false,
+          "active": false,
+          "status": "off",
+          "error": null
+        },
+        "trafik-btn": {
+          "requested": false,
+          "active": false,
+          "status": "off",
+          "error": null
+        },
+        "stormwater-btn": {
+          "requested": true,
+          "active": true,
+          "status": "ready",
+          "error": null
+        }
+      },
+      "scheduler": {
+        "canvasSubmissions": {
+          "wind": {
+            "hz": 36.5,
+            "samples": 600
+          },
+          "stormwater": {
+            "hz": 26.3,
+            "samples": 600
+          }
+        },
+        "pending": 1,
+        "owners": [
+          "stormwater"
+        ],
+        "costs": {
+          "wind": {
+            "meanMs": 0.043046724848676776,
+            "maxMs": 0.10000000894069672
+          },
+          "stormwater": {
+            "meanMs": 4.149604743326979,
+            "maxMs": 15.399999991059303
+          }
+        }
+      },
+      "windProfile": {
+        "frames": {
+          "count": 1112,
+          "retained": 1112,
+          "backend": "webgl2",
+          "style": "ribbons",
+          "glow": true,
+          "resolution": {
+            "mean": 300,
+            "p95": 300,
+            "max": 300
+          },
+          "particles": {
+            "mean": 1000,
+            "p95": 1000,
+            "max": 1000
+          },
+          "intervalMs": {
+            "mean": 26.976978417266313,
+            "p95": 50,
+            "max": 66.80000000004657
+          },
+          "smoothMs": {
+            "mean": 1.338129496376077,
+            "p95": 2.1000000089406967,
+            "max": 4.100000008940697
+          },
+          "facadeUpdateMs": {
+            "mean": 0.0005395683399636111,
+            "p95": 0,
+            "max": 0.10000000894069672
+          },
+          "tracerUpdateMs": {
+            "mean": 0.0006294964055577628,
+            "p95": 0,
+            "max": 0.10000000894069672
+          },
+          "visualUpdateMs": {
+            "mean": 0.2008093525957075,
+            "p95": 0.3999999910593033,
+            "max": 0.7999999970197678
+          },
+          "traceMs": {
+            "mean": 6.047212230135425,
+            "p95": 7.5999999940395355,
+            "max": 14.299999997019768
+          },
+          "exposureWorkerMs": {
+            "mean": 4.921762589995059,
+            "p95": 6.5,
+            "max": 10.5
+          },
+          "drawMs": {
+            "mean": 0.9629496402984901,
+            "p95": 1.5999999940395355,
+            "max": 2.5999999940395355
+          },
+          "totalMs": {
+            "mean": 2.50521582736225,
+            "p95": 3.7000000029802322,
+            "max": 6.4000000059604645
+          }
+        },
+        "solver": {
+          "count": 320,
+          "retained": 320,
+          "stepMs": {
+            "mean": 79.0906250004191,
+            "p95": 86,
+            "max": 101.69999998807907
+          },
+          "stepCount": {
+            "mean": 2.990625,
+            "p95": 3,
+            "max": 3
+          },
+          "snapshotMs": {
+            "mean": 0.38499999935738743,
+            "p95": 0.7000000029802322,
+            "max": 2.7999999970197678
+          },
+          "nx": {
+            "mean": 675,
+            "p95": 675,
+            "max": 675
+          },
+          "ny": {
+            "mean": 288,
+            "p95": 288,
+            "max": 288
+          }
+        },
+        "gpu": {
+          "count": 1111,
+          "retained": 1111,
+          "frameId": {
+            "mean": 65705,
+            "p95": 66205,
+            "max": 66260
+          },
+          "completionLatencyMs": {
+            "mean": 47.82403240338786,
+            "p95": 67.5,
+            "max": 91.19999998807907
+          },
+          "gpuMs": {
+            "mean": 2.0594903042304202,
+            "p95": 3.882976,
+            "max": 7.788544
+          }
+        }
+      },
+      "windSettings": {
+        "windSpeed": 5,
+        "angle": 0,
+        "viscosity": 0.03,
+        "resolution": 300,
+        "particles": 1000,
+        "playback": 20,
+        "trees": true,
+        "visualStyle": "ribbons",
+        "palette": "classic",
+        "colorMaxMps": 20,
+        "facadeGlow": true,
+        "active": true,
+        "phase": "Flow settled"
+      },
+      "windCanvas": [
+        2283,
+        1368
+      ],
+      "renderer": {
+        "requested": "webgl2",
+        "backend": "webgl2",
+        "submitted": 66262,
+        "completed": 66260,
+        "geometryCompleted": 52444,
+        "backpressure": 664,
+        "width": 2283,
+        "height": 1368,
+        "graphics": "ANGLE (NVIDIA, NVIDIA Quadro RTX 3000 (0x00001F36) Direct3D11 vs_5_0 ps_5_0, D3D11)"
+      },
+      "submittedHz": 37.03629690319501,
+      "gpuCompletedHz": 37.00299088080005,
+      "ribbonGeometryHz": 36.736542701640374,
+      "backpressureFrames": 664,
+      "windIntervals": {
+        "count": 1112,
+        "p95": 50,
+        "over33ms": 0.42356115107913667
+      },
+      "revision": "working"
+    },
+    {
+      "label": "manual",
+      "soakRun": null,
+      "graphics": "ANGLE (NVIDIA, NVIDIA Quadro RTX 3000 (0x00001F36) Direct3D11 vs_5_0 ps_5_0, D3D11)",
+      "date": "2026-09-29T14:08:57.856Z",
+      "viewport": [
+        1920,
+        1080
+      ],
+      "screen": [
+        1920,
+        1080
+      ],
+      "devicePixelRatio": 1,
+      "elapsedMs": 60018.70000000298,
+      "windFrameHz": 59.99796730018846,
+      "solverPaused": false,
+      "pausedDuringSample": false,
+      "samples": 3601,
+      "hiddenFrames": 0,
+      "meanMs": 16.665741183004524,
+      "fps": 60.00333192620231,
+      "p95Ms": 16.80000000000291,
+      "longTasks": 0,
+      "nodes": 338,
+      "canvases": 12,
+      "activeButtons": [
+        "cfd-simulation-btn"
+      ],
+      "memoryStart": 24542602,
+      "memoryEnd": 25064525,
+      "layers": {
+        "isovist-btn": {
+          "requested": false,
+          "active": false,
+          "status": "off",
+          "error": null
+        },
+        "cfd-simulation-btn": {
+          "requested": true,
+          "active": true,
+          "status": "ready",
+          "error": null
+        },
+        "bird-sounds-btn": {
+          "requested": false,
+          "active": false,
+          "status": "off",
+          "error": null
+        },
+        "trafik-btn": {
+          "requested": false,
+          "active": false,
+          "status": "off",
+          "error": null
+        },
+        "stormwater-btn": {
+          "requested": false,
+          "active": false,
+          "status": "off",
+          "error": null
+        }
+      },
+      "scheduler": {
+        "canvasSubmissions": {
+          "wind": {
+            "hz": 60,
+            "samples": 600
+          }
+        },
+        "pending": 0,
+        "owners": [],
+        "costs": {
+          "wind": {
+            "meanMs": 0.07149068792348208,
+            "maxMs": 0.10000000894069672
+          }
+        }
+      },
+      "windProfile": {
+        "frames": {
+          "count": 3601,
+          "retained": 2000,
+          "backend": "webgl2",
+          "style": "ribbons",
+          "glow": true,
+          "resolution": {
+            "mean": 300,
+            "p95": 300,
+            "max": 300
+          },
+          "particles": {
+            "mean": 1000,
+            "p95": 1000,
+            "max": 1000
+          },
+          "intervalMs": {
+            "mean": 16.665800000000004,
+            "p95": 16.80000000000291,
+            "max": 17
+          },
+          "smoothMs": {
+            "mean": 1.7668999998494983,
+            "p95": 2.8999999910593033,
+            "max": 6.0999999940395355
+          },
+          "facadeUpdateMs": {
+            "mean": 0.0005000000149011612,
+            "p95": 0,
+            "max": 0.29999999701976776
+          },
+          "tracerUpdateMs": {
+            "mean": 0.00030000001192092895,
+            "p95": 0,
+            "max": 0.10000000894069672
+          },
+          "visualUpdateMs": {
+            "mean": 0.21125000004470348,
+            "p95": 0.3999999910593033,
+            "max": 2.2000000029802322
+          },
+          "traceMs": {
+            "mean": 5.622500000357628,
+            "p95": 7.399999991059303,
+            "max": 8
+          },
+          "ribbonPrepareMs": {
+            "mean": 6.160300000086426,
+            "p95": 8.399999991059303,
+            "max": 10.799999997019768
+          },
+          "exposureWorkerMs": {
+            "mean": 5.3819500000178815,
+            "p95": 6.9000000059604645,
+            "max": 8.799999997019768
+          },
+          "drawMs": {
+            "mean": 0.8335000000074506,
+            "p95": 1.2000000029802322,
+            "max": 2.7000000029802322
+          },
+          "totalMs": {
+            "mean": 2.8135999998897314,
+            "p95": 4.200000002980232,
+            "max": 7.700000002980232
+          }
+        },
+        "solver": {
+          "count": 652,
+          "retained": 652,
+          "stepMs": {
+            "mean": 77.53466257667797,
+            "p95": 87.7000000178814,
+            "max": 102.30000001192093
+          },
+          "stepCount": {
+            "mean": 2.996932515337423,
+            "p95": 3,
+            "max": 3
+          },
+          "snapshotMs": {
+            "mean": 0.3480061346127943,
+            "p95": 0.6000000089406967,
+            "max": 3.4000000059604645
+          },
+          "nx": {
+            "mean": 675,
+            "p95": 675,
+            "max": 675
+          },
+          "ny": {
+            "mean": 288,
+            "p95": 288,
+            "max": 288
+          }
+        },
+        "gpu": {
+          "count": 3602,
+          "retained": 2000,
+          "frameId": {
+            "mean": 3903.5,
+            "p95": 4804,
+            "max": 4903
+          },
+          "completionLatencyMs": {
+            "mean": 14.696249999918043,
+            "p95": 15.5,
+            "max": 32.30000001192093
+          },
+          "gpuMs": {
+            "mean": 2.075373791999996,
+            "p95": 4.132576,
+            "max": 5.201088
+          }
+        }
+      },
+      "windSettings": {
+        "windSpeed": 5,
+        "angle": 0,
+        "viscosity": 0.03,
+        "resolution": 300,
+        "particles": 1000,
+        "playback": 20,
+        "trees": true,
+        "visualStyle": "ribbons",
+        "palette": "classic",
+        "colorMaxMps": 20,
+        "facadeGlow": true,
+        "active": true,
+        "phase": "Developing flow"
+      },
+      "windCanvas": [
+        2283,
+        1368
+      ],
+      "renderer": {
+        "requested": "webgl2",
+        "backend": "webgl2",
+        "submitted": 4903,
+        "completed": 4903,
+        "geometryCompleted": 4851,
+        "backpressure": 0,
+        "width": 2283,
+        "height": 1368,
+        "graphics": "ANGLE (NVIDIA, NVIDIA Quadro RTX 3000 (0x00001F36) Direct3D11 vs_5_0 ps_5_0, D3D11)"
+      },
+      "submittedHz": 59.99796730018846,
+      "gpuCompletedHz": 60.01462877402911,
+      "ribbonGeometryHz": 59.34816982040303,
+      "backpressureFrames": 0,
+      "windIntervals": {
+        "count": 3601,
+        "p95": 16.8,
+        "over33ms": 0
+      },
+      "revision": "working"
+    }
+  ],
+  "rasterComparison": [
+    {
+      "label": "wind-raster-comparison",
+      "rows": [
+        {
+          "visualStyle": "particles",
+          "palette": "classic",
+          "facadeGlow": false,
+          "meanChannelError": 1.1419440236926666,
+          "pixelFractionAbove32": 0.0111625
+        },
+        {
+          "visualStyle": "particles",
+          "palette": "classic",
+          "facadeGlow": true,
+          "meanChannelError": 1.1446116625815588,
+          "pixelFractionAbove32": 0.01105
+        },
+        {
+          "visualStyle": "particles",
+          "palette": "ocean",
+          "facadeGlow": false,
+          "meanChannelError": 1.0533269199346162,
+          "pixelFractionAbove32": 0.0112875
+        },
+        {
+          "visualStyle": "particles",
+          "palette": "ocean",
+          "facadeGlow": true,
+          "meanChannelError": 1.0569080718953943,
+          "pixelFractionAbove32": 0.011170833333333333
+        },
+        {
+          "visualStyle": "particles",
+          "palette": "ember",
+          "facadeGlow": false,
+          "meanChannelError": 1.0908570057189075,
+          "pixelFractionAbove32": 0.011079166666666666
+        },
+        {
+          "visualStyle": "particles",
+          "palette": "ember",
+          "facadeGlow": true,
+          "meanChannelError": 1.0943868913398123,
+          "pixelFractionAbove32": 0.010966666666666666
+        },
+        {
+          "visualStyle": "particles",
+          "palette": "monochrome",
+          "facadeGlow": false,
+          "meanChannelError": 1.0912220220589086,
+          "pixelFractionAbove32": 0.010566666666666667
+        },
+        {
+          "visualStyle": "particles",
+          "palette": "monochrome",
+          "facadeGlow": true,
+          "meanChannelError": 1.0954646323530532,
+          "pixelFractionAbove32": 0.01045
+        },
+        {
+          "visualStyle": "ribbons",
+          "palette": "classic",
+          "facadeGlow": false,
+          "meanChannelError": 1.728777794117585,
+          "pixelFractionAbove32": 0.0082
+        },
+        {
+          "visualStyle": "ribbons",
+          "palette": "classic",
+          "facadeGlow": true,
+          "meanChannelError": 1.7343471609476386,
+          "pixelFractionAbove32": 0.008195833333333333
+        },
+        {
+          "visualStyle": "ribbons",
+          "palette": "ocean",
+          "facadeGlow": false,
+          "meanChannelError": 1.6931564379085204,
+          "pixelFractionAbove32": 0.008391666666666667
+        },
+        {
+          "visualStyle": "ribbons",
+          "palette": "ocean",
+          "facadeGlow": true,
+          "meanChannelError": 1.6991377614379253,
+          "pixelFractionAbove32": 0.0083875
+        },
+        {
+          "visualStyle": "ribbons",
+          "palette": "ember",
+          "facadeGlow": false,
+          "meanChannelError": 1.658893970588204,
+          "pixelFractionAbove32": 0.008166666666666666
+        },
+        {
+          "visualStyle": "ribbons",
+          "palette": "ember",
+          "facadeGlow": true,
+          "meanChannelError": 1.6650318749999617,
+          "pixelFractionAbove32": 0.0081625
+        },
+        {
+          "visualStyle": "ribbons",
+          "palette": "monochrome",
+          "facadeGlow": false,
+          "meanChannelError": 1.6770463602939834,
+          "pixelFractionAbove32": 0.0072875
+        },
+        {
+          "visualStyle": "ribbons",
+          "palette": "monochrome",
+          "facadeGlow": true,
+          "meanChannelError": 1.6840756372547745,
+          "pixelFractionAbove32": 0.0072833333333333335
+        }
+      ],
+      "pass": true,
+      "revision": "working"
+    }
+  ]
+}

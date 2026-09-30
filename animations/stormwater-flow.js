@@ -10,9 +10,10 @@ class StormwaterFlowAnimation {
   constructor(map, canvas) {
     this.map = map;
     this.canvas = canvas;
-    this.bitmapContext = typeof OffscreenCanvas !== 'undefined' && typeof Worker !== 'undefined'
+    this.directRender = (typeof URLSearchParams==='undefined' || new URLSearchParams(window.location?.search||'').get('stormwaterBackend')!=='bitmap') && typeof canvas.transferControlToOffscreen === 'function' && typeof Worker === 'function';
+    this.bitmapContext = !this.directRender && typeof OffscreenCanvas !== 'undefined' && typeof Worker !== 'undefined'
       ? canvas.getContext('bitmaprenderer') : null;
-    this.ctx = this.bitmapContext ? null : canvas.getContext('2d');
+    this.ctx = this.directRender || this.bitmapContext ? null : canvas.getContext('2d');
     this.isActive = false;
     this.animationFrame = null;
     
@@ -555,17 +556,7 @@ class StormwaterFlowAnimation {
     channel.postMessage({ type: 'animation_state', animationId: 'stormwater-btn', isActive: true });channel.close();
     
     this.handleResize();
-    if(typeof OffscreenCanvas!=='undefined' && typeof Worker==='function'){
-      this.renderWorker=new Worker('animations/stormwater-render-worker.js');this.renderReady=false;this.renderBusy=false;
-      this.renderWorker.onmessage=({data})=>{
-        if(!this.isActive || generation!==this.startGeneration){data.bitmap?.close();return;}
-        if(data.type==='error'){window.MR_LAYERS?.fail('stormwater-btn','Runoff drawing failed: '+data.message);return;}
-        if(data.type==='ready')this.renderReady=true;
-        if(data.type==='frame'){this.renderBusy=false;this.renderBuffer=data.values;if(data.revision!==this.renderRevision){data.bitmap.close();return;}if(this.bitmapContext)this.bitmapContext.transferFromImageBitmap(data.bitmap);else{this.ctx.clearRect(0,0,this.canvas.width,this.canvas.height);this.ctx.drawImage(data.bitmap,0,0);}data.bitmap.close();window.MR_FRAMES?.recordRender?.('stormwater');}
-      };
-      this.renderWorker.onerror=()=>{if(this.isActive && generation===this.startGeneration)window.MR_LAYERS?.fail('stormwater-btn','Runoff drawing worker could not start.');};
-      this.renderWorker.postMessage({type:'init',width:this.canvas.width,height:this.canvas.height,settings:{glowSpriteSize:this.glowSpriteSize,particleLifetime:this.particleLifetime,glowIntensity:this.glowIntensity,poolingGlowIntensity:this.poolingGlowIntensity}});
-    }
+    if(this.directRender || (typeof OffscreenCanvas!=='undefined' && typeof Worker==='function'))this.startRenderer(generation);
     // Play rain sound
     this.rainAudio.play().catch(e => console.warn("Audio play failed:", e));
     
@@ -588,8 +579,8 @@ class StormwaterFlowAnimation {
   scaleFlowToScreen() {
     if (!this.flowData) return;
     
-    const width = this.canvas.width;
-    const height = this.canvas.height;
+    const width = this.renderWidth || this.canvas.width;
+    const height = this.renderHeight || this.canvas.height;
     
     // Calculate max accumulation for color scaling
     const accValues = this.flowData.flow_lines.map(line => line.accumulation);
@@ -681,8 +672,45 @@ class StormwaterFlowAnimation {
     this.poolingGlowSprite = poolCanvas;
   }
   
+  startRenderer(generation) {
+    this.renderReady=false;this.renderBusy=false;
+    try {
+      if(!this.renderWorker){
+        const owned=this.renderWorker=new Worker('animations/stormwater-render-worker.js?v=20260929-direct2');
+        owned.onmessage=({data})=>{
+          if(this.renderWorker!==owned || data.generation!==this.startGeneration){data.bitmap?.close();return;}
+          if(data.type==='error'){this.fallbackRenderer(data.message);return;}
+          if(!this.isActive){data.bitmap?.close();return;}
+          if(data.type==='ready')this.renderReady=true;
+          if(data.type==='frame'){
+            this.renderBusy=false;this.renderBuffer=data.values;
+            if(data.revision!==this.renderRevision){data.bitmap?.close();return;}
+            if(data.bitmap){if(this.bitmapContext)this.bitmapContext.transferFromImageBitmap(data.bitmap);else{this.ctx.clearRect(0,0,this.canvas.width,this.canvas.height);this.ctx.drawImage(data.bitmap,0,0);}data.bitmap.close();}
+            window.MR_FRAMES?.recordRender?.('stormwater');
+          }
+        };
+        owned.onerror=()=>{if(this.renderWorker===owned)this.fallbackRenderer('Runoff drawing worker failed');};
+        const surface=this.directRender?this.canvas.transferControlToOffscreen():null;
+        this.canvasTransferred=!!surface;
+        owned.postMessage({type:'init',generation,canvas:surface,width:this.renderWidth,height:this.renderHeight,settings:{glowSpriteSize:this.glowSpriteSize,particleLifetime:this.particleLifetime,glowIntensity:this.glowIntensity,poolingGlowIntensity:this.poolingGlowIntensity}},surface?[surface]:[]);
+      }else this.renderWorker.postMessage({type:'resume',generation});
+      window.MR_STORMWATER_RENDERER={backend:this.directRender?'persistent-canvas2d':'bitmap-canvas2d'};
+    }catch(e){this.fallbackRenderer(e.message);}
+  }
+
+  fallbackRenderer(reason) {
+    this.renderWorker?.terminate();this.renderWorker=null;this.renderReady=false;this.renderBusy=false;this.renderBuffer=null;
+    if(this.canvasTransferred || this.bitmapContext){
+      const replacement=this.canvas.cloneNode(false);this.canvas.replaceWith(replacement);this.canvas=replacement;
+    }
+    this.directRender=false;this.canvasTransferred=false;this.bitmapContext=null;
+    this.canvas.width=this.renderWidth;this.canvas.height=this.renderHeight;this.ctx=this.canvas.getContext('2d');
+    window.MR_STORMWATER_RENDERER={backend:'main-canvas2d',fallbackReason:reason};
+    console.warn('Stormwater renderer fallback:',reason);
+  }
+
   stop() {
-    this.renderWorker?.terminate();this.renderWorker=null;this.renderBuffer=null;this.renderReady=false;this.renderBusy=false;
+    this.renderWorker?.postMessage({type:'stop',generation:(this.startGeneration||0)+1});this.renderBuffer=null;this.renderReady=false;this.renderBusy=false;
     this.startGeneration=(this.startGeneration || 0)+1;
     this.fixedAccumulator=0;
     window.MR_FRAMES?.times.delete('stormwater');
@@ -708,7 +736,7 @@ class StormwaterFlowAnimation {
     this.map.off('moveend',this.handleResize);
     
     if(this.bitmapContext)this.bitmapContext.transferFromImageBitmap(null);
-    else this.ctx.clearRect(0,0,this.canvas.width,this.canvas.height);
+    else this.ctx?.clearRect(0,0,this.canvas.width,(this.renderHeight || this.canvas.height));
     this.particles = [];
     
     console.log('Stormwater flow animation stopped');
@@ -725,7 +753,9 @@ class StormwaterFlowAnimation {
   handleResize() {
     this.renderRevision=(this.renderRevision||0)+1;
     const s = window.MR_TABLE ? MR_TABLE.place(this.canvas) : computeOverlayPixelSize();
-    this.canvas.width = s.w; this.canvas.height = s.h;
+    this.renderWidth=s.w;this.renderHeight=s.h;
+    if(!this.canvasTransferred){this.canvas.width=s.w;this.canvas.height=s.h;}
+    this.renderWorker?.postMessage({type:'resize',generation:this.startGeneration,revision:this.renderRevision,width:s.w,height:s.h});
     this.canvas.style.width=s.w+'px';this.canvas.style.height=s.h+'px';
     if(this.georeference && window.MR_TABLE){
       const rect=this.map.getContainer().getBoundingClientRect(),canvasRect=this.canvas.getBoundingClientRect();
@@ -778,13 +808,13 @@ class StormwaterFlowAnimation {
   
   cellToScreen(row,col) {
     if(this.demTransform)return this.demTransform.project(col,row);
-    return {x:(1-row/this.demHeight)*this.canvas.width,y:col/this.demWidth*this.canvas.height};
+    return {x:(1-row/this.demHeight)*(this.renderWidth || this.canvas.width),y:col/this.demWidth*(this.renderHeight || this.canvas.height)};
   }
 
   screenToCell(x, y) {
     if(this.demTransform){const p=this.demTransform.inverse(x,y);return {row:Math.floor(p.y),col:Math.floor(p.x)};}
-    return { row: Math.floor((1 - x / this.canvas.width) * this.demHeight),
-      col: Math.floor(y / this.canvas.height * this.demWidth) };
+    return { row: Math.floor((1 - x / (this.renderWidth || this.canvas.width)) * this.demHeight),
+      col: Math.floor(y / (this.renderHeight || this.canvas.height) * this.demWidth) };
   }
 
   isBlockedCell({ row, col }) {
@@ -943,8 +973,8 @@ class StormwaterFlowAnimation {
       }
       
       // Remove particles off screen
-      if (p.x < 0 || p.x > this.canvas.width || 
-          p.y < 0 || p.y > this.canvas.height) {
+      if (p.x < 0 || p.x > (this.renderWidth || this.canvas.width) ||
+          p.y < 0 || p.y > (this.renderHeight || this.canvas.height)) {
         this.particles[i] = this.particles[this.particles.length - 1];
         this.particles.pop();
       }
@@ -996,7 +1026,7 @@ class StormwaterFlowAnimation {
           const p=this.particles[i],n=i*23;values[n]=p.x;values[n+1]=p.y;values[n+2]=p.age;values[n+3]=p.size;values[n+4]=p.poolingIntensity;values[n+5]=p.isPooling?1:0;values[n+6]=p.trail.length;
           for(let j=0;j<p.trail.length;j++){values[n+7+j*2]=p.trail[j].x;values[n+8+j*2]=p.trail[j].y;}
         }
-        this.renderBusy=true;this.renderWorker.postMessage({type:'frame',revision:this.renderRevision,debugLines:this.debugFlowLines?this.flowData?.flow_lines_screen:null,values,width:this.canvas.width,height:this.canvas.height,scale:window.mrTableScale?.()??1},[values.buffer]);
+        this.renderBusy=true;this.renderWorker.postMessage({type:'frame',generation:this.startGeneration,revision:this.renderRevision,debugLines:this.debugFlowLines?this.flowData?.flow_lines_screen:null,values,width:this.renderWidth,height:this.renderHeight,scale:window.mrTableScale?.()??1},[values.buffer]);
       }
       return;
     }
