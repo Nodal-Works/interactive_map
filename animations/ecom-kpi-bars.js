@@ -78,6 +78,7 @@
         const on = layerOn && !!reading && settled && !inIntroduction;
         panel.classList.toggle('is-on', on);
         panel.setAttribute('aria-hidden', String(!on));
+        window.dispatchEvent(new CustomEvent('mr-bottom-ribbon-availability', { detail: { id: 'ecom', available: on } }));
     }
     function render(r) {
         reading = r;

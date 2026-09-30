@@ -129,6 +129,57 @@ const FUNCTION_BUTTONS = [
 
 // Track active animations in order they were activated
 let activeAnimations = [];
+let bottomRibbonSelection = 'auto';
+let bottomRibbonSnapshot = null;
+
+function renderBottomRibbonSelector(snapshot = bottomRibbonSnapshot) {
+    if (snapshot) {
+        bottomRibbonSnapshot = snapshot;
+        bottomRibbonSelection = snapshot.selection || 'auto';
+    }
+    const selector = document.getElementById('bottom-ribbon-selector');
+    if (!selector) return;
+    selector.querySelectorAll('[data-ribbon-choice]').forEach(button => {
+        const choice = button.dataset.ribbonChoice;
+        const target = choice === 'isovist' ? 'isovist-btn' : choice === 'ecom' ? 'ecom-energy-btn' : null;
+        button.setAttribute('aria-pressed', String(bottomRibbonSelection === choice));
+        const active = activeAnimations.includes(target) || bottomRibbonSnapshot?.active?.includes(choice);
+        button.disabled = !!target && !active;
+    });
+}
+
+function setupBottomRibbonSelector() {
+    const header = document.querySelector('header');
+    if (!header || document.getElementById('bottom-ribbon-selector')) return;
+    const selector = document.createElement('div');
+    selector.id = 'bottom-ribbon-selector';
+    selector.className = 'bottom-ribbon-selector';
+    selector.setAttribute('role', 'group');
+    selector.setAttribute('aria-label', 'Map bottom ribbon');
+    const label = document.createElement('span');
+    label.textContent = 'Map ribbon';
+    selector.append(label);
+    const choices = [['auto', 'Auto'], ['isovist', 'Isovist']];
+    if (!(window.APP_CONFIG?.disabledLayers || []).includes('ecom-energy-btn')) choices.push(['ecom', 'ECOM']);
+    choices.forEach(([choice, title]) => {
+        const button = document.createElement('button');
+        button.type = 'button';
+        button.dataset.ribbonChoice = choice;
+        button.textContent = title;
+        button.onclick = () => {
+            const target = choice === 'isovist' ? 'isovist-btn' : choice === 'ecom' ? 'ecom-energy-btn' : null;
+            if (target && !activeAnimations.includes(target)) return;
+            bottomRibbonSelection = choice;
+            renderBottomRibbonSelector();
+            channel.postMessage({ type: 'bottom_ribbon_select', selection: choice });
+        };
+        selector.append(button);
+    });
+    const connection = header.querySelector('#connection-status')?.parentElement;
+    header.insertBefore(selector, connection || null);
+    renderBottomRibbonSelector();
+    channel.postMessage({ type: 'bottom_ribbon_request_state' });
+}
 
 function isAnimationButton(targetId) {
     return ANIMATION_BUTTONS.includes(targetId);
@@ -161,10 +212,13 @@ function setAnimationState(targetId, isActive, follow = true) {
         }
     }
     syncAnimationButtonStates();
+    renderBottomRibbonSelector();
     const toggle = document.querySelector(`[data-layer-switch="${targetId}"]`);
     if (toggle) toggle.checked = isActive;
     if (follow && newlyActive && !new URLSearchParams(location.search).has('sessionController')) openHostLayer(targetId);
 }
+
+setupBottomRibbonSelector();
 
 function syncAnimationButtonStates() {
     // Remove all existing badges first
@@ -1416,9 +1470,7 @@ function updateDashboard(targetId) {
         legendContent.innerHTML = `
             <div class="dashboard-card">
                 <div class="dashboard-section-title">Live Visibility</div>
-                <div id="isovist-stats-container">
-                    <div style="text-align: center; color: #888; padding: 1rem; font-size: 11px;">Place viewer on map...</div>
-                </div>
+                <p style="font-size:11px;color:#aab5c0;line-height:1.5;">Live visibility statistics and history are shown in the projected map’s bottom ribbon. Use the Map ribbon selector above to choose which ribbon is visible.</p>
             </div>
             <div class="dashboard-card" style="margin-top: 0.75rem;">
                 <div class="dashboard-section-title">Map Legend</div>
@@ -1440,8 +1492,6 @@ function updateDashboard(targetId) {
         `;
 
         // Clear history when switching to isovist
-        isovistHistory.data = [];
-        isovistHistory.gvfHistory = [];
 
         // Attach event listeners
         const radiusInput = document.getElementById('isovist-radius');
@@ -1751,6 +1801,8 @@ channel.onmessage = (event) => {
     if (data.type === MSG_TYPES.ANIMATION_STATE) {
         // Received actual animation state from main window - update our tracking
         setAnimationState(data.animationId, data.isActive);
+    } else if (data.type === 'bottom_ribbon_state') {
+        renderBottomRibbonSelector(data.state);
     } else if (data.type === 'isovist_state') {
         const radius = document.getElementById('isovist-radius'), fov = document.getElementById('isovist-fov');
         if (radius) radius.value = data.radius;
@@ -1863,8 +1915,6 @@ channel.onmessage = (event) => {
         if (calibrateButton && calibrateButton.classList.contains('selected')) {
             renderCalibrationHistory(document.getElementById('legend-content'));
         }
-    } else if (data.type === 'isovist_stats') {
-        updateIsovistChart(data.data);
     } else if (data.type === 'fcc_demo_progress') {
         // Update FCC demo progress from main window
         fccDemoState.progress = data.progress;
