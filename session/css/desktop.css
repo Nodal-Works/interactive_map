@@ -15,7 +15,7 @@ body.mr-session-open #main-panel>section:not(#mr-session-page){display:none!impo
 .host-layer-row input,.mr-app-row input{width:20px;height:20px;flex-shrink:0;accent-color:#82dfc2;cursor:pointer;margin-right:8px}
 .mr-app-row.active{outline:1px solid #82dfc2;border-radius:8px}
 .mr-ribbon-setting{display:block;margin-top:20px;font-size:13px}.mr-ribbon-setting input{width:65px;padding:8px}
-.mr-idle-ribbon{position:fixed;inset-inline:0;z-index:970;pointer-events:none;display:grid;grid-template-columns:minmax(0,1fr) auto minmax(0,1fr);align-items:center;overflow:hidden;box-sizing:border-box;background:linear-gradient(105deg,#101722 0%,#172b2f 52%,#101722 100%);border-top:2px solid #82dfc2;box-shadow:0 -8px 26px #07101866}
+.mr-idle-ribbon{position:fixed;inset-inline:0;z-index:970;pointer-events:none;display:grid;grid-template-columns:minmax(0,1fr) auto minmax(0,1fr);align-items:center;overflow:hidden;box-sizing:border-box;background:#000;border-top:2px solid #82dfc2;box-shadow:0 -8px 26px #07101866}
 .mr-idle-ribbon[hidden]{display:none}
 .mr-idle-label{grid-column:1;display:flex;align-items:center;align-self:stretch;justify-self:center;color:#eef3f8;background:#101722;padding:0 clamp(12px,2vw,28px);border-right:1px solid #82dfc255;font:600 clamp(12px,1.8vw,22px) system-ui;white-space:nowrap}
 .mr-idle-label:before{content:"";width:8px;height:8px;margin-right:10px;border-radius:50%;background:#82dfc2;box-shadow:0 0 12px #82dfc2}

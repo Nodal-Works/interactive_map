@@ -99,13 +99,12 @@
   let inviteUrl='', ribbonCm=9;
   try{ribbonCm=Math.min(20,Math.max(4,Number(localStorage.getItem('mr-ribbon-cm-v3'))||9));}catch{}
   const ribbon=document.createElement('div');ribbon.className='mr-idle-ribbon';ribbon.hidden=true;
-  const label=document.createElement('div');label.className='mr-idle-label';label.textContent='Street Life';
   const join=document.createElement('div');join.className='mr-idle-join';
   const copy=document.createElement('div');copy.className='mr-idle-copy';
   const caption=document.createElement('strong');caption.textContent='Scan to join';
   const hint=document.createElement('span');hint.textContent='Open your camera and scan the code';
   copy.append(caption,hint);
-  const qr=document.createElement('div');qr.className='mr-idle-qr';join.append(copy,qr);ribbon.append(label,join);document.body.append(ribbon);
+  const qr=document.createElement('div');qr.className='mr-idle-qr';join.append(copy,qr);ribbon.append(join);document.body.append(ribbon);
   const setting=document.createElement('label');setting.className='mr-ribbon-setting';setting.textContent='Bottom ribbon height (cm) ';
   const height=document.createElement('input');height.type='number';height.min='4';height.max='20';height.step='1';height.value=ribbonCm;
   setting.append(height);dialog.append(setting);
