@@ -1,6 +1,7 @@
 (function() {
   'use strict';
   const NS='http://www.w3.org/2000/svg';
+  const assetRoot=typeof document!=='undefined'&&document.currentScript?.src?new URL('../../',document.currentScript.src):null;
   function node(tag,attrs={},text) {const n=document.createElementNS(NS,tag);for(const[k,v]of Object.entries(attrs))n.setAttribute(k,v);if(text!==undefined)n.textContent=text;return n;}
   function merc(c) {const lat=c[1]*Math.PI/180;return [(c[0]+180)/360,(1-Math.log(Math.tan(lat)+1/Math.cos(lat))/Math.PI)/2];}
   function normalized(c,table) {
@@ -25,7 +26,8 @@
       (desktop?document.body:element).append(this.svg);
       if(desktop)this.svg.classList.add('desktop');
       this.map.on('move',()=>this.render());this.map.on('resize',()=>this.render());
-      this.map.on('load',()=>{this.ready=true;if(this.table)this.fit();this.render();});
+      if(!desktop){this.dataStatus=document.createElement('div');this.dataStatus.className='map-data-status';this.dataStatus.setAttribute('role','status');this.dataStatus.hidden=true;element.append(this.dataStatus);}
+      this.map.on('load',()=>{this.ready=true;if(this.table)this.fit();this.updateFootprints();this.render();});
       this.ready=this.map.loaded();
       this.element.addEventListener('pointerdown',e=>this.down(e),true);
       this.element.addEventListener('pointermove',e=>this.move(e),true);
@@ -39,6 +41,26 @@
         if(this.navigatingTouch&&(e.touches?.length>1||type==='touchend')){if(e.touches.length===0)this.navigatingTouch=false;return;}
         if(e.cancelable)e.preventDefault();e.stopImmediatePropagation();
       },{capture:true,passive:false});
+    }
+    get layer(){return this._layer;}
+    set layer(value){this._layer=value;this.updateFootprints();}
+    updateFootprints() {
+      if(this.desktop||!this.ready)return;
+      const visible=this.layer==='epc-btn';
+      for(const id of ['phone-buildings-fill','phone-buildings-outline'])if(this.map.getLayer(id))this.map.setLayoutProperty(id,'visibility',visible?'visible':'none');
+      this.dataStatus.hidden=!visible||!!this.map.getSource('phone-buildings');
+      if(!visible||this.map.getSource('phone-buildings')||this.footprintsLoading)return;
+      this.footprintsLoading=true;this.dataStatus.textContent='Loading building outlines…';
+      const path=window.mrAsset?.('media/building-footprints.geojson')||'media/building-footprints.geojson';
+      fetch(new URL(path,assetRoot)).then(response=>{if(!response.ok)throw Error('Building outlines unavailable');return response.json();}).then(data=>{
+        // Only geometry is needed to target the same footprints used by EPC.
+        const features=data.features.filter(f=>['Polygon','MultiPolygon'].includes(f.geometry?.type)).map(f=>({type:'Feature',properties:{},geometry:f.geometry}));
+        this.map.addSource('phone-buildings',{type:'geojson',data:{type:'FeatureCollection',features}});
+        const layout={visibility:this.layer==='epc-btn'?'visible':'none'};
+        this.map.addLayer({id:'phone-buildings-fill',type:'fill',source:'phone-buildings',layout,paint:{'fill-color':'#0f766e','fill-opacity':.22}});
+        this.map.addLayer({id:'phone-buildings-outline',type:'line',source:'phone-buildings',layout,paint:{'line-color':'#115e59','line-width':1.5}});
+        this.dataStatus.hidden=true;
+      }).catch(()=>{this.dataStatus.textContent='Building outlines unavailable. Reopen Map to retry.';this.dataStatus.hidden=this.layer!=='epc-btn';}).finally(()=>{this.footprintsLoading=false;});
     }
     setTool(tool) {
       this.cancel();this.tool=tool;const navigating=['navigate','off'].includes(tool);
@@ -57,7 +79,7 @@
     fit() {
       if(!this.table||this.desktop)return;
       const bounds=new maplibregl.LngLatBounds();this.table.corners.forEach(c=>bounds.extend(c));
-      this.map.resize();this.map.fitBounds(bounds,{padding:25,bearing:this.table.bearing,duration:0});
+      this.map.resize();this.map.fitBounds(bounds,{padding:38,bearing:this.table.bearing,duration:0});
     }
     project(c) {const p=this.map.project(c);if(this.desktop){const r=this.element.getBoundingClientRect();return{x:p.x+r.left,y:p.y+r.top};}return p;}
     location(e) {const r=this.element.getBoundingClientRect();return this.map.unproject([e.clientX-r.left,e.clientY-r.top]).toArray();}
@@ -147,7 +169,17 @@
       this.svg.replaceChildren();
       const defs=node('defs'), marker=node('marker',{id:this.desktop?'host-arrow':'phone-arrow',viewBox:'0 0 10 10',refX:9,refY:5,markerWidth:5,markerHeight:5,orient:'auto-start-reverse'});
       marker.append(node('path',{d:'M 0 0 L 10 5 L 0 10 z',fill:'context-stroke'}));defs.append(marker);this.svg.append(defs);
-      if(this.table&&!this.desktop){const pts=this.table.corners.map(c=>{const p=this.project(c);return`${p.x},${p.y}`;}).join(' ');this.svg.append(node('polygon',{points:pts,fill:'none',stroke:'#ffffff66','stroke-width':1,'stroke-dasharray':'5 5'}));}
+      if(this.table&&!this.desktop){
+        const corners=this.table.corners.map(c=>this.project(c)),pts=corners.map(p=>`${p.x},${p.y}`).join(' '),w=this.element.clientWidth,h=this.element.clientHeight;
+        const boundary=node('g',{'data-table-boundary':'true'});
+        boundary.append(node('title',{},'Table area — place inputs inside this outline'));
+        boundary.append(node('path',{d:`M0,0H${w}V${h}H0Z M${corners.map(p=>`${p.x},${p.y}`).join('L')}Z`,fill:'#172b3a','fill-opacity':.18,'fill-rule':'evenodd'}));
+        boundary.append(node('polygon',{points:pts,fill:'none',stroke:'#fff','stroke-width':6,'stroke-linejoin':'round'}));
+        boundary.append(node('polygon',{points:pts,fill:'none',stroke:'#0f766e','stroke-width':3,'stroke-linejoin':'round'}));
+        const top=corners.reduce((a,b)=>a.y<b.y?a:b),x=Math.max(48,Math.min(w-48,top.x)),y=Math.max(20,Math.min(h-10,top.y-10));
+        boundary.append(node('text',{x,y,'text-anchor':'middle',fill:'#115e59',stroke:'#fff','stroke-width':4,'paint-order':'stroke','font-size':12,'font-weight':700},'TABLE AREA'));
+        this.svg.append(boundary);
+      }
       const input=this.gesture?.point?this.gesture.coordinate:this.lastInput&&this.lastInput.layer===this.layer?this.lastInput.coordinate:null;
       if(this.layer==='thermal-comfort-btn'&&!this.desktop) {
         // Use host-confirmed snapped endpoints, never the phone's last tap.

@@ -1,20 +1,52 @@
 <!doctype html>
 <html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"><meta name="theme-color" content="#f5f7fa"><title>MR Studio · Controller</title>
 <link rel="stylesheet" href="css/app.css?v=20260925-session-6"><link rel="stylesheet" href="https://unpkg.com/maplibre-gl@2.4.0/dist/maplibre-gl.css"><script src="../app-config.js"></script><script src="../app-config-runtime.js"></script></head>
-<body class="phone"><header class="app-header"><button id="apps" class="icon-button" aria-label="Open apps">▦</button><div><strong>MR Studio</strong><small id="connection">Connecting to your session…</small></div><button id="profile-button" class="avatar" aria-label="Profile and slots">☺</button></header>
+<body class="phone">
 <div id="notice" role="status" hidden></div>
-<main id="drawer"><div class="intro"><span class="eyebrow">EXPLORE TOGETHER</span><h1>The table, in your hands.</h1><p>Choose a controller slot to change the table, or explore as a spectator.</p><button id="choose-slot">Choose a controller slot</button></div><div id="layer-list"></div></main>
-<section id="workspace" hidden><div class="layer-header"><span id="layer-icon"></span><h1 id="layer-title"></h1><label class="switch"><input id="layer-enabled" type="checkbox"><span>On the table</span></label></div><nav class="tabs" aria-label="Layer view"><button id="controls-tab" aria-selected="true">Controls</button><button id="map-tab" aria-selected="false">Map</button></nav>
-<div id="controls-view"><div id="phone-controls"></div><iframe id="dashboard" title="Energy community controls" hidden></iframe><div id="canvas-controls" hidden><h2>Leave your mark</h2><p>Sketch, annotate, or add a comment over any active layers. Your work stays on this session’s Canvas.</p><button id="start-drawing">Open drawing tools</button><p class="muted">You can edit your own annotations. The host can edit all annotations.</p></div></div>
-<div id="map-view" hidden><div id="map-tools" class="toolbar"><select id="tool" aria-label="Map tool"></select><button id="drawing-options" aria-expanded="false">Style</button><input id="color" aria-label="Drawing colour" type="color" value="#38bdf8"><select id="width" aria-label="Stroke width"><option value="2">Fine</option><option value="4" selected>Medium</option><option value="8">Bold</option></select><button id="expand-map" aria-pressed="false">Expand map</button><button id="fit">Fit table</button><button id="finish">Close shape</button><button id="cancel">Cancel</button><button id="delete">Delete</button><button id="edit-text">Edit comment</button><button id="undo" aria-label="Undo your last edit">↶</button><button id="redo" aria-label="Redo your last edit">↷</button></div><div id="phone-map"></div><p id="map-hint" class="map-hint">Two fingers to zoom and pan · your phone view only</p></div>
+<main id="drawer">
+  <header class="drawer-header"><div><h1>MR Studio</h1><small id="connection">Connecting…</small></div><button id="profile-button" class="avatar" aria-label="Profile and slots">☺</button></header>
+  <p class="drawer-caption">Choose an app. Results appear on the table.</p>
+  <div id="layer-list" class="app-grid"></div>
+  <button id="choose-slot" disabled>Join the table</button>
+</main>
+<section id="workspace" hidden>
+  <header class="workspace-header">
+    <button id="apps" class="apps-button" aria-label="Home"><img src="icons/house.svg" alt=""></button>
+    <h1 id="layer-title" tabindex="-1"></h1>
+    <label class="switch activation"><input id="layer-enabled" type="checkbox" role="switch" aria-label="Show on table"><span class="toggle-track" aria-hidden="true"></span><span id="activation-label" aria-hidden="true">Off</span></label>
+  </header>
+  <p id="activity-status" role="status" hidden></p>
+  <div id="controls-home"></div>
+  <div id="map-view" hidden>
+    <div id="map-stage"><div id="phone-map"></div><button id="fit"><img src="icons/locate-fixed.svg" alt="">Fit table</button><p id="map-hint" class="map-hint"></p></div>
+    <div id="map-tools" class="toolbar">
+      <button id="tool-picker" aria-haspopup="dialog">Pen</button>
+      <button id="undo" aria-label="Undo your last edit"><img src="icons/undo-2.svg" alt="">Undo</button>
+      <button id="open-controls" aria-haspopup="dialog"><img src="icons/sliders-horizontal.svg" alt="">Controls</button>
+      <button id="finish" hidden>Finish shape</button><button id="cancel" hidden>Cancel</button>
+      <button id="exit-fullscreen" hidden>Exit fullscreen</button>
+    </div>
+    <dialog id="controls-sheet" aria-labelledby="sheet-title">
+      <header class="sheet-header"><h2 id="sheet-title">Controls</h2><button id="expand-sheet" aria-expanded="false">Expand</button><button id="close-sheet" autofocus>Close</button></header>
+      <div id="sheet-body">
+        <div id="tool-settings" hidden>
+          <label>Map tool<select id="tool" aria-label="Map tool"></select></label>
+          <div id="drawing-style"><label>Colour<input id="color" aria-label="Drawing colour" type="color" value="#38bdf8"></label><label>Stroke width<select id="width" aria-label="Stroke width"><option value="2">Fine</option><option value="4" selected>Medium</option><option value="8">Bold</option></select></label></div>
+          <div class="actions"><button id="delete" hidden>Delete selected</button><button id="edit-text" hidden>Edit comment</button><button id="redo">Redo</button></div>
+        </div>
+        <div id="controls-view"><p id="activity-description"></p><div id="phone-controls"></div><iframe id="dashboard" title="Energy community controls" hidden></iframe><div id="canvas-controls" hidden><p>Choose a drawing tool to sketch or add a comment. You can edit your own annotations.</p><button id="start-drawing">Back to drawing</button></div></div>
+        <button id="expand-map" aria-pressed="false">Full screen map</button>
+      </div>
+    </dialog>
+  </div>
 </section>
 <dialog id="profile">
 <form method="dialog"><button class="dialog-close" aria-label="Close profile">×</button></form>
 <h2>Your place at the table</h2>
-<p>Choose a slot to control the shared table, or explore as a spectator.</p>
+<p>Join to change the shared table, or look around without changing anything.</p><button id="join-table" autofocus disabled>Join the table</button>
 <p id="slot-status" role="status"></p>
-<div id="slots"></div>
-<button id="spectate">Continue as spectator</button>
+<details id="slot-details"><summary>Controller slots</summary><div id="slots"></div></details>
+<button id="spectate">Just look around</button>
 <button id="release-slot">Release my slot</button>
 <details id="profile-details"><summary>Your name &amp; avatar (optional)</summary>
 <label>Name<input id="name" maxlength="32" autocomplete="nickname"></label>

@@ -4,7 +4,7 @@
     'cfd-simulation-btn':{state:'cfd',type:'cfd_control',fields:[
       ['wind-speed','Wind speed','range','windSpeed','set_wind_speed',1,20,.5,5,' m/s'],
       ['wind-direction','Wind direction','range','angle','set_wind_direction',0,360,15,0,'°'],
-      ['wind-trees','Include trees','checkbox','trees','toggle_trees',true],
+      ['wind-trees','Include trees','checkbox','trees','toggle_trees',true,'advanced'],
       ['wind-visual-style','Display style','select','visualStyle','set_visual_style',['ribbons','particles'],'ribbons','advanced'],
       ['wind-palette','Colour palette','select','palette','set_color_palette',['classic','ocean','ember','monochrome'],'classic','advanced'],
       ['wind-color-range','Colour range (m/s)','select','colorMaxMps','set_color_range',[5,10,20,40],20,'advanced'],
@@ -26,8 +26,8 @@
       ['sun-date','Date','date','date','set_date','2026-06-21'],
       ['sun-time','Time of day','range','time','set_time',0,24,.25,12,' h'],
       ['sun-animate-btn','Animate','checkbox','animating','toggle_animation',false],
-      ['toggle-trees-btn','Include trees','checkbox','trees','toggle_trees',false],
-      ['false-color-btn','Exposure colours','checkbox','falseColor','toggle_false_color',false],
+      ['toggle-trees-btn','Include trees','checkbox','trees','toggle_trees',false,'advanced'],
+      ['false-color-btn','Exposure colours','checkbox','falseColor','toggle_false_color',false,'advanced'],
       ['shadow-opacity','Shadow opacity','range','opacity','set_opacity',.1,1,.1,.8,'','advanced'],
       ['sun-speed','Animation speed','range','speed','set_speed',.5,5,.5,2,'×','advanced']
     ]},
@@ -46,9 +46,9 @@
     constructor(element,send){this.element=element;this.send=send;}
     open(layer){
       this.definition=definitions[layer.id]||{};this.layer=layer.id;this.inputs=[];this.element.replaceChildren();
-      const lead=document.createElement('p');lead.className='control-note';lead.textContent=layer.tool?'Use Map to place your input. See the result on the table.':'See and hear the result on the table.';this.element.append(lead);
+      const lead=document.createElement('p');lead.className='control-note';lead.textContent=layer.name;this.element.append(lead);
       if(this.layer==='slideshow-btn'){this.slideStatus=document.createElement('p');this.slideStatus.setAttribute('role','status');this.element.append(this.slideStatus);}
-      const advanced=document.createElement('details'),summary=document.createElement('summary');summary.textContent='More settings';advanced.append(summary);
+      const advanced=document.createElement('details'),summary=document.createElement('summary');summary.textContent='More options';advanced.append(summary);
       for(const field of this.definition.fields||[]){
         const[id,label,kind,key,action,...options]=field,wrapper=document.createElement('label'),caption=document.createElement('span'),input=document.createElement(kind==='select'?'select':'input'),value=document.createElement('output');
         wrapper.className='phone-control '+kind;caption.textContent=label;input.id=id;input.setAttribute('aria-label',label);wrapper.append(caption);
@@ -56,12 +56,12 @@
         if(kind==='range'){[input.min,input.max,input.step,initial]=options;input.type='range';wrapper.append(value,input);input.oninput=()=>{value.textContent=input.value+(options[4]||'');};}
         else if(kind==='select'){for(const item of options[0])input.add(new Option(String(item),String(item)));initial=options[1];wrapper.append(input);}
         else {input.type=kind;initial=options[0];wrapper.append(input);}
-        if(kind==='checkbox')input.checked=initial;else input.value=initial;
+        if(kind==='checkbox'){input.checked=initial;input.confirmed=initial;input.setAttribute('role','switch');const track=document.createElement('span');track.className='toggle-track';track.setAttribute('aria-hidden','true');wrapper.append(track);}else input.value=initial;
         input.oninput?.();
         // Sliders render instantly here; commit once on release instead of
         // rebuilding the host simulation for every intermediate pixel.
         input.onchange=()=>{let v=kind==='checkbox'?input.checked:kind==='range'||kind==='select'&&typeof initial==='number'?Number(input.value):input.value;
-          this.send({type:'control',message:{type:this.definition.type,action,value:v}});};
+          this.send({type:'control',message:{type:this.definition.type,action,value:v}});if(kind==='checkbox')input.checked=input.confirmed;};
         this.inputs.push({input,value,kind,key,options});(options.includes('advanced')?advanced:this.element).append(wrapper);
       }
       if(advanced.children.length>1)this.element.append(advanced);
@@ -73,7 +73,7 @@
       for(const{input,kind,key}of this.inputs||[]){
         let v=values[key];if(key==='viscosity'&&v!==undefined)v=(v-.02)/.13;
         if(key==='humanFov'&&v!==undefined)v=!v;
-        if(v!==undefined&&document.activeElement!==input){if(kind==='checkbox')input.checked=!!v;else input.value=v;input.oninput?.();}
+        if(v!==undefined&&(kind==='checkbox'||document.activeElement!==input)){if(kind==='checkbox'){input.checked=!!v;input.confirmed=!!v;}else input.value=v;input.oninput?.();}
         input.disabled=!canEdit||(input.id==='isovist-fov'&&values.humanFov===false);
       }
       for(const button of this.element.querySelectorAll('button'))button.disabled=!canEdit;

@@ -8,7 +8,7 @@ OUT = ROOT / 'dist' / 'session-client'
 
 
 def build():
-    release = re.search(r"const RELEASE = '([^']+)'", (ROOT / 'session/js/shared.js').read_text()).group(1)
+    release = re.search(r"const RELEASE = '([^']+)'", (ROOT / 'session/js/shared.js').read_text(encoding='utf-8')).group(1)
     def version_assets(html):
         return re.sub(r'(src|href)="(?!https?:|//|#)([^"?]+\.(?:js|css))(?:\?[^\"]*)?"',
                       lambda match: f'{match[1]}="{match[2]}?v={release}"', html)
@@ -23,22 +23,24 @@ def build():
         copy(f'session/js/{name}.js')
     for name in ('app', 'dashboard-mobile', 'desktop'):
         copy(f'session/css/{name}.css')
+    for path in (ROOT / 'session/icons').iterdir():
+        if path.is_file(): copy(str(path.relative_to(ROOT)))
     for path in (ROOT / 'controller').glob('*'):
         if path.suffix in ('.js', '.css') and path.name != 'manual-calibration.js':
             copy(str(path.relative_to(ROOT)))
     for relative in ('app-config.js', 'app-config-runtime.js', 'controller.js', 'style.css', 'ecom-palette.js', 'animations/coolpaths-guide.js',
                      'animations/cfd-core.js', 'animations/cfd-visuals.js', 'media/chalmers_logo.png',
                      'media/dtcc_logo.png', 'media/survey_qr.png',
-                     'media/ecom/ecom-buildings.geojson'):
+                     'media/ecom/ecom-buildings.geojson', 'media/building-footprints.geojson'):
         copy(relative)
-    controller = (ROOT / 'controller.html').read_text()
+    controller = (ROOT / 'controller.html').read_text(encoding='utf-8')
     controller = re.sub(r'\s*<script src="calibration-config\.js(?:\?[^"]*)?"></script>', '', controller)
     controller = re.sub(r'\s*<script src="(?:controller/manual-calibration|session/js/desktop|session/runtime)\.js(?:\?[^"]*)?"></script>', '', controller)
     controller = re.sub(r'<button[^>]*data-target="calibrate-btn".*?</button>', '', controller, flags=re.S)
     assert not re.search(r'<script[^>]+(?:session/js/desktop|session/runtime|controller/manual-calibration)\.js', controller), 'Host-only script leaked into phone HTML'
-    (OUT / 'controller.html').write_text(version_assets(controller))
-    client = (ROOT / 'session/client.html').read_text().replace('href="css/', 'href="session/css/').replace('src="js/', 'src="session/js/').replace('src="../app-config', 'src="app-config')
-    (OUT / 'client.html').write_text(version_assets(client))
+    (OUT / 'controller.html').write_text(version_assets(controller), encoding='utf-8')
+    client = (ROOT / 'session/client.html').read_text(encoding='utf-8').replace('href="css/', 'href="session/css/').replace('src="js/', 'src="session/js/').replace('src="icons/', 'src="session/icons/').replace('src="../app-config', 'src="app-config')
+    (OUT / 'client.html').write_text(version_assets(client), encoding='utf-8')
     (OUT / 'index.html').write_text('<!doctype html><meta charset="utf-8"><meta http-equiv="refresh" content="0;url=client.html"><title>MR Studio</title><a href="client.html">Open MR Studio controller</a>')
     (OUT / '.nojekyll').touch()
     forbidden = [p for p in OUT.rglob('*') if p.is_file() and (p.name in ('trafik-config.json', 'calibration-config.js', 'map-calibration.json', 'host_server.py', 'services.local.json', '.env') or 'sessions' in p.parts)]

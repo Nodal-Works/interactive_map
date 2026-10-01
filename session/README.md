@@ -60,26 +60,39 @@ setting (5–10 cm; default 5 cm). The ribbon hides while layers are active or t
 session has ended. Confirm scan reliability on the physical projected table. GitHub Pages hosts the interface; computations, API credentials,
 and session logs stay on the host computer.
 
-The welcome dialog presents four controller slots and an explicit spectator option.
-Choose an available slot; the Apps screen opens once the host confirms your claim.
+The welcome dialog offers **Join the table** and **Just look around**.
+Joining assigns an available controller slot on the host; Activities opens after confirmation.
+Numbered slots remain available under profile details for compatibility.
+The **MR Studio** home screen shows all available apps as labelled Lucide icon tiles. The icon-only Home button returns here, and the avatar opens Profile.
+Selecting a tile only opens the app; its **Show on table** switch
+explicitly changes the shared display and waits for host confirmation.
 Returning editors retain their slot and skip the welcome dialog. Extra participants are spectators. Each
-phone's Apps selection, Controls/Map tab, zoom, and pan are personal; enabled
+phone's app selection, controls sheet, zoom, and pan are personal; enabled
 layers and settings are shared. Opening an app does not toggle it. An explicit
 switch changes the table. There are no remote calibration or administration
 commands. Slot releases and pause/end controls are available only through local UI.
 
 The phone UI and embedded ECOM editor use a light theme.
-The Controls tab uses compact phone controls, with secondary settings under
-**More settings**. Sliders update their labels immediately and commit when released.
-ECOM loads its shared scenario editor only while its Controls tab is open;
+Controls use compact phone inputs and accessible on/off switches, with secondary settings under
+**More options**. Sliders update their labels immediately and commit when released.
+Energy sharing (ECOM) opens directly in its shared scenario editor, with no phone map.
+The editor unloads when returning Home or opening another app;
 service computations and their result geometry stay on the host.
 
-Map is disabled for apps without map input tools. **Expand map** fills the viewport,
+Map-capable apps (including Wind) open directly on the map. A compact header and
+bottom action bar leave most of the screen for the map. **Controls** opens a modal
+bottom sheet with Expand, Collapse, Close and Escape support; opening it preserves
+the camera and unfinished drawings. The tool button opens drawing tools and style
+options. Finish and Cancel replace the usual actions while a shape is unfinished.
+Non-map apps use a dedicated controls screen. **Full screen map**, inside the sheet, fills the viewport,
 using native fullscreen where supported, and **Exit fullscreen** restores the layout
 without discarding drawings or changing the map position.
 The Map tab shows a light-styled OpenStreetMap basemap (no API key), the table
 boundary and drawing inputs. Phones receive no CFD images, analysis results,
-building-footprint background, video or charts. Settings are projected through an
+video or charts. EPC shows the building-footprint GeoJSON
+as neutral selection targets, without energy ratings or results. Every phone map
+marks the calibrated table area with a contrasting outline and dims the area outside it.
+Settings are projected through an
 explicit input-only allowlist and only sent when they change. Drawing objects are
 sent separately, only to the relevant Map tab. Basemap tiles load over HTTP.
 
@@ -95,6 +108,8 @@ Tap **Finish shape** after at least three corners to commit it and rebuild the f
 modify it. Changing the host calibration cancels unfinished phone gestures.
 
 Canvas supports pen, lines, arrows, polygons, markers and anchored comments.
+The Canvas tool picker also offers **Draw wind obstacle**. Enable both Canvas and
+Wind · CFD to use it; it creates the same solid footprint as the CFD map tool.
 Annotations remain when layers are changed or Canvas is hidden. Authors can move,
 reshape or delete their annotations and undo/redo their own edits; the host can
 edit anyone's. Undo refuses to overwrite a subsequent edit. Select an annotation
@@ -225,3 +240,5 @@ the deterministic transport. It uses the same `MR_TEST_URL`, `MR_PLAYWRIGHT` and
 
 Actual phone/browser compatibility and workshop-network connectivity still need
 an in-room check; passing the deterministic transport test is not a WebRTC test.
+
+Phone UI regression checks: `node scripts/test_phone_client.cjs`, `node scripts/test_phone_controls.cjs`, and `node scripts/test_phone_map.cjs`. Lucide 0.468.0 icons and license are bundled under `session/icons/`; the phone client does not fetch icons from a CDN.

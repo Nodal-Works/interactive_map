@@ -3,6 +3,19 @@ const {chromium}=require(process.env.MR_PLAYWRIGHT || 'playwright');
 const fs=require('node:fs');
 const assert=require('node:assert/strict');
 const base=process.env.MR_TEST_URL || 'http://127.0.0.1:8091';
+async function closeSheet(phone){if(await phone.locator('#controls-sheet').isVisible())await phone.locator('#close-sheet').click();}
+async function openApps(phone){await closeSheet(phone);if(await phone.locator('#apps').isVisible())await phone.locator('#apps').click();}
+async function chooseTool(phone,value){await closeSheet(phone);await phone.locator('#tool-picker').click();await phone.locator('#tool').selectOption(value);await closeSheet(phone);}
+async function openActivity(phone,id,activate=false){
+  await openApps(phone);
+  await phone.locator('[data-layer="'+id+'"] .open').click();
+  const startsOnMap=['canvas-btn','cfd-simulation-btn','thermal-comfort-btn','isovist-btn','street-view-btn','epc-btn'].includes(id);
+  assert.equal(await phone.locator('#map-view').isVisible(),startsOnMap,'Map apps open on their map');
+  if(activate&&!await phone.locator('#layer-enabled').isChecked()){
+    await phone.locator('#layer-enabled').click();await phone.waitForFunction(()=>document.getElementById('layer-enabled').checked&&!document.getElementById('layer-enabled').disabled);
+  }
+  if(id!=='canvas-btn'&&startsOnMap)await phone.locator('#open-controls').click();
+}
 (async()=>{
   const browser=await chromium.launch({headless:true,executablePath:process.env.MR_BROWSER || undefined,args:['--enable-unsafe-swiftshader','--autoplay-policy=no-user-gesture-required','--disable-features=WebRtcHideLocalIpsWithMdns']});
   const desktop=await browser.newContext({viewport:{width:1440,height:900}}), page=await desktop.newPage();
@@ -34,12 +47,12 @@ const base=process.env.MR_TEST_URL || 'http://127.0.0.1:8091';
     console.log('HOST PEERS',JSON.stringify(await page.evaluate(diagnostics)));console.log('PHONE PEERS',JSON.stringify(await phone.evaluate(diagnostics)));console.log('PHONE STATE',await phone.locator('body').innerText());await phone.screenshot({path:'.runtime/phone-failed.png'});await browser.close();throw error;}
   await phone.locator('#profile[open]').waitFor();
   await phone.screenshot({path:'.runtime/phone-welcome.png'});
-  await phone.locator('#slots button').first().click();
+  await phone.locator('#join-table').click();
   await phone.waitForFunction(()=>document.getElementById('connection').textContent.includes('Controller 1'));
   assert.equal(await phone.locator('#profile').isVisible(),false,'Claiming a slot enters the apps screen');
   // Slideshow inputs stay in sync across phones, desktop and reconnects.
-  await phone.locator('[data-layer="slideshow-btn"] input').check();
-  await phone.locator('[data-layer="slideshow-btn"] .open').click();
+  await openActivity(phone,'slideshow-btn',true);
+  await openActivity(phone,'slideshow-btn');
   await phone.getByRole('button',{name:'Next category',exact:true}).waitFor();
   await phone.getByRole('button',{name:'Next category',exact:true}).click();
   await page.waitForFunction(()=>reveal?.index===0);
@@ -50,7 +63,7 @@ const base=process.env.MR_TEST_URL || 'http://127.0.0.1:8091';
   await page.waitForFunction(()=>reveal && !reveal.automatic);
   const revealBeforeReload=await page.evaluate(()=>reveal.index);
   await phone.reload();await phone.waitForFunction(()=>document.getElementById('connection').textContent.includes('Controller 1'));
-  await phone.locator('[data-layer="slideshow-btn"] .open').click();
+  await openActivity(phone,'slideshow-btn');
   await phone.getByRole('button',{name:'Next slide',exact:true}).waitFor();
   await page.waitForFunction(index=>reveal?.index===index,revealBeforeReload);
   await phone.screenshot({path:'.runtime/phone-slideshow.png'});
@@ -59,13 +72,13 @@ const base=process.env.MR_TEST_URL || 'http://127.0.0.1:8091';
   assert.equal(await page.evaluate(()=>reveal.index),-1);
   await phone.getByRole('button',{name:'Stop',exact:true}).click();
   await page.waitForFunction(()=>!isSlideShowActive && !map.getSource('slideshow-geojson'));
-  await phone.getByRole('button',{name:'Open apps'}).click();
-  await phone.locator('[data-layer="isovist-btn"] input').check();
+  await openApps(phone);
+  await openActivity(phone,'isovist-btn',true);
   await page.waitForFunction(()=>window.MR_ADAPTER.active['isovist-btn']);
-  await phone.locator('[data-layer="isovist-btn"] .open').click();
+  await openActivity(phone,'isovist-btn');
   await phone.locator('#phone-controls').waitFor();
   await phone.screenshot({path:'.runtime/phone-controls.png'});
-  await phone.getByRole('button',{name:'Map',exact:true}).click();
+  await closeSheet(phone);
   await phone.locator('#phone-map canvas.maplibregl-canvas').waitFor();
   await phone.waitForTimeout(1800);
   const box=await phone.locator('#phone-map').boundingBox();await phone.touchscreen.tap(box.x+box.width/2,box.y+box.height/2);
@@ -87,15 +100,17 @@ const base=process.env.MR_TEST_URL || 'http://127.0.0.1:8091';
   assert.deepEqual(await page.evaluate(()=>isovistSession.getState().position),viewerBeforePinch,'Pinch never places or drags a viewpoint');
   await phone.locator('#fit').click();
   await phone.screenshot({path:'.runtime/phone-map.png'});
-  await phone.getByRole('button',{name:'Open apps'}).click();
-  await phone.locator('[data-layer="canvas-btn"] input').check();await phone.locator('[data-layer="canvas-btn"] .open').click();
-  await phone.locator('#tool').selectOption('marker');
+  await openApps(phone);
+  await openActivity(phone,'canvas-btn',true);await openActivity(phone,'canvas-btn');
+  assert.equal(await phone.locator('#tool option[value="obstacle"]').textContent(),'Draw wind obstacle','Canvas exposes wind obstacle drawing on phones');
+  await chooseTool(phone,'marker');
   await phone.waitForFunction(()=>document.getElementById('layer-enabled').checked);
   const canvasBox=await phone.locator('#phone-map').boundingBox();
   await phone.touchscreen.tap(canvasBox.x+canvasBox.width*.5,canvasBox.y+canvasBox.height*.5);
   await page.waitForFunction(()=>window.MR_SESSION.getObjects().length===1);
   await phone.locator('#undo').click();await page.waitForFunction(()=>window.MR_SESSION.getObjects().length===0);
-  await phone.locator('#redo').click();await page.waitForFunction(()=>window.MR_SESSION.getObjects().length===1);
+  await phone.locator('#tool-picker').click();
+  await phone.locator('#redo').click();await closeSheet(phone);await page.waitForFunction(()=>window.MR_SESSION.getObjects().length===1);
   if(memoryTransport){
     const slotBefore=await page.evaluate(()=>MR_SESSION.getState().slots[0]);
     await phone.evaluate(()=>Object.values(window.__peers[0].connections).flat()[0].close());
@@ -108,16 +123,16 @@ const base=process.env.MR_TEST_URL || 'http://127.0.0.1:8091';
   await phone.screenshot({path:'.runtime/phone-drawer.png'});
   assert.equal(await phone.locator('#profile').isVisible(),false,'Returning editors skip onboarding');
   assert.equal(await phone.evaluate(()=>getComputedStyle(document.documentElement).colorScheme),'light');
-  await phone.locator('[data-layer="stormwater-btn"] .open').click();
-  assert.equal(await phone.locator('#map-tab').isDisabled(),true);
-  await phone.locator('#apps').click();
-  await phone.locator('[data-layer="canvas-btn"] .open').click();
-  await phone.locator('#expand-map').click();
+  await openActivity(phone,'stormwater-btn');
+  assert.equal(await phone.locator('#map-view').isVisible(),false);
+  await openApps(phone);
+  await openActivity(phone,'canvas-btn');
+  await phone.locator('#open-controls').click();await phone.locator('#expand-map').click();
   assert.equal(await phone.locator('#expand-map').getAttribute('aria-pressed'),'true');
   await phone.screenshot({path:'.runtime/phone-expanded.png'});
-  await phone.locator('#expand-map').click();
+  await phone.locator('#exit-fullscreen').click();
   assert.equal(await phone.locator('#expand-map').getAttribute('aria-pressed'),'false');
-  await phone.locator('#apps').click();
+  await openApps(phone);
 
   const adminPage=await desktop.newPage();await adminPage.goto(base+'/controller.html#session');
   await adminPage.locator('#mr-session-page iframe').waitFor();
@@ -130,7 +145,7 @@ const base=process.env.MR_TEST_URL || 'http://127.0.0.1:8091';
     const context=await browser.newContext({viewport:{width:390,height:844},isMobile:true,hasTouch:true});if(memoryTransport)await memoryTransport(context);
     const guest=await context.newPage();await guest.addInitScript(trackPeers);guest.on('pageerror',e=>errors.push(e.message));await guest.goto(url,{waitUntil:'domcontentloaded'});
     await guest.waitForFunction(()=>document.getElementById('connection').textContent.includes('Spectator'));
-    if(slot<=4){await guest.locator('#profile[open]').waitFor();await guest.locator('#slots button').nth(slot-1).click();await guest.waitForFunction(slot=>document.getElementById('connection').textContent.includes('Controller '+slot),slot);assert.equal(await guest.locator('#profile').isVisible(),false);}
+    if(slot<=4){await guest.locator('#profile[open]').waitFor();await guest.locator('#join-table').click();await guest.waitForFunction(slot=>document.getElementById('connection').textContent.includes('Controller '+slot),slot);assert.equal(await guest.locator('#profile').isVisible(),false);}
     if(slot===5)await guest.locator('#spectate').click();
     additional.push({context,page:guest});
   }
@@ -144,16 +159,16 @@ const base=process.env.MR_TEST_URL || 'http://127.0.0.1:8091';
   await send(phone,{type:'control',message:{type:'calibrate_action',action:'pan_up'}});
   await phone.getByText('Control is not available remotely',{exact:true}).waitFor();
   console.log('PASS: ownership, spectators and calibration boundary');
-  await phone.locator('[data-layer="isovist-btn"] .open').click();
+  await openActivity(phone,'isovist-btn');
   await phone.locator('#isovist-radius').evaluate(input=>{input.value='250';input.dispatchEvent(new Event('change',{bubbles:true}));});
   await page.waitForFunction(()=>window.isovistSession.getState().radius===250);
-  await additional[0].page.locator('[data-layer="isovist-btn"] .open').click();
+  await openActivity(additional[0].page,'isovist-btn');
   await additional[0].page.locator('#isovist-radius').waitFor();
   await additional[0].page.waitForFunction(()=>document.getElementById('isovist-radius')?.value==='250');
   console.log('PASS: authoritative compact controls');
-  await phone.getByRole('button',{name:'Open apps'}).click();
-  await phone.locator('[data-layer="cfd-simulation-btn"] input').check();await phone.locator('[data-layer="cfd-simulation-btn"] .open').click();
-  await phone.getByRole('button',{name:'Map',exact:true}).click();await phone.locator('#tool').selectOption('obstacle');
+  await openApps(phone);
+  await openActivity(phone,'cfd-simulation-btn',true);await openActivity(phone,'cfd-simulation-btn');
+  await closeSheet(phone);await chooseTool(phone,'obstacle');
   await page.waitForFunction(()=>window.cfdSession.getState().active);
   const windBox=await phone.locator('#phone-map').boundingBox();
   const windZoom=await phone.evaluate(()=>__companionMap.map.getZoom());
@@ -185,7 +200,15 @@ const base=process.env.MR_TEST_URL || 'http://127.0.0.1:8091';
     assert.equal(memoryTransport.stats.some(s=>['base','map','drafts'].includes(s.type)),false,'No map results, footprints or draft echoes');
   }
   await phone.screenshot({path:'.runtime/phone-wind.png'});
+  await openApps(phone);
+  await openActivity(phone,'canvas-btn');
+  await chooseTool(phone,'obstacle');
+  const canvasWindBox=await phone.locator('#phone-map').boundingBox();
+  for(const[x,y]of [[.35,.35],[.42,.35],[.42,.42]])await phone.touchscreen.tap(canvasWindBox.x+canvasWindBox.width*x,canvasWindBox.y+canvasWindBox.height*y);
+  await phone.locator('#finish').click();
+  await page.waitForFunction(()=>window.MR_CFD_OBSTACLES?.length===2);
   await send(phone,{type:'layer',layer:'cfd-simulation-btn',enabled:false});
+  await phone.getByText('Turn on Wind · CFD to draw an obstacle',{exact:false}).waitFor();
   console.log('PASS: additive CFD obstacle drawing');
   // The host consumes a bulky service result; the phone receives only its receipt.
   await page.route('**/api/services/ecom/api/mr/layer',route=>route.fulfill({json:{meta:{hours:[12]},testResult:'RESULT'.repeat(100000)}}));
@@ -209,18 +232,20 @@ const base=process.env.MR_TEST_URL || 'http://127.0.0.1:8091';
   await admin.getByRole('button',{name:'Resume editing',exact:true}).click();
   const slot3=await page.evaluate(()=>MR_SESSION.getState().slots[2]);
   await page.evaluate(id=>{const c=new BroadcastChannel('mr_session_admin');c.postMessage({type:'admin-command',action:'release',personId:id});c.close();},slot3);
-  await additional[3].page.locator('#choose-slot').click();await additional[3].page.locator('#slots button').nth(2).click();await additional[3].page.waitForFunction(()=>document.getElementById('connection').textContent.includes('Controller 3'));
+  await additional[3].page.locator('#choose-slot').click();await additional[3].page.locator('#join-table').click();await additional[3].page.waitForFunction(()=>document.getElementById('connection').textContent.includes('Controller 3'));
   const sessionId=await page.evaluate(()=>MR_SESSION.getState().sessionId);await adminPage.close();
   const reopened=await desktop.newPage();await reopened.goto(base+'/controller.html#session');await reopened.frameLocator('#mr-session-page iframe').locator('#qr img').waitFor();
   assert.equal(await page.evaluate(()=>MR_SESSION.getState().sessionId),sessionId);
   await page.waitForTimeout(500);const log=await(await page.request.get(base+'/api/session/'+sessionId)).json();
-  assert.equal(log.schemaVersion,2);assert.equal(log.finalState.objects.length,2);assert.ok(log.events.some(e=>e.kind==='slot.released'));
+  assert.equal(log.schemaVersion,2);assert.equal(log.finalState.objects.length,3);assert.ok(log.events.some(e=>e.kind==='slot.released'));
   console.log('PASS: pause, release/reclaim, controller Session page and durable log');
   // Select an actual EPC footprint through the mobile location tool.
-  await phone.getByRole('button',{name:'Open apps'}).click();
-  await phone.locator('[data-layer="epc-btn"] input').check();await phone.locator('[data-layer="epc-btn"] .open').click();
-  await phone.getByRole('button',{name:'Map',exact:true}).click();
+  await openApps(phone);
+  await openActivity(phone,'epc-btn',true);await openActivity(phone,'epc-btn');
+  await closeSheet(phone);
   await page.waitForFunction(()=>MR_ADAPTER.active['epc-btn']&&map.getSource('epc-buildings'));
+  await phone.waitForFunction(()=>__companionMap.map.getSource('phone-buildings')&&__companionMap.map.getLayer('phone-buildings-outline'));
+  assert.equal(await phone.locator('[data-table-boundary] polygon').count(),2,'Table boundary has a contrasting halo and outline');
   const epcPoint=await page.evaluate(()=>{
     const t=MR_ADAPTER.table();
     for(const f of map.getSource('epc-buildings')._data.features){const ring=f.geometry.type==='Polygon'?f.geometry.coordinates[0]:f.geometry.coordinates[0][0];
@@ -231,7 +256,7 @@ const base=process.env.MR_TEST_URL || 'http://127.0.0.1:8091';
   const epcTap=await phone.evaluate(c=>{const p=__companionMap.map.project(c),r=document.getElementById('phone-map').getBoundingClientRect();return{x:r.left+p.x,y:r.top+p.y};},epcPoint);
   await phone.touchscreen.tap(epcTap.x,epcTap.y);
   await page.waitForFunction(()=>map.getSource('epc-selected')._data.features.length===1);
-  await phone.getByRole('button',{name:'Controls',exact:true}).click();
+  await phone.locator('#open-controls').click();
   assert.equal(await phone.locator('#dashboard').getAttribute('src'),null,'EPC results stay on the host');
   await phone.screenshot({path:'.runtime/phone-epc-selection.png'});
   // Each of Canvas, wind and comfort independently suppresses Street Life.
@@ -254,7 +279,7 @@ const base=process.env.MR_TEST_URL || 'http://127.0.0.1:8091';
   await reopened.locator('[data-target="ecom-energy-btn"]').click();
   assert.equal(await page.evaluate(()=>ecomEnergyLayer.isActive()),true,'Opening host controls does not disable ECOM');
   assert.equal(await page.locator('.mr-idle-ribbon').isVisible(),false,'Active layers hide idle panels');
-  await phone.waitForFunction(()=>document.getElementById('layer-title').textContent.includes('EPC'));
+  await phone.waitForFunction(()=>document.getElementById('layer-title').textContent.includes('Building energy'));
   await reopened.locator('[data-layer-switch="ecom-energy-btn"]').uncheck();
   await page.waitForFunction(()=>!MR_ADAPTER.active['ecom-energy-btn']);
   await send(phone,{type:'control',message:{type:'ecom_activate'}});
@@ -263,9 +288,9 @@ const base=process.env.MR_TEST_URL || 'http://127.0.0.1:8091';
   await page.waitForFunction(()=>!MR_ADAPTER.active['ecom-energy-btn']);
   console.log('PASS: ECOM phone activation, host focus, independent phones, explicit off, idle ribbon');
 
-  await phone.getByRole('button',{name:'Open apps'}).click();
+  await openApps(phone);
   for(const id of ['cfd-simulation-btn','stormwater-btn','sun-study-btn','thermal-comfort-btn','isovist-btn','street-view-btn','epc-btn','ecom-energy-btn','bird-sounds-btn','slideshow-btn','campus-demo-btn','fcc-demo-btn','grid-animation-btn']){
-    await phone.locator('[data-layer="'+id+'"] .open').click();
+    await openActivity(phone,id);
     console.log('Checking panel',id);
     if(id==='ecom-energy-btn')await phone.frameLocator('#dashboard').locator('#metadata-section').waitFor();
     else await phone.locator('#phone-controls').waitFor();
@@ -287,7 +312,7 @@ const base=process.env.MR_TEST_URL || 'http://127.0.0.1:8091';
       await phone.screenshot({path:'.runtime/panel-sun-study-btn.png'});
     }
     assert.equal(await phone.locator('[data-target="calibrate-btn"]').count(),0);
-    await phone.getByRole('button',{name:'Open apps'}).click();
+    await openApps(phone);
   }
   console.log('PASS: all 13 dashboard panels and calibration UI exclusion');
   assert.equal(errors.length,0,errors.join('\n'));

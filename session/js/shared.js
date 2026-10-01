@@ -1,6 +1,6 @@
 (function(root) {
   'use strict';
-  const RELEASE = '20260928-main-coolpaths-inputs-1';
+  const RELEASE = '20260930-main-mobile-3';
   const LAYERS = [
     ['cfd-simulation-btn', 'Wind · CFD', 'Environment', '🌬', 'obstacle'],
     ['stormwater-btn', 'Stormwater', 'Environment', '💧'],
@@ -146,7 +146,15 @@
     }
   }
 
-  const MR = {RELEASE, LAYERS, ACTIONS, ECOM, AVATARS, COLORS, id, validControl, point, validObject, editObject, wire, appendEvent};
+  function claimSlot(slots,personId,requested) {
+    if(requested!==undefined&&(!Number.isInteger(requested)||requested<1||requested>slots.length))throw Error('Invalid slot');
+    const existing=slots.indexOf(personId);if(existing!==-1)return existing+1;
+    const index=requested===undefined?slots.indexOf(null):requested-1;
+    if(index<0)throw Error('The table is full. You can still look around.');
+    if(slots[index])throw Error('That slot is occupied');
+    slots[index]=personId;return index+1;
+  }
+  const MR = {RELEASE, LAYERS, ACTIONS, ECOM, AVATARS, COLORS, id, validControl, point, validObject, editObject, wire, appendEvent, claimSlot};
   root.MR = MR;
   if (typeof module !== 'undefined') module.exports = MR;
 })(typeof window === 'undefined' ? globalThis : window);

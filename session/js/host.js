@@ -153,10 +153,8 @@
         publish(); return;
       }
       if (message.type === 'claim-slot') {
-        if (!Number.isInteger(message.slot) || message.slot<1 || message.slot>4) throw Error('Invalid slot');
-        if (slots.includes(person.id)) return;
-        if (slots[message.slot-1]) throw Error('That slot is occupied');
-        slots[message.slot-1]=person.id; record('slot.claimed',person,{slot:message.slot}); return;
+        const alreadyJoined=slots.includes(person.id),slot=MR.claimSlot(slots,person.id,message.slot);
+        if(alreadyJoined)publish();else record('slot.claimed',person,{slot});return;
       }
       if (message.type === 'release-slot') {release(person.id,person);return;}
       if (message.type === 'rpc') {await request(person,message);return;}

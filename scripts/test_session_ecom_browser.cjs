@@ -23,9 +23,10 @@ const base=process.env.MR_TEST_URL||'http://127.0.0.1:8091';
     await context.route('**/controller.js*',async route=>{await scriptsHeld;await route.continue();});
     await host.route('**/api/services/ecom/api/health',route=>route.fulfill({json:{status:'ok'}}));
     await phone.goto(base+'/session/client.html'+new URL(invitation).search);
-    await phone.locator('#profile[open]').waitFor();await phone.locator('#slots button').first().click();
+    await phone.locator('#profile[open]').waitFor();await phone.locator('#join-table').click();
     await phone.locator('#profile').waitFor({state:'hidden'});
     await phone.locator('[data-layer="ecom-energy-btn"] .open').click();
+    assert.equal(await phone.locator('#map-view').isVisible(),false);
     await phone.waitForFunction(()=>document.getElementById('dashboard').contentWindow.MR_REMOTE_FETCH);
     assert.equal(await phone.evaluate(()=>!!window.__dashboardReady),false);
     const response=await phone.locator('#dashboard').evaluate(async iframe=>{
