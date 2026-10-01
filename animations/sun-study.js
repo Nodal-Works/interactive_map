@@ -1471,7 +1471,9 @@ class SunStudy {
 
         
         // Initial setup
-        this.baseRotation = 0; 
+        // The STL and tree export use the original quarter-turn alignment.
+        // Table placement rotates the canvas, not the model inside it.
+        this.baseRotation = -Math.PI / 2;
         this.meshBuildings.rotation.y = this.baseRotation;
         
         // Apply initial position offset
@@ -1683,7 +1685,8 @@ class SunStudy {
     // STL X is east (0.6), Y is north (1.0), Z is height. After Z-up conversion
     // north is -Z. Fit its actual footprint, without viewport-dependent padding.
     const maxDim=Math.max(this.modelSize.x,this.modelSize.z);
-    const scale=Math.min(canvasWidth/this.modelSize.z,canvasHeight/this.modelSize.x);
+    // The quarter turn exchanges the model's X and Z screen extents.
+    const scale=Math.min(canvasWidth/this.modelSize.x,canvasHeight/this.modelSize.z);
 
     // Apply scale
     this.mesh.scale.set(scale * this.scaleMultiplier, scale * this.scaleMultiplier, scale * this.scaleMultiplier);
