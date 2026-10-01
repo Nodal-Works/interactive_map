@@ -46,5 +46,7 @@ Thumbs.db
 sessions/
 services.local.json
 
+.studio/
+studio/
 # Internal documentation
 theory/

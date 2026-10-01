@@ -6,13 +6,13 @@ vm.runInContext('cameraMethods={'+method('setupCamera','setupLights').trim()+'}'
 const sun={mapBearing:-90,canvas:{}};context.cameraMethods.setupCamera.call(sun);
 assert.ok(Math.abs(sun.camera.viewOrientation[0]+1)<1e-8);
 assert.ok(Math.abs(sun.camera.viewOrientation[2])<1e-8,'Camera orientation must be updated after the local up vector');
-assert.match(source,/this\.baseRotation = -Math\.PI \/ 2;/,'Keep the STL and tree export quarter turn');
+assert.match(source,/this\.baseRotation = 0;/,'Do not rotate the north/east model within the table-local canvas');
 vm.runInContext('fitMethods={'+method('fitCameraToModel','onResize').trim()+'}',context);
 let fittedScale;
 const model={canvas:{},mesh:{scale:{set:x=>{fittedScale=x;}}},modelSize:{x:.6,z:1},scaleMultiplier:1,
   camera:{updateProjectionMatrix(){}},updateSunPosition(){}};
 context.fitMethods.fitCameraToModel.call(model);
-assert.equal(fittedScale,600,'Fit the quarter-turned model using its actual screen extents');
+assert.equal(fittedScale,1000,'Fit model north to table width and east to table height');
 (async()=>{
   let complete,initialized=0;
   const c=vm.createContext({loadDependencies:()=>new Promise(resolve=>complete=resolve),setTimeout:()=>1,clearTimeout(){}});

@@ -1471,9 +1471,9 @@ class SunStudy {
 
         
         // Initial setup
-        // The STL and tree export use the original quarter-turn alignment.
-        // Table placement rotates the canvas, not the model inside it.
-        this.baseRotation = -Math.PI / 2;
+        // Table-local X points north and Y points east. The camera maps the
+        // STL's north (-Z) right and east (+X) down without a model rotation.
+        this.baseRotation = 0;
         this.meshBuildings.rotation.y = this.baseRotation;
         
         // Apply initial position offset
@@ -1518,7 +1518,7 @@ class SunStudy {
      * 
      * 3. TRANSFORM ORDER (applied to mesh):
      *    - Scale: this.baseScale * this.scaleMultiplier (uniform, no axis negation)
-     *    - Rotation: this.baseRotation (-PI/2) + rotationOffset
+     *    - Rotation: this.baseRotation (0) + rotationOffset
      *    - Position: offsetX, 50 (Y height), offsetZ
      * 
      * 4. DEBUGGING:
@@ -1685,8 +1685,8 @@ class SunStudy {
     // STL X is east (0.6), Y is north (1.0), Z is height. After Z-up conversion
     // north is -Z. Fit its actual footprint, without viewport-dependent padding.
     const maxDim=Math.max(this.modelSize.x,this.modelSize.z);
-    // The quarter turn exchanges the model's X and Z screen extents.
-    const scale=Math.min(canvasWidth/this.modelSize.x,canvasHeight/this.modelSize.z);
+    // Table-local width follows north (-Z); height follows east (+X).
+    const scale=Math.min(canvasWidth/this.modelSize.z,canvasHeight/this.modelSize.x);
 
     // Apply scale
     this.mesh.scale.set(scale * this.scaleMultiplier, scale * this.scaleMultiplier, scale * this.scaleMultiplier);
