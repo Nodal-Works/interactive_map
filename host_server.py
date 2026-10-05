@@ -36,12 +36,11 @@ def allowed_service(service, path, method):
         return False
     patterns = {
         'ecom': r'/api/(health|mr/layer|optimize(?:/parameters|/[a-zA-Z0-9_-]+)?|scenarios/campus_community(?:/years)?)',
-        'coolpaths': r'/api/coolpaths/(status|layers|buildings|snap|route|inspect|demo-route/\d+|streets/\d+|raster/\d+\.png|layers/[a-z_-]+/\d+\.png)',
-        'sam': r'/(?:segment)?'
+        'coolpaths': r'/api/coolpaths/(status|layers|buildings|snap|route|inspect|demo-route/\d+|streets/\d+|raster/\d+\.png|layers/[a-z_-]+/\d+\.png)'
     }
     if service not in patterns or not re.fullmatch(patterns[service], pathname):
         return False
-    return method == 'GET' or (method == 'POST' and pathname in ('/segment', '/api/mr/layer', '/api/optimize', '/api/coolpaths/snap', '/api/coolpaths/route', '/api/coolpaths/inspect'))
+    return method == 'GET' or (method == 'POST' and pathname in ('/api/mr/layer', '/api/optimize', '/api/coolpaths/snap', '/api/coolpaths/route', '/api/coolpaths/inspect'))
 
 
 class HostHandler(SimpleHTTPRequestHandler):
@@ -113,6 +112,11 @@ class HostHandler(SimpleHTTPRequestHandler):
         path = self._path()
         if not self._local():
             self._json_error(403, 'Local access only')
+            return
+        if path == '/locations.html' and (locations.active() or {}).get('id') == 'universeum':
+            self.send_response(302)
+            self.send_header('Location', '/launcher.html')
+            self.end_headers()
             return
         if path.startswith('/location-assets/'):
             parts = path.split('/', 3)

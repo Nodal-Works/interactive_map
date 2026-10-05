@@ -3,7 +3,7 @@
   'use strict';
   const assetVersion=new URL(document.currentScript.src).search;
   window.MR_REMOTE_FETCH=true;
-  window.MR_SERVICES={ecom:'/api/services/ecom',coolpaths:'/api/services/coolpaths',sam:'/api/services/sam'};
+  window.MR_SERVICES={ecom:'/api/services/ecom',coolpaths:'/api/services/coolpaths'};
   const channels=new Set(),pending=new Map();
   let sequence=0,currentLayer=null,lastState=null;
   const delivered=new Map();

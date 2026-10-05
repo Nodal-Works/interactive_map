@@ -223,7 +223,7 @@ Interactive visibility and viewshed analysis. Click on the map to place a viewer
 
 ### 🛤️ Street View Integration
 
-Click anywhere on the map to fetch the corresponding Google Street View image. Includes SAM (Segment Anything Model) integration for automatic image segmentation when the local SAM server is running. The actual Street View camera position is fetched via metadata and displayed on the map.
+Click anywhere on the map to fetch the corresponding Google Street View image. The actual Street View camera position is fetched via metadata and displayed on the map.
 
 ### ✨ Street Glow Animation
 
@@ -263,11 +263,13 @@ A secondary controller screen provides a touch-friendly interface for operating 
 
 ### Collaborative phone sessions
 
-Run `./start_services.sh` to coordinate the local MR Studio host, ECOM, CoolPaths,
-and SAM from one terminal. Open the main display through the launcher, then use
+Run `./start_services.sh` to coordinate the local Universeum host and prepared
+CoolPaths service from one terminal. Open the main display through the launcher, then use
 **Session** on the dashboard for its QR, participants, four editing slots, and
 session logs. Phones use the GitHub Pages client and PeerJS; calibration stays local.
-**Apps** opens the shared layer drawer and **Canvas** adds collaborative annotations.
+The table has a fixed camera. Only staff **Calibration** unlocks navigation.
+The staff controller keeps session administration; exhibit entry points are simplified.
+See [Universeum preparation and mobility methods](docs/universeum-exhibit.md).
 
 See [the session guide](session/README.md) for port configuration, prerequisites,
 phone tools, host controls, networking, publishing, and verification.
@@ -389,7 +391,7 @@ database and any credentials must remain in the EPC Browser environment.
 │   ├── isovist.js         # Viewshed and visibility analysis
 │   ├── slideshow.js       # Media slideshow system
 │   ├── stormwater-flow.js # DEM-based water flow particles
-│   ├── street_view.js     # Google Street View + SAM integration
+│   ├── street_view.js     # Google Street View panoramas
 │   ├── street-glow-animation.js # Animated street network paths
 │   ├── street-life.js     # Urban activity simulation
 │   ├── sun-study.js       # 3D shadow analysis

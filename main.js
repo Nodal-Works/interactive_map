@@ -79,6 +79,7 @@ try {
 const map = new maplibregl.Map({
   pixelRatio: window.APP_CONFIG.location ? 1 : (window.devicePixelRatio || 1),
   container: 'map',
+  dragPan:false,dragRotate:false,scrollZoom:false,boxZoom:false,doubleClickZoom:false,keyboard:false,touchZoomRotate:false,touchPitch:false,
   style: {
     version: 8,
     glyphs: 'https://tiles.basemaps.cartocdn.com/fonts/{fontstack}/{range}.pbf',
@@ -461,66 +462,23 @@ if (tableOverlay) tableOverlay.style.display = 'none';
 let centerLocked = false;
 let calibrationModeActive = false;
 
-// Function to enable/disable map interactions based on calibration mode
-function setCalibrationMode(enabled) {
-  calibrationModeActive = enabled;
-  if (enabled) {
-    // Enable all interactions for calibration
-    try { map.dragPan.enable(); } catch(e){}
-    try { map.doubleClickZoom.enable(); } catch(e){}
-    try { map.scrollZoom.enable(); } catch(e){}
-    try { map.boxZoom.enable(); } catch(e){}
-    try { map.keyboard.enable(); } catch(e){}
-    try { map.touchZoomRotate.enable(); } catch(e){}
-    showToast('Calibration mode: Zoom/Pan enabled');
-  } else {
-    // Disable zoom/pan interactions when not in calibration mode
-    map.dragPan.disable();
-    map.doubleClickZoom.disable();
-    map.scrollZoom.disable();
-    map.boxZoom.disable();
-    map.keyboard.disable();
-    map.touchZoomRotate.disable();
-    showToast('Calibration mode off: Zoom/Pan disabled');
-  }
+// Every desktop input tool reuses this gate; only staff Calibration unlocks navigation.
+function applyInteractionGate() {
+  const enabled=calibrationModeActive&&!centerLocked;
+  for(const name of ['dragPan','dragRotate','doubleClickZoom','scrollZoom','boxZoom','keyboard','touchZoomRotate','touchPitch'])map[name]?.[enabled?'enable':'disable']();
 }
-
-// Disable zoom/pan by default after map loads
-map.on('load', () => {
-  // Disable all zoom/pan interactions by default
-  map.dragPan.disable();
-  map.doubleClickZoom.disable();
-  map.scrollZoom.disable();
-  map.boxZoom.disable();
-  map.keyboard.disable();
-  map.touchZoomRotate.disable();
-  console.log('Map interactions disabled by default (enable via calibration mode)');
-});
-
+window.mrApplyInteractionGate=applyInteractionGate;
+function setCalibrationMode(enabled) {
+  calibrationModeActive=!!enabled;
+  if(enabled)centerLocked=false;
+  applyInteractionGate();
+  showToast(enabled?'Calibration mode: navigation unlocked':'Exhibit navigation locked');
+}
+map.on('load',applyInteractionGate);
 function setInteractionLock(locked) {
-  centerLocked = locked;
-  if (locked) {
-    map.dragPan.disable();
-    map.doubleClickZoom.disable();
-    map.scrollZoom.disable();
-    map.boxZoom.disable();
-    map.keyboard.disable();
-    map.touchZoomRotate.disable();
-    // keep center fixed on table center
-    map.jumpTo({ center: tableCenter });
-    showToast('Center locked');
-  } else {
-    // Only enable if calibration mode is active
-    if (calibrationModeActive) {
-      try { map.dragPan.enable(); } catch(e){}
-      try { map.doubleClickZoom.enable(); } catch(e){}
-      try { map.scrollZoom.enable(); } catch(e){}
-      try { map.boxZoom.enable(); } catch(e){}
-      try { map.keyboard.enable(); } catch(e){}
-      try { map.touchZoomRotate.enable(); } catch(e){}
-    }
-    showToast('Center unlocked');
-  }
+  centerLocked=!!locked;applyInteractionGate();
+  if(locked)map.jumpTo({center:tableCenter});
+  showToast(locked?'Center locked':'Center unlocked in Calibration mode');
 }
 
 // if centerLocked, keep map centered when user attempts programmatic moves via buttons
@@ -644,6 +602,8 @@ controllerChannel.onmessage = (event) => {
         }
     } else if (data.type === 'calibrate_action') {
         const action = data.action;
+        const navigation=['zoom_in','zoom_out','pan_up','pan_down','pan_left','pan_right','rotate_left','rotate_right','reset_rotation'];
+        if(navigation.includes(action)&&(!calibrationModeActive||centerLocked))return;
         const broadcastCalibration=()=>controllerChannel.postMessage({type:'calibration_state',calibration:{...window.MR_CALIBRATION.current,dimensions:{...window.MR_CALIBRATION.dimensions},fitToTable:autoTableFit,tableFlip}});
         if (['zoom_in','zoom_out','pan_up','pan_down','pan_left','pan_right','rotate_left','rotate_right','reset_rotation'].includes(action)) autoTableFit=false;
         if(action==='fit_table' || action==='flip_table'){

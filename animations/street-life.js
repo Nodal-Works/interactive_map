@@ -1483,6 +1483,7 @@ function startStreetLifeAnimation() {
     }
     
     isStreetLifeAnimating = true;
+    window.trafikAnimation?.start();
     window.dispatchEvent(new Event('mr-street-life'));
     streetLifeCanvas.style.display = 'block';
     resizeStreetLifeCanvas();
@@ -1521,6 +1522,7 @@ function startStreetLifeAnimation() {
 function stopStreetLifeAnimation() {
   streetLifeGeneration++;streetLifeAccumulator=0;window.MR_FRAMES?.times.delete('streetlife');
   isStreetLifeAnimating = false;
+  window.trafikAnimation?.stop();
   window.dispatchEvent(new Event('mr-street-life'));
   streetLifeCanvas.style.display = 'none';
   stopSpawning();

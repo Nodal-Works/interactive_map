@@ -9,7 +9,7 @@
     6401231.6
   ],
   "resolution": 2,
-  "studyDate": null,
+  "studyDate": "2026-07-15",
   "layers": [
     "cfd-simulation-btn",
     "stormwater-btn",
@@ -21,7 +21,9 @@
     "bird-sounds-btn",
     "slideshow-btn",
     "grid-animation-btn",
-    "canvas-btn"
+    "thermal-comfort-btn",
+    "synthpop-heatmap-btn",
+    "slow-walkers-btn"
   ],
   "meshMode": "display",
   "table": {
@@ -35,6 +37,36 @@
     "fitToTable": true
   },
   "presentation": {
-    "symbolSizing": "geographic"
-  }
+    "symbolSizing": "geographic",
+    "windContextMetres": 500,
+    "exhibitControls": true
+  },
+  "bounds": [
+    11.934320314774519,
+    57.68310112498583,
+    12.0003054870228,
+    57.73018181877855
+  ],
+  "corners": [
+    [
+      11.9344054585786,
+      57.68310112498583
+    ],
+    [
+      12.00030509100461,
+      57.68311812110051
+    ],
+    [
+      12.0003054870228,
+      57.73018181877855
+    ],
+    [
+      11.934320314774519,
+      57.73016479189264
+    ]
+  ],
+  "center": [
+    11.96733409506016,
+    57.70664580085193
+  ]
 }

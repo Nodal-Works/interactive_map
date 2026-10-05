@@ -190,6 +190,7 @@ async function refreshAccessToken(signal) {
     console.log('✓ Trafik: Access token refreshed');
     return true;
   } catch (err) {
+    if(err.name==='AbortError')return false;
     console.error('Trafik: Token refresh error:', err);
     return false;
   }

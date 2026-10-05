@@ -4,6 +4,7 @@
   if (!adapter) return;
   const admin = new BroadcastChannel('mr_session_admin');
   const people = new Map(), slots = [null,null,null,null], events = [], objects = [];
+  const retention={bytes:0,sizes:[],omitted:0};
   const undo = new Map(), redo = new Map(), drafts = new Map();
   let peer, invite = '', sessionId = MR.id(), token = MR.id(), startedAt = new Date().toISOString();
   let endedAt = null, paused = false, revision = 0, saveStatus = 'Local canvas', saveTimer, broadcastTimer, saving = false, dirty = false;
@@ -22,7 +23,7 @@
   function summary() {
     const {messages,cfd,thermal,isovist,sun,...state}=snapshot();
     return {...state, type:'admin-state', invite, peerStatus, saveStatus, services:runtime.services,
-      events:events.slice(-150).reverse().map(({seq,timestamp,actor,kind,details})=>({seq,timestamp,actor,kind,details})), eventCount:events.length, startedAt};
+      events:events.slice(-150).reverse().map(({seq,timestamp,actor,kind,details})=>({seq,timestamp,actor,kind,details})), eventCount:revision, startedAt};
   }
   function sendPhoneState(person,state,reset=false) {
     const compact=MR_PHONE_STATE.project(state,person.focus),signature=JSON.stringify(compact);
@@ -49,7 +50,7 @@
   }
   function documentLog() {
     return {schemaVersion:2, sessionId, startedAt, endedAt, updatedAt:new Date().toISOString(),revision,
-      release:MR.RELEASE, location:window.APP_CONFIG.location || null, table:adapter.table(), participants:roster(), finalState:logState(), events};
+      release:MR.RELEASE, location:window.APP_CONFIG.location || null, table:adapter.table(), participants:roster(), finalState:logState(), eventCount:revision, omittedEvents:retention.omitted, events};
   }
   async function save() {
     if (!local || saving || !dirty) return;
@@ -65,9 +66,9 @@
   }
   function record(kind, actor, details) {
     revision++;
-    events.push({seq:events.length+1,timestamp:new Date().toISOString(),elapsedMs:Date.now()-Date.parse(startedAt),
+    MR.appendEvent(events,{seq:revision,timestamp:new Date().toISOString(),elapsedMs:Date.now()-Date.parse(startedAt),
       actor:actor ? {id:actor.id,name:actor.name,avatar:actor.avatar,color:actor.color,slot:slots.indexOf(actor.id)+1 || null}:null,
-      kind,details,stateAfter:logState(),participantsAfter:roster(),slotsAfter:[...slots]});
+      kind,details,stateAfter:logState(),participantsAfter:roster(),slotsAfter:[...slots]},retention);
     dirty = true; clearTimeout(saveTimer); saveTimer = setTimeout(save, 250); publish();
   }
   function renderObjects() {
@@ -103,7 +104,7 @@
   function allowedFetch(path, method) {
     if (typeof path !== 'string' || path.includes('..') || path.includes('\\') || path.length > 1200) return false;
     if (method === 'GET' && /^\/api\/streetview\?/.test(path)) return true;
-    return /^\/api\/services\/(ecom|coolpaths|sam)\//.test(path) && ['GET','POST'].includes(method);
+    return /^\/api\/services\/(ecom|coolpaths)\//.test(path) && ['GET','POST'].includes(method);
   }
   async function request(person, message) {
     if (!allowedFetch(message.path,message.method)) throw Error('Service operation not allowed');
@@ -152,10 +153,8 @@
         publish(); return;
       }
       if (message.type === 'claim-slot') {
-        if (!Number.isInteger(message.slot) || message.slot<1 || message.slot>4) throw Error('Invalid slot');
-        if (slots.includes(person.id)) return;
-        if (slots[message.slot-1]) throw Error('That slot is occupied');
-        slots[message.slot-1]=person.id; record('slot.claimed',person,{slot:message.slot}); return;
+        const assigned=MR.claimSlot(slots,person.id,message.slot);
+        record('slot.claimed',person,{slot:assigned}); return;
       }
       if (message.type === 'release-slot') {release(person.id,person);return;}
       if (message.type === 'rpc') {await request(person,message);return;}

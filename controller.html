@@ -842,7 +842,9 @@
 
         <div class="control-group">
             <h3>Visualization</h3>
-            <button class="control-btn animation-btn" data-action="click" data-target="slideshow-btn" title="Slideshow">
+            <button class="control-btn" data-target="synthpop-heatmap-btn" title="Synth Pop Heatmap" aria-label="Synth Pop Heatmap"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="8" cy="9" r="3"/><circle cx="17" cy="16" r="4"/><circle cx="6" cy="18" r="2"/></svg></button>
+        <button class="control-btn" data-target="slow-walkers-btn" title="Time Lost by Slow Walkers" aria-label="Time Lost by Slow Walkers"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l4 2"/></svg></button>
+        <button class="control-btn animation-btn" data-action="click" data-target="slideshow-btn" title="Slideshow">
                 <span class="material-icons">slideshow</span>
             </button>
             <button class="control-btn animation-btn" data-action="click" data-target="grid-animation-btn" title="Grid Animation">
@@ -940,15 +942,6 @@
             <div id="dashboard-content">
                 <p>No active data.</p>
             </div>
-            <!-- SAM Segmentation Section (only for Street View) -->
-            <div id="sam-segmentation-section" style="display:none; margin-top:2rem;">
-                <h3 style="margin-bottom:0.5rem; color:#60a5fa;">Street View Segmentation</h3>
-                    <button id="sam-segment-btn" type="button" class="modern-btn primary" style="margin-bottom:1rem;">Segment Street View</button>
-                <div id="sam-server-status" style="font-size:1rem; color:#aaa; margin-bottom:0.5rem;"></div>
-                <div id="sam-mask-container" style="margin-bottom:0.5rem;"></div>
-                <div id="sam-pie-chart" style="margin-bottom:0.5rem;"></div>
-                <div id="sam-class-table"></div>
-            </div>
         </section>
 
         <section id="metadata-section" class="panel-section" style="grid-column: 1 / -1; grid-row: 2;">
@@ -1012,6 +1005,8 @@
     <script src="animations/coolpaths-guide.js?v=20260922-tour-fixed-view"></script>
     <script src="animations/cfd-core.js"></script>
     <script src="animations/cfd-visuals.js"></script>
+    <script src="animations/mobility-core.js"></script>
+    <script src="controller/mobility-dashboard.js"></script>
     <script src="controller.js?v=20260925-session-6"></script>
     <link rel="stylesheet" href="session/css/desktop.css?v=20260925-session-6">
     <script src="session/js/shared.js?v=20260928-wind-1"></script>

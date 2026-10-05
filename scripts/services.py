@@ -23,21 +23,20 @@ def configuration(path=None):
     local = Path(path) if path else ROOT / 'services.local.json'
     if local.exists():
         config.update(json.loads(local.read_text()))
-    ports = [config[name] for name in ('host', 'ecom', 'coolpaths', 'sam')]
-    if any(type(port) is not int or not 1024 <= port <= 65535 for port in ports) or len(set(ports)) != 4:
+    ports = [config[name] for name in ('host', 'ecom', 'coolpaths')]
+    if any(type(port) is not int or not 1024 <= port <= 65535 for port in ports) or len(set(ports)) != 3:
         raise ValueError('Service ports must be distinct integers between 1024 and 65535')
     return config
 
 
 def probe(name, port):
-    paths = {'host': '/api/health', 'ecom': '/api/health', 'coolpaths': '/api/coolpaths/status', 'sam': '/'}
+    paths = {'host': '/api/health', 'ecom': '/api/health', 'coolpaths': '/api/coolpaths/status'}
     try:
         with urllib.request.urlopen(f'http://127.0.0.1:{port}{paths[name]}', timeout=1) as response:
             data = json.load(response)
         return {'host': data.get('service') == 'mr-studio',
                 'ecom': 'pvgis_cached_orientations' in data,
-                'coolpaths': 'ready' in data and data.get('location_id') == location_runtime.environment().get('MR_LOCATION_ID'),
-                'sam': 'Street View Segmentation' in data.get('message', '')}[name]
+                'coolpaths': 'ready' in data and data.get('location_id') == location_runtime.environment().get('MR_LOCATION_ID')}[name]
     except (OSError, ValueError):
         return False
 
@@ -74,8 +73,7 @@ def main():
            'MR_HOST_PORT': str(config['host'])}
     commands = {'host': [sys.executable, str(ROOT / 'host_server.py')],
                 'ecom': ['bash', str(ROOT / 'launch_ecom_backend.sh')],
-                'coolpaths': [location_runtime.preparation_python(), '-m', 'uvicorn', 'coolpaths.api:app', '--host', '127.0.0.1', '--port', str(config['coolpaths'])] if location_runtime.signature() else ['bash', str(ROOT / 'launch_coolpaths_server.sh')],
-                'sam': ['bash', str(ROOT / 'launch_sam_server.sh')]}
+                'coolpaths': [location_runtime.preparation_python(), '-m', 'uvicorn', 'coolpaths.api:app', '--host', '127.0.0.1', '--port', str(config['coolpaths'])] if location_runtime.signature() else ['bash', str(ROOT / 'launch_coolpaths_server.sh')]}
     all_commands = commands.copy()
     commands = {name:command for name,command in all_commands.items() if name in location_runtime.selected_services()}
     location_signature = location_runtime.signature()
@@ -97,8 +95,7 @@ def main():
                 continue
             log = (RUNTIME / f'{name}.log').open('a')
             handles.append(log)
-            child_env = {**env, 'MR_SERVICE_PORT': str(config[name]),
-                         'MR_SAM_DIRECTORY': str((ROOT / config['sam_directory']).resolve())}
+            child_env = {**env, 'MR_SERVICE_PORT': str(config[name])}
             children[name] = subprocess.Popen(command, cwd=ROOT, env=child_env, stdout=log, stderr=subprocess.STDOUT, start_new_session=True)
             statuses[name] = 'starting'
         opened = False
@@ -125,8 +122,7 @@ def main():
                         print(f'{name}: existing listener was not started by this supervisor; not replacing it', flush=True)
                         continue
                     log = (RUNTIME / f'{name}.log').open('a'); handles.append(log)
-                    child_env = {**env, **location_runtime.environment(), 'MR_SERVICE_PORT':str(config[name]),
-                        'MR_SAM_DIRECTORY':str((ROOT / config['sam_directory']).resolve())}
+                    child_env = {**env, **location_runtime.environment(), 'MR_SERVICE_PORT':str(config[name])}
                     children[name] = subprocess.Popen(command,cwd=ROOT,env=child_env,stdout=log,stderr=subprocess.STDOUT,start_new_session=True)
                 began = time.monotonic()
             for name in commands:

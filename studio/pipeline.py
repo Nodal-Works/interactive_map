@@ -130,11 +130,14 @@ def _generate(key, progress, refresh):
             if layer in manifest['layers']:source_results[source]=check_source(source)
         # Shared audio is portable; illustrative bird positions are labelled in the wizard.
         shutil.copytree(loc.ROOT/'media/sound',media/'sound',dirs_exist_ok=True)
-        slideshow={'slides':[
-            {'type':'geojson','media':'media/building-footprints.geojson','metadata':{'title':'Buildings','source':'DTCC / source attribution in location manifest'}},
-            {'type':'geojson','media':'media/street-network.geojson','metadata':{'title':'Streets','source':'OpenStreetMap contributors'}}],
-            'settings':{'autoAdvance':False,'loop':True}}
-        loc.write_json(media/'slideshow/slideshow-config.json',slideshow)
+        from .exhibit import slideshow
+        slideshow(media)
+        # Prepared exhibit additions survive a geographic regeneration.
+        for name in ('mobility','wind-context.geojson'):
+            source=original/'media'/name
+            if not source.exists() and key=='universeum':source=loc.ROOT/'media/universeum'/name
+            if source.is_dir():shutil.copytree(source,media/name,dirs_exist_ok=True)
+            elif source.is_file():shutil.copy2(source,media/name)
         if manifest.get('culturalSites'):
             loc.write_json(media/'cultural-sites.json',manifest['culturalSites'])
         for logo in manifest.get('branding',{}).get('logos',[]):

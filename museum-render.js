@@ -13,11 +13,11 @@
   const ready=new Promise(resolve=>{if(overlay.isStyleLoaded())resolve();else overlay.once('style.load',()=>{container.dataset.ready='true';resolve();});});
   const refresh=window.installTableMapScale(overlay);
   const delegated=new Map();
-  const isAnalysis=id=>typeof id==='string' && /^(isovist-|slideshow-|streetview-)/.test(id);
+  const isAnalysis=id=>typeof id==='string' && /^(isovist-|slideshow-|streetview-|synthpop-|slow-walkers-)/.test(id);
   const target=id=>isAnalysis(id)?overlay:primary;
   let lastWidth=0,lastHeight=0;
   const opacity={},paintBases=new Map();
-  const group=id=>id.startsWith('isovist-')?'isovist-btn':id.startsWith('slideshow-')?'slideshow-btn':'street-view-btn';
+  const group=id=>id.startsWith('synthpop-')?'synthpop-heatmap-btn':id.startsWith('slow-walkers-')?'slow-walkers-btn':id.startsWith('isovist-')?'isovist-btn':id.startsWith('slideshow-')?'slideshow-btn':'street-view-btn';
   const applyPaint=(id,name,value)=>{const factor=opacity[group(id)]??1;return typeof value==='number'?value*factor:['*',value,factor];};
   function align(){
     const r=primary.getContainer().getBoundingClientRect();

@@ -33,7 +33,7 @@
     return map.unproject([t.left + message.x * t.width, t.top + message.y * t.height]).toArray();
   }
   function control(message) {
-    const layerForControl={cfd_control:'cfd-simulation-btn',thermal_control:'thermal-comfort-btn',isovist_control:'isovist-btn',sun_control:'sun-study-btn',bird_control:'bird-sounds-btn',slideshow_control:'slideshow-btn',campus_demo_control:'campus-demo-btn',fcc_demo_control:'fcc-demo-btn',cultural_gravity_control:'cultural-gravity-btn'};
+    const layerForControl={synthpop_control:'synthpop-heatmap-btn',slow_walkers_control:'slow-walkers-btn',cfd_control:'cfd-simulation-btn',thermal_control:'thermal-comfort-btn',isovist_control:'isovist-btn',sun_control:'sun-study-btn',bird_control:'bird-sounds-btn',slideshow_control:'slideshow-btn',campus_demo_control:'campus-demo-btn',fcc_demo_control:'fcc-demo-btn',cultural_gravity_control:'cultural-gravity-btn'};
     const required=message?.type?.startsWith('ecom_')?'ecom-energy-btn':layerForControl[message?.type];
     if(required && !(required in active))throw Error('This layer is unavailable for this location');
     if (message?.type === 'ecom_activate') return setLayer('ecom-energy-btn', true);
@@ -80,13 +80,15 @@
     const sun=window.sunStudy;
     return {layerStatus: window.MR_LAYERS?.getState() || {}, layers: {...active}, messages: Object.values(snapshots), table: table(),
       isovist: window.isovistSession?.getState(), cfd: window.cfdSession?.getState(),
-      thermal: window.thermalComfortLayer?.getState(), sun: sun ? {time:sun.timeOfDay,date:`${sun.date.getFullYear()}-${String(sun.date.getMonth()+1).padStart(2,'0')}-${String(sun.date.getDate()).padStart(2,'0')}`,animating:sun.isAnimating,trees:sun.treesVisible,falseColor:sun.isFalseColorMode,opacity:sun.shadowOpacity,speed:sun.animationSpeed}:null};
+      thermal: window.thermalComfortLayer?.getState(), synthpop:window.MR_MOBILITY?.synthpop.getState(),slow_walkers:window.MR_MOBILITY?.slow_walkers.getState(),
+      sun: sun ? {time:sun.timeOfDay,date:`${sun.date.getFullYear()}-${String(sun.date.getMonth()+1).padStart(2,'0')}-${String(sun.date.getDate()).padStart(2,'0')}`,animating:sun.isAnimating,trees:sun.treesVisible,falseColor:sun.isFalseColorMode,opacity:sun.shadowOpacity,speed:sun.animationSpeed}:null};
   }
   window.MR_ADAPTER = {table, coordinate, control, setLayer, gesture, getState, active, channel};
   map.on('moveend', () => { transformRevision++; window.dispatchEvent(new Event('mr-transform')); });
   window.addEventListener('resize', () => { transformRevision++; window.dispatchEvent(new Event('mr-transform')); });
   setTimeout(() => {
     for (const data of [{type:'cfd_control',action:'get_state'}, {type:'thermal_control',action:'request_state'},
+      {type:'synthpop_control',action:'request_state'},{type:'slow_walkers_control',action:'request_state'},
       {type:'bird_control',action:'request_status'}, {type:'slideshow_control',action:'request_status'}, {type:'ecom_request_summary'}]) channel.postMessage(data);
   }, 1200);
 })();

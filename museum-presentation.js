@@ -6,13 +6,15 @@ const key='mr-museum-presentation:'+ (window.APP_CONFIG?.location?.id || 'defaul
 const defaults={muted:false,gridHold:false,leftX:0,leftY:0,rightX:0,rightY:0,zoneWidth:0,fontSize:16,opacity:{}};
 let config={...defaults},states={},lastDetail={};
 const labels={
+ 'synthpop-heatmap-btn':['Synth Pop Heatmap','Same trip. Different walking speeds.'],
+ 'slow-walkers-btn':['Time Lost by Slow Walkers','Can a short walk make a long delay?'],
  'cfd-simulation-btn':['Wind','Ribbons show direction. Colour shows modelled speed in m/s; this is a qualitative simulation.'],
  'stormwater-btn':['Stormwater','Blue paths show surface runoff. Bright pools indicate accumulation; not a flood-depth forecast.'],
  'sun-study-btn':['Sun & shadow','Explore how the date and time change sunlight and building shadows.'],
  'isovist-btn':['What can you see?','Yellow marks the visible area. Buildings and tree canopies block the view. Move the observer with your phone.'],
  'bird-sounds-btn':['Bird soundscape','Glowing rings locate playing birds. Choose a species on your phone to listen.'],
  'slideshow-btn':['City layers','Explore the mapped datasets and their categories on your phone.'],
- 'trafik-btn':['Public transport','Vehicles follow reported positions. Between updates their movement is interpolated.'],
+ 'trafik-btn':['Street Life','City activity and reported bus and tram positions. Transport starts and stops with Street Life.'],
  'street-view-btn':['Street View','Explore street-level imagery from the observer’s position.'],
  'grid-animation-btn':['Table alignment','Numbered cells mark physical tiles. Use the steady grid for calibration.']
 };
@@ -33,7 +35,7 @@ function apply(){
  const canvases={'cfd-simulation-btn':['cfd-simulation-canvas'],'stormwater-btn':['stormwater-canvas'],'sun-study-btn':['sun-study-canvas','sun-study-overlay'],'bird-sounds-btn':['bird-sounds-canvas'],'slideshow-btn':['slideshow-canvas'],'trafik-btn':['trafik-canvas'],'grid-animation-btn':['grid-animation-canvas']};
  for(const [id,els] of Object.entries(canvases))for(const el of els){const node=document.getElementById(el);if(node)node.style.opacity=config.opacity[id]??1;}
  window.MR_RENDER?.setOpacity?.(config.opacity);
- place();broadcast();
+ place();broadcast();window.dispatchEvent(new Event('mr-museum-presentation'));
 }
 function place(){
  if(!left)return;
@@ -55,6 +57,7 @@ function render(){
  const active=Object.entries(states).filter(([,s])=>s.active||s.requested||s.error);
  let number=0;for(const [id,state] of active){if(!labels[id])continue;const item=document.createElement('section'),title=document.createElement('h3'),text=document.createElement('p');title.textContent=labels[id][0]+(state.status==='loading'?' · Loading':state.error?' · Unavailable':'');text.textContent=state.error||labels[id][1];if(id==='slideshow-btn' && slideState?.metadata?.title)title.textContent=slideState.metadata.title;
  if(id==='cfd-simulation-btn' && windState){const key=document.createElement('div');key.className='museum-speed-key';const colors=Array.from({length:5},(_,i)=>window.CFD.speedColor(i*windState.colorMaxMps/4,windState.palette,windState.colorMaxMps));key.style.background='linear-gradient(90deg,'+colors.map(c=>'rgb('+c.slice(0,3).join(',')+')').join(',')+')';const units=document.createElement('small');units.textContent='0 — '+windState.colorMaxMps+' m/s · wind '+windState.windSpeed+' m/s';item.append(key,units);}
+ if(window.MR_MOBILITY_CORE?.DEFINITIONS[id]){const definition=window.MR_MOBILITY_CORE.DEFINITIONS[id],mobility=window.MR_MOBILITY?.[definition.key].getState();text.textContent=mobility?.error||definition.description;const explanation=document.createElement('p');explanation.textContent=window.MR_MOBILITY_CORE.summary(mobility);item.append(explanation);const legend=document.createElement('div');legend.className='mobility-legend';const entries=mobility?.view==='journeys'?[{color:'#2dd4bf',label:'4.8 km/h'},{color:'#fb923c',label:'4.235 km/h'}]:mobility?.legend||[];for(const entry of entries){const row=document.createElement('span'),swatch=document.createElement('i');swatch.style.background=entry.color;row.append(swatch,document.createTextNode(entry.label));legend.append(row);}item.append(legend);const note=document.createElement('small');note.textContent=definition.note;item.append(note);const credits=document.createElement('small');for(const [name,url]of [['Research','https://github.com/SaraAboebeid/slow_walkers'],['Synthetic population','https://zenodo.org/records/10801936']]){const link=document.createElement('a');link.href=url;link.textContent=name;link.target='_blank';link.rel='noopener';credits.append(link,document.createTextNode(' · '));}item.append(credits);}
  item.prepend(title,text);(number++<Math.ceil(active.length/2)?list:rightList).append(item);}
  if(!active.length){const p=document.createElement('p');p.textContent='A living city. Scan to explore sunlight, wind, water and urban life.';list.append(p);}
  place();broadcast();
@@ -64,7 +67,7 @@ if(isHost){
  left=document.createElement('aside');left.className='museum-zone museum-zone-left';left.setAttribute('aria-label','Exhibit information');
  const title=document.createElement('h2');title.textContent=window.APP_CONFIG?.location?.title || 'Explore the city';list=document.createElement('div');left.append(title,list);
  right=document.createElement('aside');right.className='museum-zone museum-zone-right';right.setAttribute('aria-label','Join the exhibit');qrCaption=document.createElement('h2');qr=document.createElement('div');qr.className='museum-qr';const instruction=document.createElement('p');instruction.textContent='Use your phone to choose layers and explore the table together.';rightList=document.createElement('div');right.append(qrCaption,qr,instruction,rightList);document.body.append(left,right);
- window.addEventListener('mr-layer-state',render);window.addEventListener('resize',place);window.addEventListener('mr-transform',place);
+ window.addEventListener('mr-layer-state',render);window.addEventListener('mr-mobility-state',render);window.addEventListener('resize',place);window.addEventListener('mr-transform',place);
  window.addEventListener('mr-invite',({detail})=>{invite=detail;qr.replaceChildren();if(invite&&typeof QRCode!=='undefined'){const code=new QRCode(qr,{text:invite,width:512,height:512,correctLevel:QRCode.CorrectLevel.L});qrModules=code._oQRCode.getModuleCount();}place();broadcast();});
  window.addEventListener('mr-session-state',({detail})=>{if(detail.endedAt){invite='';place();}});
  channel.onmessage=({data})=>{if(data.type==='cfd_state'){windState=data;render();}if(data.type==='slideshow_update'){slideState=data;render();}if(data.type==='museum_request')broadcast();if(data.type==='museum_control'){config=valid(data.value||{});try{localStorage.setItem(key,JSON.stringify(config));}catch{}apply();}};

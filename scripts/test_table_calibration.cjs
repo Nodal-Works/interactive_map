@@ -12,7 +12,7 @@ const context={window:{APP_CONFIG:config,MR_TABLE,dispatchEvent(){},getTableLayo
  jumpTo:v=>camera={...camera,...v},flyTo:v=>camera={...camera,...v},panBy:()=>{},zoomTo:z=>camera.zoom=z,rotateTo:b=>camera.bearing=b},
  controllerChannel:{postMessage:data=>messages.push(data)},CONTROLLER_DEBUG:false};
 vm.createContext(context);vm.runInContext(fs.readFileSync('calibration-config.js','utf8'),context);
-vm.runInContext('let autoTableFit=true,tableFlip=false,fittingTable=false,tableCenter,initialZoom,initialBearing;',context);
+vm.runInContext('let autoTableFit=true,tableFlip=false,fittingTable=false,tableCenter,initialZoom,initialBearing,calibrationModeActive=true,centerLocked=false;',context);
 vm.runInContext(source.slice(source.indexOf('function fitTableCamera()'),source.indexOf('if (autoTableFit) fitTableCamera();')),context);
 vm.runInContext(source.slice(source.indexOf('controllerChannel.onmessage ='),source.indexOf('// Broadcast state changes to controller')),context);
 const send=(action,extra={})=>context.controllerChannel.onmessage({data:{type:'calibrate_action',action,...extra}});

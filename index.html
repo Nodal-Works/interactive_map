@@ -16,20 +16,6 @@
       }
     }
     </script>
-    <script>
-    // Spacebar in main view triggers segmentation in controller via BroadcastChannel
-    (function() {
-      const channel = new BroadcastChannel('map_controller_channel');
-      document.addEventListener('keydown', (e) => {
-        if (e.code !== 'Space' && e.key !== ' ') return;
-        if (e.altKey || e.ctrlKey || e.metaKey || e.shiftKey) return;
-        const active = document.activeElement;
-        if (active && (active.tagName === 'INPUT' || active.tagName === 'TEXTAREA' || active.isContentEditable)) return;
-        e.preventDefault();
-        channel.postMessage({ type: 'sam_segment' });
-      });
-    })();
-    </script>
       <script src="app-config.js"></script>
     <script src="app-config-runtime.js"></script>
     <script src="georeference.js"></script>
@@ -69,6 +55,8 @@
           </svg>
         </button>
         
+        <button id="synthpop-heatmap-btn" class="icon-btn" title="Synth Pop Heatmap" aria-label="Synth Pop Heatmap"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="8" cy="9" r="3"/><circle cx="17" cy="16" r="4"/><circle cx="6" cy="18" r="2"/></svg></button>
+        <button id="slow-walkers-btn" class="icon-btn" title="Time Lost by Slow Walkers" aria-label="Time Lost by Slow Walkers"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l4 2"/></svg></button>
         <button id="slideshow-btn" class="icon-btn" title="Slideshow">
           <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
             <rect x="2" y="3" width="20" height="14" rx="2"/>
@@ -230,11 +218,6 @@
     <!-- Calibration overlay and panel -->
     <div id="table-overlay" aria-hidden="true"></div>
 
-    <!-- Controller Link -->
-    <div id="controller-link" style="position: fixed; bottom: 10px; right: 70px; z-index: 2000;">
-        <a href="controller.html" target="_blank" style="color: #333; background: rgba(255,255,255,0.8); padding: 5px 10px; text-decoration: none; border-radius: 4px; font-size: 12px; font-family: sans-serif;">Open Controller</a>
-    </div>
-
     <!-- Load MapLibre GL JS (replaces Leaflet for native rotation/bearing support) -->
     <link href="https://unpkg.com/maplibre-gl@2.4.0/dist/maplibre-gl.css" rel="stylesheet" />
     <script src="https://unpkg.com/maplibre-gl@2.4.0/dist/maplibre-gl.js"></script>
@@ -245,6 +228,8 @@
     <script src="museum-runtime.js"></script>
     <script src="main.js?v=20260928-grid-alignment"></script>
     <script src="museum-render.js"></script>
+    <script src="animations/mobility-core.js"></script>
+    <script src="animations/mobility.js"></script>
     <script src="animations/grid-animation.js?v=20260928-grid-markers"></script>
     <script src="animations/street-glow-animation.js?v=20260925-physical-scale"></script>
     <script src="animations/isovist.js"></script>

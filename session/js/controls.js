@@ -46,6 +46,8 @@
   class Controls {
     constructor(element,send){this.element=element;this.send=send;}
     open(layer){
+      this.mobility=null;
+      if(window.MR_MOBILITY_CORE?.DEFINITIONS[layer.id]){this.mobility=new MR_MOBILITY_CONTROLS(this.element,message=>this.send({type:'control',message}));this.mobility.open(layer.id);return;}
       this.definition=definitions[layer.id]||{};this.layer=layer.id;this.inputs=[];this.element.replaceChildren();
       const lead=document.createElement('p');lead.className='control-note';lead.textContent=layer.tool?'Use Map to place your input. See the result on the table.':'See and hear the result on the table.';this.element.append(lead);
       this.lifecycleStatus=document.createElement('p');this.lifecycleStatus.setAttribute('role','status');this.element.append(this.lifecycleStatus);
@@ -71,6 +73,7 @@
         for(const[label,action]of this.definition.actions){const button=document.createElement('button');button.textContent=label;button.dataset.action=action;button.onclick=()=>this.send({type:'control',message:{type:this.definition.type,action}});actions.append(button);}this.element.append(actions);}
     }
     update(state,canEdit){
+      if(this.mobility){this.mobility.update(state?.[this.mobility.definition.key],canEdit);return;}
       const values=state?.[this.definition?.state]||{};
       for(const{input,kind,key}of this.inputs||[]){
         let v=values[key];if(key==='viscosity'&&v!==undefined)v=(v-.02)/.13;

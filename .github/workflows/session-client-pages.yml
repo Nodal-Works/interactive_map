@@ -49,6 +49,10 @@ jobs:
               if [ "$branch" = lindholmen ]; then
                 node scripts/test_lindholmen.cjs
               fi
+              if [ "$branch" = universeum ]; then
+                node scripts/test_mobility.cjs
+                node scripts/test_universeum_controls.cjs
+              fi
             )
           done
       - name: Build complete Pages site

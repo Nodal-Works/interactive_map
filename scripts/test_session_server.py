@@ -25,7 +25,7 @@ class SessionServerTests(unittest.TestCase):
 
     def test_ports_are_distinct(self):
         config = configuration()
-        self.assertEqual(4, len({config[name] for name in ('host', 'ecom', 'coolpaths', 'sam')}))
+        self.assertEqual(3, len({config[name] for name in ('host', 'ecom', 'coolpaths')}))
 
     def test_explicit_client_url_is_preserved(self):
         for url in ('https://operator.example/custom/client.html',
@@ -38,7 +38,7 @@ class SessionServerTests(unittest.TestCase):
     def test_service_allowlist(self):
         self.assertTrue(allowed_service('ecom', '/api/mr/layer', 'POST'))
         self.assertTrue(allowed_service('coolpaths', '/api/coolpaths/layers/pet/14.png', 'GET'))
-        self.assertTrue(allowed_service('sam', '/segment', 'POST'))
+        self.assertFalse(allowed_service('sam', '/segment', 'POST'))
         for service, path, method in [('ecom', '/api/scenarios/arbitrary', 'GET'), ('ecom', '/api/health', 'POST'),
                                      ('sam', '//evil.example/', 'GET'), ('coolpaths', '/api/coolpaths/../secret', 'GET'),
                                      ('sam', '/%2e%2e/secret', 'GET'), ('unknown', '/', 'GET')]:

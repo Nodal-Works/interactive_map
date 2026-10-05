@@ -2,15 +2,26 @@
 /* global CFD, CFDVisuals, map, computeOverlayPixelSize, showToast */
 (function () {
   'use strict';
-  const canvas = document.getElementById('cfd-simulation-canvas');
+  let canvas = document.getElementById('cfd-simulation-canvas');
   const button = document.getElementById('cfd-simulation-btn');
   if (!canvas || !button || typeof CFD === 'undefined' || typeof CFDVisuals === 'undefined') return;
   // Hand transferred frames directly to the compositor; do not copy a full
   // resolution bitmap into another 2D surface every frame.
-  const bitmapContext = typeof OffscreenCanvas !== 'undefined' && typeof Worker !== 'undefined'
-    ? canvas.getContext('bitmaprenderer') : null;
-  const ctx = bitmapContext ? null : canvas.getContext('2d');
-  const clearCanvas = () => bitmapContext ? bitmapContext.transferFromImageBitmap(null) : ctx.clearRect(0,0,canvas.width,canvas.height);
+  // Prefer GPU rendering, with an explicit reference override and capability fallback.
+  const requestedBackend = typeof URLSearchParams==='function' ? new URLSearchParams(window.location?.search || '').get('cfdBackend') : null;
+  let useGpu=requestedBackend!=='canvas2d' && typeof canvas.transferControlToOffscreen==='function' && typeof Worker==='function';
+  let gpuWorker=null,bitmapContext=null,ctx=null;
+  function referenceContext(){
+    bitmapContext=typeof OffscreenCanvas!=='undefined' && typeof Worker!=='undefined'?canvas.getContext('bitmaprenderer'):null;
+    ctx=bitmapContext?null:canvas.getContext('2d');
+  }
+  if(!useGpu)referenceContext();
+  const clearCanvas = () => {
+    if(gpuWorker)gpuWorker.postMessage({type:'stop',generation});
+    else if(bitmapContext)bitmapContext.transferFromImageBitmap(null);
+    else ctx?.clearRect(0,0,canvas.width,canvas.height);
+  };
+  window.MR_CFD_RENDERER={requested:requestedBackend||'webgl2',backend:useGpu?'webgl2':'canvas2d',submitted:0,completed:0,geometryCompleted:0,backpressure:0};
   const heat = document.createElement('canvas'), heatCtx = heat.getContext('2d');
   const walls = document.createElement('canvas'), wallCtx = walls.getContext('2d');
   const status = document.createElement('div');
@@ -30,11 +41,19 @@
   let renderRequestTime=0;
   function recordProfile(kind,value){
     const samples=window.MR_CFD_PROFILE_SAMPLES?.[kind];
-    if(samples){samples.total=(samples.total||0)+1;samples.push(value);if(samples.length>2000)samples.shift();}
+    if(samples){
+      samples.total=(samples.total||0)+1;samples.push(value);if(samples.length>2000)samples.shift();
+      if(kind==='frames'&&value.intervalMs>0){
+        const stats=samples.intervals||(samples.intervals={count:0,over33ms:0,histogram:new Uint32Array(10001)});
+        stats.count++;if(value.intervalMs>33.3)stats.over33ms++;
+        stats.histogram[Math.min(10000,Math.round(value.intervalMs*10))]++;
+      }
+    }
   }
   window.addEventListener('cfd-profile-pause',event=>{
     if(window.MR_CFD_PROFILE)worker?.postMessage({type:'profile-pause',generation,paused:!!event.detail});
   });
+  window.addEventListener('cfd-profile-context-loss',()=>{if(window.MR_CFD_PROFILE)gpuWorker?.postMessage({type:'context-test',generation});});
   let compatibilityMode = false;
   let phase = 'Stopped', lastStateTime = 0, heatImage = null, lastSnapshot = 0, lastHeatTime = 0;
   let targetField = null;
@@ -56,6 +75,7 @@
   function haltRunner() {
     if(window.MR_CFD_PROFILE)window.dispatchEvent(new CustomEvent('cfd-profile-state',{detail:false}));
     renderWorker?.terminate();renderWorker=null;renderReady=false;renderBusy=false;
+    gpuWorker?.postMessage({type:'stop',generation});
     if (worker) { worker.terminate(); worker = null; }
     clearTimeout(runnerTimer); runnerTimer = null; fallback = null;
   }
@@ -75,7 +95,8 @@
     const { ux, uy, solverProfile, ...metadata } = data;
     if(solverProfile)recordProfile('solver',solverProfile);
     Object.assign(field, metadata);
-    if(renderWorker)renderWorker.postMessage({type:'snapshot',value:{...metadata,ux,uy}},[ux.buffer,uy.buffer]);else targetField = { ux, uy };
+    const drawing=gpuWorker||renderWorker;
+    if(drawing)drawing.postMessage({type:'snapshot',generation,value:{...metadata,ux,uy}},[ux.buffer,uy.buffer]);else targetField = { ux, uy };
     setPhase((data.developing ? 'Developing flow' : 'Flow settled') + (compatibilityMode ? ' · compatibility mode' : ''));
     if (performance.now() - lastStateTime > 1000) { lastStateTime = performance.now(); sendState(); }
   }
@@ -128,6 +149,42 @@
       worker.postMessage({ type: 'init', generation: id, options, profile:!!window.MR_CFD_PROFILE });
     } catch (error) { startFallback(options, id); }
   }
+  function gpuFallback(message){
+    console.warn('Wind GPU fallback: '+message);
+    gpuWorker?.terminate();gpuWorker=null;useGpu=false;
+    const replacement=canvas.cloneNode(false);canvas.replaceWith(replacement);canvas=replacement;
+    referenceContext();window.MR_CFD_RENDERER.backend='canvas2d';window.MR_CFD_RENDERER.fallbackReason=message;
+    if(active){
+      rebuild();
+      if(animation===null)animation=(window.MR_FRAMES ? window.MR_FRAMES.request.bind(window.MR_FRAMES,'wind') : requestAnimationFrame)(draw);
+    }
+  }
+  function ensureGpu(){
+    if(gpuWorker)return;
+    // Probe a disposable canvas before transferring ownership of the display surface.
+    const probe=document.createElement('canvas'),gl=probe.getContext('webgl2',{stencil:true,antialias:true});
+    if(!gl || !gl.getContextAttributes().stencil || !gl.getContextAttributes().antialias)throw Error('WebGL2 stencil/antialiasing is unavailable');
+    gl.getExtension('WEBGL_lose_context')?.loseContext();
+    const owned=gpuWorker=new Worker('animations/cfd-gpu-worker.js?v=20260929-wind-gpu');
+    owned.onmessage=({data})=>{
+      if(gpuWorker!==owned || data.generation!==generation || !active)return;
+      const diagnostic=window.MR_CFD_RENDERER;
+      if(data.type==='error'){gpuFallback(data.message);return;}
+      if(data.type==='ready'){diagnostic.backend='webgl2';diagnostic.width=data.width;diagnostic.height=data.height;diagnostic.graphics=data.graphics;}
+      if(data.type==='rendered'){
+        diagnostic.submitted++;window.MR_FRAMES?.recordRender?.('wind');
+        if(data.profile)recordProfile('frames',data.profile);
+      }
+      if(data.type==='completed'){diagnostic.completed+=data.frames.length;for(const sample of data.frames)recordProfile('gpu',sample);}
+      if(data.type==='geometry-completed')diagnostic.geometryCompleted++;
+      if(data.type==='backpressure')diagnostic.backpressure++;
+      if(data.type==='context-lost'||data.type==='context-restored')diagnostic.context=data.type;
+    };
+    owned.onerror=()=>{if(gpuWorker===owned)gpuFallback('Drawing worker failed');};
+    const surface=canvas.transferControlToOffscreen();
+    owned.postMessage({type:'init',canvas:surface,profile:!!window.MR_CFD_PROFILE},[surface]);
+  }
+  window.addEventListener('pagehide',()=>{gpuWorker?.postMessage({type:'dispose'});gpuWorker?.terminate();gpuWorker=null;});
   async function rebuild() {
     clearTimeout(rebuildTimer);
     const id = ++generation;
@@ -140,14 +197,14 @@
       const source = map.getSource('usergeo');
       const userData = source?._data;
       const userFeatures = userData?.features?.filter(f => ['Polygon', 'MultiPolygon'].includes(f.geometry?.type));
-      const buildingTask = userFeatures?.length ? Promise.resolve({ features: userFeatures }) : loadJSON(window.mrAsset('media/building-footprints.geojson'));
+      const buildingTask = userFeatures?.length ? Promise.resolve({ features: userFeatures }) : loadJSON(window.mrAsset(window.APP_CONFIG?.presentation?.windContextMetres?'media/wind-context.geojson':'media/building-footprints.geojson'));
       const treeTask = settings.trees ? loadJSON(window.mrAsset('media/trees.geojson')) : Promise.resolve({ features: [] });
       const [buildings, trees] = await Promise.all([buildingTask, treeTask]);
       if (!active || generation !== id) return;
       const size = computeOverlayPixelSize();
-      canvas.width = size.w; canvas.height = size.h;
+      if(!gpuWorker){canvas.width = size.w; canvas.height = size.h;}
       canvas.style.width = size.w + 'px'; canvas.style.height = size.h + 'px';
-      const grid = CFD.domain(size.w, size.h, settings.resolution, settings.angle);
+
       const mapRect = map.getContainer().getBoundingClientRect(), rect = canvas.getBoundingClientRect();
       const project = coord => {
         const p = map.project(coord);
@@ -158,14 +215,25 @@
         const a = project(coord), b = project([coord[0] + meters / (111320 * Math.cos(coord[1] * Math.PI / 180)), coord[1]]);
         return Math.hypot(a.x - b.x, a.y - b.y);
       };
+      const contextMetres=window.APP_CONFIG?.presentation?.windContextMetres||0;
+      const center=contextMetres?map.getCenter():null;
+      const contextPixels=center?radiusPixels([center.lng,center.lat],contextMetres):0;
+      const grid = CFD.domain(size.w,size.h,settings.resolution,settings.angle,contextPixels);
       const effectiveBuildings = [...(buildings.features || []), ...(window.MR_CFD_OBSTACLES || [])];
       const solid = CFD.rasterizeBuildings(effectiveBuildings, project, grid);
       const canopy = CFD.rasterizeTrees(trees.features || [], project, radiusPixels, grid);
-      const options = { ...grid, ...settings, solid, canopy, dragReferenceCellSize: Math.max(size.w, size.h) / 100 };
+      const options = { ...grid, ...settings, solid, canopy, dragReferenceCellSize: Math.max(size.w, size.h) / 100, renderScale:window.mrTableScale?.()??1 };
       // Only the worker owns distribution arrays. Main thread owns the mask and latest velocity snapshot.
       field = { ...options, ux: new Float32Array(grid.nx * grid.ny), uy: new Float32Array(grid.nx * grid.ny),
         latticeSpeed: Math.min(settings.windSpeed * .005, .05), steps: 0 };
       field.facadeEdges = CFDVisuals.facadeEdges(effectiveBuildings, project, field);
+      if(useGpu){
+        try{
+          ensureGpu();
+          gpuWorker.postMessage({type:'rebuild',generation:id,field,settings,width:size.w,height:size.h,scale:window.mrTableScale?.()??1,visible:!document.hidden});
+          startRunner(options,id);return;
+        }catch(error){gpuFallback(error.message);return;}
+      }
       heat.width = grid.vw; heat.height = grid.vh;
       heatImage = heatCtx.createImageData(grid.vw, grid.vh);
       walls.width = grid.vw; walls.height = grid.vh;
@@ -182,7 +250,7 @@
           if(data.type==='ready')renderReady=true;
           if(data.type==='frame'){
             const received=data.profile?performance.now():0;
-            renderBusy=false;if(bitmapContext)bitmapContext.transferFromImageBitmap(data.bitmap);else{clearCanvas();ctx.drawImage(data.bitmap,0,0);}data.bitmap.close();window.MR_FRAMES?.recordRender?.('wind');
+            renderBusy=false;if(bitmapContext)bitmapContext.transferFromImageBitmap(data.bitmap);else{clearCanvas();ctx.drawImage(data.bitmap,0,0);}data.bitmap.close();window.MR_FRAMES?.recordRender?.('wind');window.MR_CFD_RENDERER.submitted++;
             if(data.profile)recordProfile('frames',{...data.profile,roundTripMs:received-renderRequestTime,presentMs:performance.now()-received});
           }
         };
@@ -212,6 +280,7 @@
   }
   function draw(now) {
     if (!active) return;
+    if(gpuWorker){animation=null;return;}
     if(renderWorker){
       if(renderReady && !renderBusy){renderBusy=true;if(window.MR_CFD_PROFILE)renderRequestTime=performance.now();renderWorker.postMessage({type:'frame',now});}
       animation=(window.MR_FRAMES ? window.MR_FRAMES.request.bind(window.MR_FRAMES,'wind') : requestAnimationFrame)(draw);return;
@@ -269,6 +338,7 @@
   if (typeof map !== 'undefined') map.on('moveend', scheduleRebuild);
   document.addEventListener('visibilitychange', () => {
     lastTime = null;
+    gpuWorker?.postMessage({type:'visibility',generation,visible:!document.hidden});
   });
   channel.onmessage = ({ data }) => {
     if (data.type !== 'cfd_control') return;
@@ -312,7 +382,7 @@
       default: return;
     }
     if (reset) scheduleRebuild();
-    else if (renderWorker)renderWorker.postMessage({type:'settings',settings});
+    else if (gpuWorker||renderWorker)(gpuWorker||renderWorker).postMessage({type:'settings',generation,settings});
     else if (visuals) visuals.configure(settings);
     sendState();
   };

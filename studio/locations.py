@@ -264,7 +264,7 @@ def frontend_config(value):
     for path in set(existing + list(value['assets'])):
         config['assets'][path]=f'/location-assets/{key}/{path.removeprefix("./")}'
     ready=[x for x in CATALOG if x['id'] in value['layers'] and value.get('capabilities',{}).get(x['id'],{}).get('status')=='ready']
-    config['layerCatalog']=ready
+    config['layerCatalog']=[x for x in ready if not x.get('internal')]
     config['disabledLayers']=[x['id'] for x in CATALOG if x not in ready]
     config['branding']['logos']=[{**logo,'src':f'/location-assets/{key}/{logo["src"]}'} for logo in value.get('branding',{}).get('logos',[])]
     return config

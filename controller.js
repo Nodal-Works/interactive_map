@@ -104,6 +104,8 @@ let thermalComfortState = { hour: 14, meanPet: null, active: false, ready: false
 // Animation layer tracking - tracks active animations and their order
 // Animation buttons are buttons that toggle visualizations on/off
 const ANIMATION_BUTTONS = [
+    'synthpop-heatmap-btn',
+    'slow-walkers-btn',
     'cfd-simulation-btn',
     'stormwater-btn', 
     'thermal-comfort-btn',
@@ -558,11 +560,7 @@ function updateDashboard(targetId) {
     if (metadataBody) metadataBody.style.display = '';
     if (metadataTitle) metadataTitle.textContent = 'Metadata';
     
-    // Hide SAM segmentation section by default (only shown for street-view-btn)
-    const samSection = document.getElementById('sam-segmentation-section');
-    if (samSection && targetId !== 'street-view-btn') {
-        samSection.style.display = 'none';
-    }
+    if (window.MR_MOBILITY_CORE?.DEFINITIONS[targetId]) { window.showMobilityDashboard(targetId); return; }
 
     if (targetId === 'epc-btn') {
         showEpcDashboard(dashboardTitle, legendTitle, legendContent);
@@ -1112,6 +1110,8 @@ function updateDashboard(targetId) {
                         <span class="material-icons" style="font-size: 18px;">tune</span>
                         Wind physics
                     </div>
+                    <button id="wind-draw-obstacle" class="modern-date">Draw a wind obstacle on the table</button>
+                    <p class="cfd-appearance-note">Click the outline on the table, then Close shape. Buildings within 500 m beyond the table also influence the flow.</p>
 
                     <div class="control-row">
                         <label class="control-label">Wind Speed</label>
@@ -1238,6 +1238,7 @@ function updateDashboard(targetId) {
         `;
 
         // Attach event listeners
+        document.getElementById('wind-draw-obstacle').onclick=()=>{const admin=new BroadcastChannel('mr_session_admin');admin.postMessage({type:'admin-command',action:'canvas-tool',tool:'obstacle'});admin.close();};
         const windSpeed = document.getElementById('wind-speed');
         const windSpeedDisplay = document.getElementById('wind-speed-display');
         const windDir = document.getElementById('wind-direction');
@@ -1713,18 +1714,12 @@ function updateDashboard(targetId) {
         // Initialize rotation controls
         initStreetViewControls();
         
-        // Show SAM segmentation section for Street View
-        const samSection = document.getElementById('sam-segmentation-section');
-        if (samSection) samSection.style.display = 'block';
         
     } else {
         // Default or other tools
         dashboardContent.innerHTML = '<p>Select a simulation to view details.</p>';
         legendContent.innerHTML = '<p>Select a simulation to view its legend.</p>';
         
-        // Hide SAM segmentation section for non-Street View
-        const samSection = document.getElementById('sam-segmentation-section');
-        if (samSection) samSection.style.display = 'none';
     }
 }
 
@@ -1899,16 +1894,6 @@ channel.onmessage = (event) => {
     } else if (data.type === 'campus_demo_phase') {
         // Update campus demo legend based on current phase
         updateCampusDemoLegend(data.phase, data.phaseIndex, data.label);
-    } else if (data.type === 'sam_segment') {
-        // Trigger segmentation as requested from main window
-        const segBtn = document.getElementById('sam-segment-btn');
-        if (segBtn) {
-            // Simulate user click
-            segBtn.click();
-        } else {
-            // Update status if available
-            if (typeof setSamStatus === 'function') setSamStatus('No segmentation UI', false);
-        }
     } else {
         // Log unknown message types for debugging new features
         debugLog('Unknown message type:', data.type);
@@ -2121,4 +2106,4 @@ document.addEventListener('keydown', (e) => {
 
 
 
-// Street View + SAM loaded from controller/street-view.js
+// Street View controls loaded from controller/street-view.js

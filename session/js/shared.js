@@ -1,6 +1,6 @@
 (function(root) {
   'use strict';
-  const RELEASE = '20260928-universeum-coolpaths-inputs-1';
+  const RELEASE = '20261005-universeum-mobility-1';
   const LAYERS = [
     ['cfd-simulation-btn', 'Wind · CFD', 'Environment', '🌬', 'obstacle'],
     ['stormwater-btn', 'Stormwater', 'Environment', '💧'],
@@ -11,6 +11,8 @@
     ['epc-btn', 'Building energy · EPC', 'Energy', '▥', 'location'],
     ['ecom-energy-btn', 'Energy community', 'Energy', '⚡', 'location'],
     ['bird-sounds-btn', 'Bird sounds', 'Explore', '♫'],
+    ['synthpop-heatmap-btn','Synth Pop Heatmap','Mobility','◉'],
+    ['slow-walkers-btn','Time Lost by Slow Walkers','Mobility','◷'],
     ['slideshow-btn', 'Slideshow', 'Present', '▧'],
     ['campus-demo-btn', 'Campus vision', 'Present', '⌂'],
     ['fcc-demo-btn', 'FCC walkthrough', 'Present', '▷'],
@@ -19,6 +21,8 @@
   ].filter(([id]) => !(root.APP_CONFIG?.disabledLayers || []).includes(id)).map(([id, name, group, icon, tool]) => ({id, name, group, icon, tool}));
   if (root.APP_CONFIG?.layerCatalog) LAYERS.splice(0, LAYERS.length, ...root.APP_CONFIG.layerCatalog.map(({id,name,group,icon,tool})=>({id,name,group,icon,tool})));
   const ACTIONS = {
+    synthpop_control:'request_state set_view set_time set_rate play pause restart',
+    slow_walkers_control:'request_state set_departure play pause',
     cultural_gravity_control: 'next stop',
     cfd_control: 'get_state set_wind_speed set_wind_direction set_viscosity set_resolution toggle_trees set_particles set_visual_style set_facade_glow set_color_palette set_color_range set_particle_speed',
     thermal_control: 'request_state clear_route set_mode tour_play tour_pause tour_step tour_next tour_back tour_end tour_explore tour_layer set_hour show_raster show_streets',
@@ -139,7 +143,24 @@
     };
   }
 
-  const MR = {RELEASE, LAYERS, ACTIONS, ECOM, AVATARS, COLORS, id, validControl, point, validObject, editObject, wire};
+  // Keep long-running exhibition sessions within a fixed history budget.
+  function appendEvent(events,event,retention) {
+    const bytes=JSON.stringify(event).length*2; // Conservative UTF-16 storage estimate.
+    events.push(event);retention.sizes.push(bytes);retention.bytes+=bytes;
+    while(events.length>2000 || retention.bytes>8*1024*1024){
+      events.shift();retention.bytes-=retention.sizes.shift();retention.omitted++;
+    }
+  }
+
+  function claimSlot(slots,personId,requested) {
+    if(requested!==undefined&&(!Number.isInteger(requested)||requested<1||requested>slots.length))throw Error('Invalid slot');
+    const existing=slots.indexOf(personId);if(existing!==-1)return existing+1;
+    const index=requested===undefined?slots.indexOf(null):requested-1;
+    if(index<0)throw Error('The table is full. You can still look around.');
+    if(slots[index])throw Error('That slot is occupied');
+    slots[index]=personId;return index+1;
+  }
+  const MR = {RELEASE, LAYERS, ACTIONS, ECOM, AVATARS, COLORS, id, validControl, point, validObject, editObject, wire, appendEvent, claimSlot};
   root.MR = MR;
   if (typeof module !== 'undefined') module.exports = MR;
 })(typeof window === 'undefined' ? globalThis : window);

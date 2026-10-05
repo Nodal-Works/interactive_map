@@ -49,7 +49,7 @@
     };
     window.addEventListener('hashchange',()=>{showSession();showLinkedLayer();});showSession();showLinkedLayer();
   }
-  const strip=document.createElement('div');strip.className='mr-session-strip';const bubbles=document.createElement('div');strip.append(bubbles,apps,canvas,admin);
+  const strip=document.createElement('div');strip.className='mr-session-strip';const bubbles=document.createElement('div');if(main&&window.APP_CONFIG.location?.id==='universeum'){dialog.remove();strip.append(bubbles);}else strip.append(bubbles,apps,canvas,admin);
   if(main){strip.style.cssText='position:fixed;bottom:10px;left:70px;z-index:1001';document.body.append(strip);}
   else document.querySelector('header')?.append(strip);
   function update(next){const previous=state;const canvasActivated=!!state&&next.layers['canvas-btn']&&!state.layers['canvas-btn'];state=next;if(!main&&canvasActivated)showCanvasDashboard();bubbles.replaceChildren();for(const p of next.participants.slice(0,8)){const b=document.createElement('span');b.className='bubble'+(p.online?'':' offline');b.style.setProperty('--color',p.color);b.textContent=p.avatar;b.title=p.name+(p.slot?' · Controller '+p.slot:' · Spectator');bubbles.append(b);}if(next.participants.length>8)bubbles.append('+'+(next.participants.length-8));

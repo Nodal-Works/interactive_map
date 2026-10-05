@@ -6,12 +6,11 @@ from .providers import credentials
 
 def selected_services():
     value=loc.active()
-    if value is None:return ['host','ecom','coolpaths','sam']
+    if value is None:return ['host','ecom','coolpaths']
     services=['host']
     for item in loc.CATALOG:
         if item.get('service') and value.get('capabilities',{}).get(item['id'],{}).get('status')=='ready':
             services.append(item['service'])
-    if value.get('capabilities',{}).get('street-view-btn',{}).get('status')=='ready':services.append('sam')
     return sorted(set(services),key=lambda name: name!='host')
 
 def environment():

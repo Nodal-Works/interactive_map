@@ -73,7 +73,28 @@
     "name": "Transit",
     "group": "Explore",
     "icon": "\ud83d\ude8b",
-    "source": "trafik"
+    "source": "trafik",
+    "internal": true
+  },
+  {
+    "id": "slow-walkers-btn",
+    "name": "Time Lost by Slow Walkers",
+    "group": "Mobility",
+    "icon": "\u25f7",
+    "assets": [
+      "media/mobility/slow-walkers.geojson",
+      "media/mobility/districts.geojson"
+    ]
+  },
+  {
+    "id": "synthpop-heatmap-btn",
+    "name": "Synth Pop Heatmap",
+    "group": "Mobility",
+    "icon": "\u25c9",
+    "assets": [
+      "media/mobility/synthpop.geojson",
+      "media/mobility/journeys.json"
+    ]
   },
   {
     "id": "bird-sounds-btn",

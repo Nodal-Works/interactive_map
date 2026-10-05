@@ -10,13 +10,35 @@
   });
   const ease = t => { const x = Math.max(0, Math.min(1, t)); return x * x * (3 - 2 * x); };
   const bell = t => Math.abs(t) >= 1 ? 0 : (1 - t * t) ** 2;
-  const mod = (n, d) => ((n % d) + d) % d;
+  const mod = (n, d) => n - Math.floor(n / d) * d;
   const speedMps = (g, v) => Math.hypot(v.x, v.y) * g.windSpeed / g.latticeSpeed;
   // Matches the existing playback control; lattice resolution cannot change screen speed.
   const motionRate = g => 20 * 60 * (g.windSpeed * .005 / g.latticeSpeed) * ((g.resolution || 150) / 150);
   const inside = (g, p) => p.x >= g.x0 + .01 && p.x < g.x0 + g.vw - .01 &&
     p.y >= g.y0 + .01 && p.y < g.y0 + g.vh - .01;
-  function clearSegment(g, a, b) { return inside(g, a) && inside(g, b) && !C.crossesSolid(g, a.x, a.y, b.x, b.y); }
+  function clearSegment(g, a, b) {
+    if(!inside(g,a)||!inside(g,b))return false;
+    const ax=Math.floor(a.x),ay=Math.floor(a.y),bx=Math.floor(b.x),by=Math.floor(b.y);
+    // Most rendered pieces span one or two cells. An empty bounding box proves
+    // the whole segment safe, including corner-touching cells, without a DDA.
+    if(Math.abs(ax-bx)<=1&&Math.abs(ay-by)<=1){
+      if(!g.solid[ay*g.nx+ax]&&!g.solid[ay*g.nx+bx]&&!g.solid[by*g.nx+ax]&&!g.solid[by*g.nx+bx])return true;
+    }
+    return !C.crossesSolid(g,a.x,a.y,b.x,b.y);
+  }
+  function sampledSpeed(g,x,y){
+    const {nx,ny,solid,ux,uy}=g;
+    if(x<0||y<0||x>=nx||y>=ny||solid[Math.floor(y)*nx+Math.floor(x)])return 0;
+    const gx=x-.5,gy=y-.5,ix=Math.floor(gx),iy=Math.floor(gy),fx=gx-ix,fy=gy-iy;
+    const x0=Math.max(0,Math.min(nx-1,ix)),x1=Math.max(0,Math.min(nx-1,ix+1));
+    const y0=Math.max(0,Math.min(ny-1,iy))*nx,y1=Math.max(0,Math.min(ny-1,iy+1))*nx;
+    let u=0,v=0,n=y0+x0,w=(1-fx)*(1-fy);
+    if(!solid[n]){u+=w*ux[n];v+=w*uy[n];}n=y0+x1;w=fx*(1-fy);
+    if(!solid[n]){u+=w*ux[n];v+=w*uy[n];}n=y1+x0;w=(1-fx)*fy;
+    if(!solid[n]){u+=w*ux[n];v+=w*uy[n];}n=y1+x1;w=fx*fy;
+    if(!solid[n]){u+=w*ux[n];v+=w*uy[n];}
+    return Math.hypot(u,v)*g.windSpeed/g.latticeSpeed;
+  }
   function anchors(g, budget) {
     const columns = Math.max(1, Math.round(Math.sqrt(budget * g.vw / g.vh)));
     const rows = Math.max(1, Math.floor(budget / columns)), result = [];
@@ -58,24 +80,10 @@
       // Trace at 5 Hz, but move the displayed geometry every animation frame.
       // Signed stations are measured from a stable seed, so varying path lengths
       // cannot shift the correspondence or restart a traveling highlight.
-      if (wallTime - this.lastRefresh >= .2 - 1e-9) {
+      if (!this.externalTracing && wallTime - this.lastRefresh >= .2 - 1e-9) {
         this.lastRefresh = wallTime;
-        const old = new Map(this.displayPaths.map(p => [p.id, p]));
-        this.paths = this.seeds.map(seed => ({ id: seed.id,
-          points: trace(this.field, seed, -1).reverse().slice(0, -1).concat(trace(this.field, seed, 1)) }));
-        this.displayPaths = this.paths.map(path => {
-          const previous = old.get(path.id), byStation = new Map(previous?.points.map(p => [p.station, p]) || []);
-          const points = path.points.map(target => {
-            const point = byStation.get(target.station);
-            byStation.delete(target.station);
-            return point ? { ...point, target, targetAlpha: 1 } :
-              { ...target, target, alpha: previous ? 0 : 1, targetAlpha: 1 };
-          });
-          // Retracting ends fade instead of abruptly dropping entire segments.
-          for (const point of byStation.values()) if (point.alpha > .005) points.push({ ...point, targetAlpha: 0 });
-          points.sort((a, b) => a.station - b.station);
-          return { id: path.id, points };
-        });
+        this.acceptPaths(this.seeds.map(seed => ({ id: seed.id,
+          points: trace(this.field, seed, -1).reverse().slice(0, -1).concat(trace(this.field, seed, 1)) })));
       }
       const blend = 1 - Math.exp(-dt / .18);
       for (const path of this.displayPaths) for (const p of path.points) {
@@ -84,13 +92,34 @@
         p.alpha += (p.targetAlpha - p.alpha) * blend;
       }
     }
+    acceptPaths(paths) {
+        const old = new Map(this.displayPaths.map(p => [p.id, p]));
+        this.paths = paths;
+        this.displayPaths = paths.map(path => {
+          const previous = old.get(path.id), byStation = new Map(previous?.points.map(p => [p.station, p]) || []);
+          const points = path.points.map(target => {
+            const point = byStation.get(target.station);
+            byStation.delete(target.station);
+            if(point){point.target=target;point.targetAlpha=1;return point;}
+            // A fixed property layout keeps the 60 Hz path monomorphic. Spreading
+            // trace/previous objects created many layouts and copied every point.
+            return {x:target.x,y:target.y,travel:target.travel,station:target.station,
+              target,alpha:previous?0:1,targetAlpha:1,endFade:0};
+          });
+          // Retracting ends fade instead of abruptly dropping entire segments.
+          for (const point of byStation.values()) if (point.alpha > .005) {point.targetAlpha=0;points.push(point);}
+          points.sort((a, b) => a.station - b.station);
+          for(let i=0;i<points.length;i++)points[i].endFade=ease(Math.min(i,points.length-i)/10);
+          return { id: path.id, points };
+        });
+    }
     segments(time, emit) {
       const g = this.field;
       for (const path of this.displayPaths) for (let i = 1; i < path.points.length; i++) {
         const a = path.points[i - 1], b = path.points[i];
         if (!clearSegment(g, a, b)) continue; // Morphs must also respect walls.
-        const speed = speedMps(g, C.sample(g, b.x, b.y));
-        const endFade = ease(Math.min(i, path.points.length - i) / 10);
+        const speed = sampledSpeed(g,b.x,b.y);
+        const endFade = b.endFade;
         const alpha = Math.min(a.alpha, b.alpha) * endFade;
         emit(a, b, speed, false, alpha);
         // Broad, soft light replaces the binary on/off selection of whole cells.
@@ -100,6 +129,21 @@
       }
     }
   }
+  // Fused ribbon emission avoids duplicate colour/coordinate work for highlights.
+  Ribbons.prototype.fillBuckets=function(time,settings,buckets){
+    const g=this.field,cell=g.cellSize,x0=g.x0,y0=g.y0,maximum=settings.colorMaxMps;
+    for(const path of this.displayPaths)for(let i=1;i<path.points.length;i++){
+      const a=path.points[i-1],b=path.points[i],alpha=Math.min(a.alpha,b.alpha)*b.endFade;
+      if(alpha<=.015||!clearSegment(g,a,b))continue;
+      const speed=sampledSpeed(g,b.x,b.y),color=Math.max(0,Math.min(31,Math.round(speed/maximum*31)));
+      const bin=Math.min(7,Math.floor(alpha*8))*32+color;
+      const ax=(a.x-x0)*cell,ay=(a.y-y0)*cell,bx=(b.x-x0)*cell,by=(b.y-y0)*cell;
+      buckets[bin].push(ax,ay,bx,by);
+      const phase=mod((a.travel+b.travel)/2-time+path.id*.618+.3,1.7)-.3;
+      const light=alpha*bell(phase/.3);
+      if(light>.015)buckets[256+Math.min(31,Math.floor(light*32))].push(ax,ay,bx,by);
+    }
+  };
   class Particles extends C.Tracers {
     constructor(g, count, random = Math.random) {
       super(g, count, random);
@@ -120,7 +164,7 @@
       const g = this.field, history = .24;
       for (const p of this.particles) {
         if (!p.active || p.trail.length < 2) continue;
-        const speed = speedMps(g, C.sample(g, p.x, p.y));
+        const speed = sampledSpeed(g,p.x,p.y);
         if (speed < .08) continue;
         const edge = Math.min(p.x - g.x0, g.x0 + g.vw - p.x, p.y - g.y0, g.y0 + g.vh - p.y) * g.cellSize;
         const visibility = p.brightness * ease(p.age / .22) * ease(edge / 10) * ease(speed / .3);
@@ -213,7 +257,10 @@
             fluid = true; last = p; probes.push(p);
           }
         }
-        return { ...edge, probes, impact: 0, intensity: 0 };
+        // Contiguous storage removes per-probe object traversal in the frame loop.
+        // Float64 weights retain sample()'s original arithmetic and summation order.
+        const probeData=Float64Array.from(probes.flatMap(p=>[p.stencil.length,...p.stencil]));
+        return { ...edge, probes, probeData, impact: 0, intensity: 0 };
       }).filter(edge => edge.probes.length);
     }
     update(dt) {
@@ -222,9 +269,10 @@
       const rise=1-Math.exp(-dt/1.5),fall=1-Math.exp(-dt/.3);
       for (const edge of this.edges) {
         let incoming = 0;
-        for (const point of edge.probes) {
-          let u=0,v=0;const s=point.stencil;
-          for(let i=0;i<s.length;i+=2){u+=s[i+1]*ux[s[i]];v+=s[i+1]*uy[s[i]];}
+        const s=edge.probeData;
+        for(let i=0;i<s.length;) {
+          let u=0,v=0;const end=i+1+s[i];i++;
+          for(;i<end;i+=2){u+=s[i+1]*ux[s[i]];v+=s[i+1]*uy[s[i]];}
           incoming = Math.max(incoming, -(u * edge.nx + v * edge.ny) * windSpeed / latticeSpeed);
         }
         // Qualitative normal-incidence energy proxy, NOT surface pressure/Cp.
@@ -259,7 +307,7 @@
       });
       for (const [width, opacity, color] of layers) for (let i = 0; i < this.buckets.length; i++) {
         const bucket = this.buckets[i]; if (!bucket.length) continue;
-        ctx.lineWidth = width * (globalThis.mrTableScale?.() ?? 1); ctx.strokeStyle = `rgba(${color},${opacity * (i + .5) / 16})`;
+        ctx.lineWidth = width * (this.field.renderScale ?? globalThis.mrTableScale?.() ?? 1); ctx.strokeStyle = `rgba(${color},${opacity * (i + .5) / 16})`;
         if(paths){ctx.stroke(paths[i]);continue;}
         ctx.beginPath();
         let lastX, lastY;
@@ -289,26 +337,36 @@
       if (!this.models.has(style)) this.models.set(style, style === 'particles' ?
         new Particles(this.field, this.settings.particles) : new Ribbons(this.field, this.settings.particles));
       this.model = this.models.get(style);
+      this.strokeStyles = Array.from({length:288},(_,i)=>{
+        const white=i>=256,alpha=white?(i-256+.5)/32:(Math.floor(i/32)+.5)/8;
+        const particles=style==='particles',rgb=white?[255,255,255]:this.colors[i%32];
+        const opacity=alpha*(white?(particles?1:.88):(particles?.9:.48));
+        const width=particles?(white?.75+alpha*.8:.85):(white?.8+alpha*1.25:1.1);
+        return {rgb,alpha:opacity,width:width*(this.field.renderScale ?? globalThis.mrTableScale?.() ?? 1),css:`rgba(${rgb.join(',')},${opacity})`};
+      });
     }
     update(dt, profile) {
       const start=profile?performance.now():0;
       // Disabled glow has no visible output. Resume the same exposure/smoothing
       // model when enabled, without spending every off-frame sampling facades.
-      if(this.settings.facadeGlow)this.facades.update(dt);
+      if(this.settings.facadeGlow && !this.externalFacadeUpdates)this.facades.update(dt);
       const updated=profile?performance.now():0;
       if(profile)profile.facadeUpdateMs=updated-start;
       this.wallTime += dt; const elapsed = dt * this.settings.playback / 20; this.time += elapsed;
-      if (this.settings.visualStyle === 'particles') this.model.update(elapsed);
-      else this.model.update(this.wallTime);
+      if(!this.externalFlowUpdates){
+        if (this.settings.visualStyle === 'particles') this.model.update(elapsed);
+        else this.model.update(this.wallTime);
+      }
       if(profile)profile.tracerUpdateMs=performance.now()-updated;
     }
     drawFacades(ctx) {
       if (this.settings.facadeGlow) this.facades.draw(ctx, this.settings.palette);
     }
-    draw(ctx) {
+    strokeStyle(i) { return this.strokeStyles[i]; }
+    collectSegments() {
       const g = this.field;
-      const particles = this.settings.visualStyle === 'particles';
       for (const bucket of this.buckets) bucket.length = 0;
+      if(this.model instanceof Ribbons){this.model.fillBuckets(this.time,this.settings,this.buckets);return;}
       this.model.segments(this.time, (a, b, speed, highlight, alpha = 1) => {
         if (alpha <= .015) return;
         const color = Math.max(0, Math.min(31, Math.round(speed / this.settings.colorMaxMps * 31)));
@@ -317,14 +375,13 @@
         this.buckets[bin].push((a.x - g.x0) * g.cellSize, (a.y - g.y0) * g.cellSize,
           (b.x - g.x0) * g.cellSize, (b.y - g.y0) * g.cellSize);
       });
+    }
+    draw(ctx) {
+      this.collectSegments();
       ctx.lineCap = 'round'; ctx.lineJoin = 'round';
       for (let i = 0; i < this.buckets.length; i++) {
         const bucket = this.buckets[i]; if (!bucket.length) continue;
-        const white = i >= 256, alpha = white ? (i - 256 + .5) / 32 : (Math.floor(i / 32) + .5) / 8;
-        ctx.strokeStyle = white ? `rgba(255,255,255,${alpha * (particles ? 1 : .88)})` :
-          `rgba(${this.colors[i % 32].join(',')},${alpha * (particles ? .9 : .48)})`;
-        ctx.lineWidth = (particles ? (white ? .75 + alpha * .8 : .85) :
-          (white ? .8 + alpha * 1.25 : 1.1)) * (globalThis.mrTableScale?.() ?? 1);
+        const style=this.strokeStyle(i);ctx.strokeStyle=style.css;ctx.lineWidth=style.width;
         ctx.beginPath();
         let lastX, lastY;
         for (let j = 0; j < bucket.length; j += 4) {
@@ -336,5 +393,5 @@
       }
     }
   }
-  return { facadeEdges, FacadeGlow, STYLES, Renderer, Ribbons, Particles, anchors, trace, clearSegment, motionRate, speedMps };
+  return { facadeEdges, FacadeGlow, STYLES, Renderer, Ribbons, Particles, anchors, trace, clearSegment, motionRate, speedMps, sampledSpeed };
 });

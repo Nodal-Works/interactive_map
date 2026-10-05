@@ -38,18 +38,20 @@
     return { x: Math.abs(Math.cos(a)) < 1e-10 ? 0 : Math.cos(a),
       y: Math.abs(Math.sin(a)) < 1e-10 ? 0 : Math.sin(a) };
   }
-  function domain(width, height, resolution, angle) {
+  function domain(width, height, resolution, angle, contextPixels = 0) {
     const cellSize = Math.max(width, height) / resolution;
     const vw = Math.max(2, Math.ceil(width / cellSize));
     const vh = Math.max(2, Math.ceil(height / cellSize));
     const v = windVector(angle), ax = Math.abs(v.x), ay = Math.abs(v.y);
     const along = ax * vw + ay * vh, cross = ay * vw + ax * vh;
-    const left = Math.ceil((v.x >= 0 ? .5 : .75) * along * ax + .3 * cross * ay);
-    const right = Math.ceil((v.x >= 0 ? .75 : .5) * along * ax + .3 * cross * ay);
-    const top = Math.ceil((v.y >= 0 ? .5 : .75) * along * ay + .3 * cross * ax);
-    const bottom = Math.ceil((v.y >= 0 ? .75 : .5) * along * ay + .3 * cross * ax);
+    const contextCells = Math.ceil(Math.max(0, contextPixels) / cellSize);
+    const minimum = contextCells ? contextCells + 16 : 0;
+    const left = Math.max(minimum, Math.ceil((v.x >= 0 ? .5 : .75) * along * ax + .3 * cross * ay));
+    const right = Math.max(minimum, Math.ceil((v.x >= 0 ? .75 : .5) * along * ax + .3 * cross * ay));
+    const top = Math.max(minimum, Math.ceil((v.y >= 0 ? .5 : .75) * along * ay + .3 * cross * ax));
+    const bottom = Math.max(minimum, Math.ceil((v.y >= 0 ? .75 : .5) * along * ay + .3 * cross * ax));
     return { nx: vw + left + right, ny: vh + top + bottom, x0: left, y0: top,
-      vw, vh, cellSize, along, farFieldCollar: 8 };
+      vw, vh, cellSize, along, farFieldCollar: 8, contextCells };
   }
   function equilibrium(k, r, u, v) {
     const cu = EX[k] * u + EY[k] * v;
@@ -106,10 +108,11 @@
         for (let y = 0; y < this.ny; y++) for (let x = 0; x < this.nx; x++) {
           // Absorb outgoing acoustic disturbances only in off-screen padding.
           // The visible model and an eight-cell margin retain the unforced TRT equations.
-          const left = (this.x0 - 8 - x) / Math.max(1, this.x0 - 8);
-          const right = (x - this.x0 - this.vw - 8) / Math.max(1, this.nx - this.x0 - this.vw - 9);
-          const top = (this.y0 - 8 - y) / Math.max(1, this.y0 - 8);
-          const bottom = (y - this.y0 - this.vh - 8) / Math.max(1, this.ny - this.y0 - this.vh - 9);
+          const margin = (this.contextCells || 0) + 8;
+          const left = (this.x0 - margin - x) / Math.max(1, this.x0 - margin);
+          const right = (x - this.x0 - this.vw - margin) / Math.max(1, this.nx - this.x0 - this.vw - margin - 1);
+          const top = (this.y0 - margin - y) / Math.max(1, this.y0 - margin);
+          const bottom = (y - this.y0 - this.vh - margin) / Math.max(1, this.ny - this.y0 - this.vh - margin - 1);
           const distance = Math.max(0, Math.min(1, Math.max(left, right, top, bottom)));
           this.sponge[y * this.nx + x] = .2 * distance * distance;
         }
@@ -265,12 +268,12 @@
         }));
         if (!rings[0]?.length) continue;
         const xs = rings[0].map(p => p[0]), ys = rings[0].map(p => p[1]);
-        // Simulate the displayed model and the complete footprints that
-        // intersect it. Off-table city blocks must not turn the wind buffers
-        // into narrow artificial channels. Preserve every visible part/hole.
+        // Include complete footprints intersecting the selected context region.
+        // A separate open collar keeps exterior buildings away from inflow/outflow.
         const collar = grid.farFieldCollar || 0;
         const minX = Math.min(...xs), maxX = Math.max(...xs), minY = Math.min(...ys), maxY = Math.max(...ys);
-        const visible = grid.vw === undefined || (maxX > grid.x0 && minX < grid.x0 + grid.vw && maxY > grid.y0 && minY < grid.y0 + grid.vh);
+        const context = grid.contextCells || 0;
+        const visible = grid.vw === undefined || (maxX > grid.x0-context && minX < grid.x0+grid.vw+context && maxY > grid.y0-context && minY < grid.y0+grid.vh+context);
         if (!visible) continue;
         const x0 = Math.max(collar, Math.floor(minX)), x1 = Math.min(grid.nx - collar, Math.ceil(maxX));
         const y0 = Math.max(collar, Math.floor(minY)), y1 = Math.min(grid.ny - collar, Math.ceil(maxY));

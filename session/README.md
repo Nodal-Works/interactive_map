@@ -8,14 +8,14 @@ From the MR Studio repository:
 ./start_services.sh
 ```
 
-The foreground supervisor starts the local host, ECOM, CoolPaths and SAM, opens
+The foreground supervisor starts the local host and selected services, including CoolPaths, opens
 the launcher, and reports readiness. Launch the main display and controller from
 that launcher so they share an origin. Click the main display's start overlay
 once to enable its audio. **Session** opens a page inside the desktop controller, with the same header and sidebars.
 
-Default ports are host 8090, ECOM 8000, CoolPaths 8001, and SAM 8002. Copy
+Default ports are host 8090, ECOM 8000 and CoolPaths 8001. Copy
 `services.example.json` to ignored `services.local.json` to override ports,
-`sam_directory`, or the public `client_url`. All four ports must be distinct.
+or the public `client_url`. All three ports must be distinct.
 The existing individual launch scripts read the same configuration. The host
 proxies dashboard service requests, so changing a backend port requires no HTML edits.
 
@@ -32,8 +32,7 @@ started; services it reused remain running. Logs are `.runtime/{service}.log`.
 The supervisor reports failed optional services while keeping the host available.
 
 The ECOM and CoolPaths launchers retain their existing environment setup.
-SAM requires the configured repository and its existing `.venv`. Prepared
-CoolPaths data and ECOM demand data are prerequisites; startup does not run the
+Prepared CoolPaths data and ECOM demand data are prerequisites; startup does not run the
 study preparation pipeline or fabricate missing data. A healthy API may still
 report an unavailable study in the layer dashboard.
 
@@ -45,13 +44,13 @@ https://nodal-works.github.io/interactive_map/universeum/client.html
 
 Scan the host panel's QR to include the current invitation. During idle Street Life,
 a larger QR appears at the bottom right of the calibrated table, with the Street Life
-label at bottom left. Apps on the main display includes a local bottom-ribbon height
+label at bottom left. The staff Apps panel includes a local bottom-ribbon height
 setting (5–10 cm; default 5 cm). The ribbon hides while layers are active or the
 session has ended. Confirm scan reliability on the physical projected table. GitHub Pages hosts the interface; computations, API credentials,
 and session logs stay on the host computer.
 
-The welcome dialog presents four controller slots and an explicit spectator option.
-Choose an available slot; the Apps screen opens once the host confirms your claim.
+The welcome dialog assigns an available controller slot on Continue, or offers a spectator option.
+The Apps screen opens once the host confirms your claim.
 Returning editors retain their slot and skip the welcome dialog. Extra participants are spectators. Each
 phone's Apps selection, Controls/Map tab, zoom, and pan are personal; enabled
 layers and settings are shared. Opening an app does not toggle it. An explicit
@@ -69,7 +68,7 @@ using native fullscreen where supported, and **Exit fullscreen** restores the la
 without discarding drawings or changing the map position.
 The Map tab shows a light-styled OpenStreetMap basemap (no API key), the table
 boundary and drawing inputs. Phones receive no CFD images, analysis results,
-building-footprint background, video or charts. Settings are projected through an
+analysis geometry, video or charts. EPC loads public Universeum building outlines for targeting. Settings are projected through an
 explicit input-only allowlist and only sent when they change. Drawing objects are
 sent separately, only to the relevant Map tab. Basemap tiles load over HTTP.
 
@@ -90,7 +89,7 @@ Annotations remain when layers are changed or Canvas is hidden. Authors can move
 reshape or delete their annotations and undo/redo their own edits; the host can
 edit anyone's. Undo refuses to overwrite a subsequent edit. Select an annotation
 near a vertex or its marker. Ordinary Canvas polygons never become wind barriers.
-The mouse tools are available from Canvas on the main display and dashboard.
+The mouse wind tool is available from Wind on the staff dashboard.
 Canvas switches the table to a light basemap while keeping analysis layers above it.
 Canvas, wind and comfort suppress the idle Street Life animation.
 
