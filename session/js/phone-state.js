@@ -2,8 +2,8 @@
   'use strict';
   const pick=(source,keys)=>Object.fromEntries(keys.filter(key=>source?.[key]!==undefined).map(key=>[key,source[key]]));
   const settings={
-    'synthpop-heatmap-btn':['synthpop','key title question description note active ready error view playing timeSeconds duration rate arrivals legend statistics'],
-    'slow-walkers-btn':['slow_walkers','key title question description note active ready error playing departure departures completedDepartures plannedDepartures maximumDistrict legend'],
+    'synthpop-heatmap-btn':['synthpop','key title question description note active ready error view playing timeSeconds duration rate arrivals legend legendMode statistics journeysAvailable journeyUnavailableReason routingDate sampling'],
+    'slow-walkers-btn':['slow_walkers','key title question description note active ready error playing departure departures completedDepartures plannedDepartures maximumDistrict legend legendMode routingDate sampling districtScope'],
     'cfd-simulation-btn':['cfd','windSpeed angle viscosity resolution trees particles playback visualStyle facadeGlow palette colorMaxMps'],
     'isovist-btn':['isovist','radius fov follow humanFov trees ambientSound'],
     'sun-study-btn':['sun','time date animating trees falseColor opacity speed'],
@@ -17,7 +17,7 @@
       participants:state.participants.map(p=>pick(p,['id','name','avatar','color','online','slot'])),messages:[]};
     const entry=settings[focus?.layer];
     if(entry){const[name,keys]=entry;result[name]=pick(state[name],keys.split(' '));
-      if(name==='synthpop'&&result.synthpop.statistics)result.synthpop.statistics=pick(result.synthpop.statistics,['localTrips','localRoutedTrips','localResidents','qualifyingTrips','meanExtraMinutes']);
+      if(name==='synthpop'&&result.synthpop.statistics)result.synthpop.statistics=pick(result.synthpop.statistics,['localTrips','localRoutedTrips','localResidents','localRoutedResidents','qualifyingTrips','journeyTrips','failedPairs','meanExtraMinutes']);
       if(name==='thermal') {
         if(result.thermal.tour)result.thermal.tour=pick(result.thermal.tour,['open','playing','step','layer']);
         // Endpoint selections are inputs, not route geometry. Always send nulls

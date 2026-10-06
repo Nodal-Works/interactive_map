@@ -81,15 +81,21 @@
           else [data,districts]=await Promise.all([load('slow-walkers.geojson'),load('districts.geojson')]);
         }
         if(!current()||generation!==revision)return;
-        const meta=data.metadata;state.ready=true;state.legend=core.legend(meta.bins,meta.colors);state.statistics=meta;
+        const meta=data.metadata;state.ready=true;state.legendMode=meta.legendMode||'bands';state.legend=core.legend(meta.bins,meta.colors,state.legendMode);state.statistics=meta;
+        state.description=meta.explanation||definition.description;state.note=meta.note||core.note({...state,note:null});
+        state.routingDate=meta.routingDate;state.sampling=meta.sampling;state.districtScope=meta.districtScope;
         if(key==='synthpop'){
-          state.duration=journeys.duration;
+          state.duration=Number.isFinite(journeys.duration)&&journeys.duration>0?journeys.duration:0;
+          state.journeysAvailable=state.duration>0&&journeys.tracks.some(track=>track.walker==='medium'&&track.legs.length)&&journeys.tracks.some(track=>track.walker==='slow'&&track.legs.length);
+          state.journeyUnavailableReason=state.journeysAvailable?'':'No complete paired journeys lose more than one minute.';
+          if(!state.journeysAvailable){state.view='heatmap';state.playing=false;state.timeSeconds=0;stopFrames();}
           if(!canvas){canvas=document.createElement('canvas');canvas.id='synthpop-journey-canvas';canvas.setAttribute('aria-hidden','true');canvas.style.cssText='position:fixed;pointer-events:none;z-index:15';canvas.hidden=true;document.body.append(canvas);context=canvas.getContext('2d');placeCanvas();}
         }else Object.assign(state,{departures:meta.departures,completedDepartures:meta.completedDepartures,plannedDepartures:meta.plannedDepartures,routingDate:meta.routingDate});
         if(!viewMap.getSource(source))viewMap.addSource(source,{type:'geojson',data:empty()});
         if(!viewMap.getLayer(fill)){
-          const color=['step',['get','delay'],meta.colors[0]];for(let i=1;i<meta.bins.length;i++)color.push(meta.bins[i],meta.colors[i]);
-          viewMap.addLayer({id:fill,type:'fill',source,filter:['!=',['get','delay'],null],paint:{'fill-color':color,'fill-opacity':.72,'fill-outline-color':'rgba(255,255,255,.08)'}});
+          const paint={'fill-color':core.colorExpression(meta.bins,meta.colors,state.legendMode),'fill-opacity':.72};
+          if(key==='synthpop')paint['fill-outline-color']='rgba(255,255,255,.08)';else paint['fill-antialias']=false;
+          viewMap.addLayer({id:fill,type:'fill',source,filter:['!=',['get','delay'],null],paint});
         }
         active=true;cells();drawJourneys();publish();
       }catch(e){if(e.name==='AbortError'||generation!==revision)return;error=e.message;throw e;}
@@ -100,13 +106,13 @@
       if(!active||!state.ready)return;
       const value=message.value;
       switch(message.action){
-        case 'set_view':if(key!=='synthpop'||!['heatmap','journeys'].includes(value))return;state.view=value;state.playing=false;stopFrames();cells();drawJourneys();break;
-        case 'set_time':if(key!=='synthpop'||!Number.isFinite(value)||value<0||value>state.duration)return;state.timeSeconds=value;drawJourneys();break;
+        case 'set_view':if(key!=='synthpop'||!['heatmap','journeys'].includes(value)||(value==='journeys'&&!state.journeysAvailable))return;state.view=value;state.playing=false;stopFrames();cells();drawJourneys();break;
+        case 'set_time':if(key!=='synthpop'||!state.journeysAvailable||!Number.isFinite(value)||value<0||value>state.duration)return;state.timeSeconds=value;drawJourneys();break;
         case 'set_rate':if(![60,120,360].includes(value))return;state.rate=value;break;
         case 'set_departure':if(key!=='slow_walkers'||!Number.isInteger(value)||value< -1||value>=state.departures.length)return;state.departure=value;state.playing=false;stopFrames();cells();break;
-        case 'play':if(key==='synthpop'){state.view='journeys';if(state.timeSeconds>=state.duration)state.timeSeconds=0;cells();drawJourneys();}else if(state.departure<0){state.departure=0;cells();}state.playing=true;last=null;elapsed=0;schedule();break;
+        case 'play':if(key==='synthpop'){if(!state.journeysAvailable)return;state.view='journeys';if(state.timeSeconds>=state.duration)state.timeSeconds=0;cells();drawJourneys();}else if(state.departure<0){state.departure=0;cells();}state.playing=true;last=null;elapsed=0;schedule();break;
         case 'pause':state.playing=false;stopFrames();break;
-        case 'restart':state.timeSeconds=0;last=null;drawJourneys();break;
+        case 'restart':if(key!=='synthpop'||!state.journeysAvailable)return;state.timeSeconds=0;last=null;drawJourneys();break;
         default:return;
       }publish();
     }

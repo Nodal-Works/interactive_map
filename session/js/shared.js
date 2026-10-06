@@ -1,6 +1,6 @@
 (function(root) {
   'use strict';
-  const RELEASE = '20261005-universeum-mobility-1';
+  const RELEASE = '20261006-universeum-mobility-2';
   const LAYERS = [
     ['cfd-simulation-btn', 'Wind · CFD', 'Environment', '🌬', 'obstacle'],
     ['stormwater-btn', 'Stormwater', 'Environment', '💧'],

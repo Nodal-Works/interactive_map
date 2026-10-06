@@ -27,21 +27,19 @@ itineraries for that cohort, preserving leg duration, metric route distance and
 waiting gaps. Departures are aligned at elapsed time zero. Arrival counters refer
 to this trip cohort even when a route leaves the table; rendering is clipped.
 
-Time Lost uses only the six completed NPZ departures, 06:25, 06:49, 07:15,
-07:38, 08:09 and 08:31 (six of 32 planned), for both cells and RegSO summaries.
-It divides total extra minutes by missed-connection trips; combined averages are
-trip-weighted, rather than arithmetic means of departure averages. No routed
-trips is missing; routed trips with no modelled missed connections is zero.
-The committed GPKG averages are from a different run and are never used.
+Time Lost uses eight completed departures: 06:25, 06:49, 07:15, 07:38, 08:09,
+08:31, 09:02 and 09:30. It divides accumulated extra minutes by accumulated
+missed-connection trips; combined averages are trip-weighted, not an average of
+departure averages. No routed trips is missing; routed trips with no modelled
+missed connections is zero. RegSO summaries describe origins within the table.
+The committed GPKG averages are from a different routing run and are never used.
 
-Point order is reconstructed using the pinned grid definition and district
-spatial joins, validated against city GPKG coordinates and NPZ point IDs.
-The actual campus run is 50 m (the source README says 100 m). City interpolation
-uses 200 m display cells, six neighbours and a 500 m nearest-point limit;
-campus display cells are 25 m, four neighbours and a 75 m limit. These small
-cells do not imply new routing coverage. RegSO statistics describe whole areas
-intersecting the table and use city-grid origins, matching the source exporter.
-A partial morning run is never presented as an all-day or live transit result.
+The local rerun uses 2,064 unique origins spaced 100 m over the calibrated table.
+Continuous shading uses 50 m cells, inverse-distance interpolation from at most
+four valid origins within 150 m, and no cell outlines. Interpolation does not add
+routing coverage. The 8 departures cover 16,512 origin-samples with no missing
+routing results. Point order, CRS, recipe, dependency versions, output checksums
+and pinned upstream input checksums are recorded in the mobility manifest.
 
 Both layers share the analysis pass, opacity controls and lifecycle. The host
 owns playback, sends authoritative state on changes/reconnect and releases
@@ -51,15 +49,28 @@ spectator restrictions use the existing session protocol.
 
 ## Reprepare and recover
 
-Keep research inputs under ignored `.studio/cache/mobility/<commit>/`. A pinned
-snapshot can be downloaded without routing via:
+Keep research inputs under ignored `.studio/cache/mobility/<commit>/`. The
+reproducible reroute uses the pinned 530a935 snapshot, its checksummed GTFS, OSM
+and synthetic-trip inputs, Python 3.12, r5py 1.1.7 and OpenJDK 21. It builds one
+shared transport network, checkpoints sequential 128-origin batches and uses a
+12 GB Java heap. The 32-origin benchmark completed all eight sample departures;
+the full table rerun took 4,069 seconds (about 68 minutes), peaked at 3.3 GiB RSS,
+and the 1,018-trip synthetic rerun took 109 seconds. To reproduce:
 
 ```sh
-.studio/env/bin/python -m studio.mobility --download
+.studio/routing-env/bin/python -m studio.mobility_run --benchmark
+.studio/routing-env/bin/python -m studio.mobility_run
 .studio/env/bin/python -m studio.exhibit universeum \
-  --mobility-source .studio/cache/mobility/530a93530baf450041075a9c0dd28b6f4787d890 \
-  --slideshow --wind-context
+  --mobility-source .studio/cache/mobility/universeum-100m-20260922
+.studio/env/bin/python -m studio validate universeum
+.studio/env/bin/python -m studio export universeum \
+  .studio/exports/universeum-exhibit-20261006-mobility.zip
 ```
+
+`studio.mobility_run` downloads and verifies the pinned inputs when needed. An
+interrupted run resumes completed batches; exhibit startup never invokes routing.
+Keep the recovery ZIP and `universeum.previous` package until the new export has
+been checked on the table.
 
 Wind includes complete building polygons and holes 500 m beyond the table.
 The absorbing collar starts beyond that context; the outer boundary stays open.
@@ -95,7 +106,7 @@ External imagery availability depends on the provider and network.
 
 ## Release and checks
 
-Host/client release: `20261005-universeum-mobility-1`.
+Host/client release: `20261006-universeum-mobility-2`.
 The public client remains `/interactive_map/universeum/client.html`. The existing
 Pages workflow assembles all three branch clients into one deployment. Its
 allowlisted builder includes Universeum phone targeting geometry and Lucide icons;
