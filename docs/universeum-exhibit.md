@@ -106,7 +106,7 @@ External imagery availability depends on the provider and network.
 
 ## Release and checks
 
-Host/client release: `20261006-universeum-mobility-2`.
+Host/client release: `20261006-universeum-mobility-3`.
 The public client remains `/interactive_map/universeum/client.html`. The existing
 Pages workflow assembles all three branch clients into one deployment. Its
 allowlisted builder includes Universeum phone targeting geometry and Lucide icons;
