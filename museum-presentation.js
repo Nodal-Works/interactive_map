@@ -57,16 +57,48 @@ function render(){
  const active=Object.entries(states).filter(([,s])=>s.active||s.requested||s.error);
  let number=0;for(const [id,state] of active){if(!labels[id])continue;const item=document.createElement('section'),title=document.createElement('h3'),text=document.createElement('p');title.textContent=labels[id][0]+(state.status==='loading'?' · Loading':state.error?' · Unavailable':'');text.textContent=state.error||labels[id][1];if(id==='slideshow-btn' && slideState?.metadata?.title)title.textContent=slideState.metadata.title;
  if(id==='cfd-simulation-btn' && windState){const key=document.createElement('div');key.className='museum-speed-key';const colors=Array.from({length:5},(_,i)=>window.CFD.speedColor(i*windState.colorMaxMps/4,windState.palette,windState.colorMaxMps));key.style.background='linear-gradient(90deg,'+colors.map(c=>'rgb('+c.slice(0,3).join(',')+')').join(',')+')';const units=document.createElement('small');units.textContent='0 — '+windState.colorMaxMps+' m/s · wind '+windState.windSpeed+' m/s';item.append(key,units);}
- if(window.MR_MOBILITY_CORE?.DEFINITIONS[id]){const definition=window.MR_MOBILITY_CORE.DEFINITIONS[id],mobility=window.MR_MOBILITY?.[definition.key].getState();text.textContent=mobility?.error||mobility?.description||definition.description;const explanation=document.createElement('p');explanation.textContent=window.MR_MOBILITY_CORE.summary(mobility);item.append(explanation);const legend=document.createElement('div');legend.className='mobility-legend';const entries=mobility?.view==='journeys'?[{color:'#2dd4bf',label:'4.8 km/h'},{color:'#fb923c',label:'4.235 km/h'}]:mobility?.legend||[];for(const entry of entries){const row=document.createElement('span'),swatch=document.createElement('i');swatch.style.background=entry.color;row.append(swatch,document.createTextNode(entry.label));legend.append(row);}item.append(legend);const note=document.createElement('small');note.textContent=window.MR_MOBILITY_CORE.note({...mobility,key:definition.key});item.append(note);const credits=document.createElement('small');for(const [name,url]of [['Research','https://github.com/SaraAboebeid/slow_walkers'],['Synthetic population','https://zenodo.org/records/10801936']]){const link=document.createElement('a');link.href=url;link.textContent=name;link.target='_blank';link.rel='noopener';credits.append(link,document.createTextNode(' · '));}item.append(credits);}
- item.prepend(title,text);(number++<Math.ceil(active.length/2)?list:rightList).append(item);}
+ if(window.MR_MOBILITY_CORE?.DEFINITIONS[id]){
+   const core=window.MR_MOBILITY_CORE,definition=core.DEFINITIONS[id],mobility=window.MR_MOBILITY?.[definition.key].getState(),story=core.story({...mobility,key:definition.key});
+   item.className='mobility-story';
+   const node=(tag,cls,content)=>{const el=document.createElement(tag);el.className=cls;if(content!==undefined)el.textContent=content;return el;};
+   title.className='mobility-story-question';title.textContent=story.question;
+   text.textContent=mobility?.error||story.intro;
+   item.append(node('div','mobility-story-view',story.view));
+   const metric=node('div','mobility-story-stat');metric.append(node('strong','',story.metric),node('span','',story.metricLabel));item.append(metric,node('p','mobility-story-detail',story.detail));
+   item.append(node('h4','mobility-story-legend-title',story.legendTitle));
+   const legend=node('div','mobility-legend'),journeys=mobility?.view==='journeys';
+   const entries=journeys?[{color:'#2dd4bf',label:'4.8 km/h'},{color:'#fb923c',label:'4.235 km/h'}]:mobility?.legend||[];
+   if(!journeys&&mobility?.legendMode==='continuous'){
+     legend.className+=' mobility-legend-continuous';const bar=node('div','mobility-colour-ramp');bar.style.background='linear-gradient(90deg,'+entries.map(e=>e.color).join(',')+')';legend.append(bar);
+     const ticks=node('div','mobility-legend-ticks');for(const entry of entries)ticks.append(node('span','',entry.label.replace(' min','')));legend.append(ticks);
+   }else for(const entry of entries){const row=node('span',''),swatch=node('i','');swatch.style.background=entry.color;row.append(swatch,document.createTextNode(entry.label));legend.append(row);}
+   item.append(legend);
+   if(journeys){const arrivals=node('div','mobility-arrivals');for(const [walker,label]of [['medium','4.8 km/h'],['slow','4.235 km/h']]){const count=node('div','mobility-arrival-'+walker);count.append(node('strong','',String(mobility.arrivals?.[walker]||0)),node('span','',label+' · arrived'));arrivals.append(count);}item.append(arrivals);}
+   item.append(node('p','mobility-story-reading',story.reading),node('p','mobility-story-prompt',story.prompt),node('small','mobility-story-footnote',story.footnote));
+   const credits=node('small','mobility-story-credits');
+   for(const [name,url]of [['Research','https://github.com/SaraAboebeid/slow_walkers'],['Synthetic population','https://zenodo.org/records/10801936']]){const link=node('a','',name);link.href=url;link.target='_blank';link.rel='noopener';credits.append(link);}
+   item.append(credits);item.prepend(node('div','mobility-story-chapter',story.chapter));
+   if(active.length===1){
+     const companion=node('section','mobility-story mobility-story-companion');companion.append(node('div','mobility-story-chapter','The experiment'),node('h3','mobility-story-question','Same city. Different pace.'));
+     const speeds=node('div','mobility-walking-speeds');
+     for(const [speed,label,cls]of [['4.8','Reference walk','medium'],['4.235','Slower walk','slow']]){const row=node('div','mobility-walk-'+cls);row.append(node('strong','',speed),node('span','',' km/h'),node('small','',label));speeds.append(row);}companion.append(speeds);
+     companion.append(node('p','','About 12% slower on foot. A connection can turn that small difference into a much longer trip.'));
+     const steps=node('div','mobility-connection-steps');for(const label of ['Walk','Connection','Wait'])steps.append(node('span','',label));companion.append(steps);
+     companion.append(node('p','mobility-story-reading',definition.key==='synthpop'?'This view follows trips to one hospital. Time Lost explores missed connections to destinations across the city.':'This view looks at missed connections across the city. Synth Pop follows a separate set of healthcare trips to Sahlgrenska.'));
+     rightList.append(companion);
+   }
+ }
+
+ item.prepend(title,text);if(item.className==='mobility-story'){const chapter=item.querySelector('.mobility-story-chapter');if(chapter)item.prepend(chapter);}(number++<Math.ceil(active.length/2)?list:rightList).append(item);}
  if(!active.length){const p=document.createElement('p');p.textContent='A living city. Scan to explore sunlight, wind, water and urban life.';list.append(p);}
+ right.classList.toggle('has-mobility-story',active.some(([id])=>!!window.MR_MOBILITY_CORE?.DEFINITIONS[id]));
  place();broadcast();
 }
 if(isHost){
  try{config=valid(JSON.parse(localStorage.getItem(key)||'{}'));}catch{}
  left=document.createElement('aside');left.className='museum-zone museum-zone-left';left.setAttribute('aria-label','Exhibit information');
  const title=document.createElement('h2');title.textContent=window.APP_CONFIG?.location?.title || 'Explore the city';list=document.createElement('div');left.append(title,list);
- right=document.createElement('aside');right.className='museum-zone museum-zone-right';right.setAttribute('aria-label','Join the exhibit');qrCaption=document.createElement('h2');qr=document.createElement('div');qr.className='museum-qr';const instruction=document.createElement('p');instruction.textContent='Use your phone to choose layers and explore the table together.';rightList=document.createElement('div');right.append(qrCaption,qr,instruction,rightList);document.body.append(left,right);
+ right=document.createElement('aside');right.className='museum-zone museum-zone-right';right.setAttribute('aria-label','Join the exhibit');qrCaption=document.createElement('h2');qr=document.createElement('div');qr.className='museum-qr';const instruction=document.createElement('p');instruction.textContent='Use your phone to choose layers and explore the table together.';rightList=document.createElement('div');rightList.className='museum-right-stories';right.append(qrCaption,qr,instruction,rightList);document.body.append(left,right);
  window.addEventListener('mr-layer-state',render);window.addEventListener('mr-mobility-state',render);window.addEventListener('resize',place);window.addEventListener('mr-transform',place);
  window.addEventListener('mr-invite',({detail})=>{invite=detail;qr.replaceChildren();if(invite&&typeof QRCode!=='undefined'){const code=new QRCode(qr,{text:invite,width:512,height:512,correctLevel:QRCode.CorrectLevel.L});qrModules=code._oQRCode.getModuleCount();}place();broadcast();});
  window.addEventListener('mr-session-state',({detail})=>{if(detail.endedAt){invite='';place();}});

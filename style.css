@@ -768,3 +768,44 @@ html, body {
 .museum-zone .mobility-legend{font-size:.9em;gap:7px}.museum-zone .mobility-legend i{width:18px}
 
 .mobility-controls [hidden] { display: none !important; }
+
+/* Mobility: one visitor question, one scoped result, then a readable key. */
+.mobility-story { --mobility-teal:#55c4b8; border-top:1px solid #ffffff24; padding-top:1em; }
+.museum-zone .mobility-story-chapter { color:#84b7be; text-transform:uppercase; letter-spacing:.1em; font-size:.68em; font-weight:650; margin-bottom:1em; }
+.museum-zone h3.mobility-story-question { color:#f5f3ea; font-size:1.7em; line-height:1.06; letter-spacing:-.035em; margin:0 0 .6em; text-wrap:balance; }
+.mobility-story-view { color:#ade1d8; border-left:2px solid #55c4b8; padding:.35em .65em; font-size:.75em; margin:1.2em 0; background:#55c4b80c; }
+.mobility-story-stat { display:flex; flex-direction:column; gap:.2em; }
+.mobility-story-stat strong { font-size:3.1em; line-height:1; font-weight:650; letter-spacing:-.06em; color:#f5d99a; font-variant-numeric:tabular-nums; }
+.mobility-story-stat span { font-size:.88em; line-height:1.35; color:#f3ebd9; max-width:24em; }
+.museum-zone p.mobility-story-detail { font-size:.72em; color:#9eabb5; margin:.6em 0 1.5em; }
+.mobility-story-legend-title { color:#ecede8; font-size:.77em; font-weight:550; margin:0; }
+.museum-zone .mobility-legend { font-size:.75em; gap:.55em .85em; margin:.7em 0 1em; }
+.museum-zone .mobility-legend i { border:0; width:1.2em; height:.8em; }
+.mobility-legend-continuous { display:block!important; }
+.mobility-colour-ramp { width:100%; height:12px; border-radius:20px; }
+.mobility-legend-ticks { display:flex; justify-content:space-between; margin-top:.5em; color:#d0d9dc; font-variant-numeric:tabular-nums; }
+.museum-zone p.mobility-story-reading { font-size:.77em; line-height:1.5; color:#aab8c0; }
+.museum-zone p.mobility-story-prompt { color:#ddede5; font-size:.83em; padding:.85em 0; border-top:1px solid #ffffff24; margin:1em 0 .5em; }
+.museum-zone .mobility-story-footnote { font-size:.66em; line-height:1.5; color:#8e9ca7; }
+.mobility-story-credits { display:flex!important; flex-wrap:wrap; gap:.8em; margin-top:.7em; }
+.mobility-story-credits a { color:#8eaaa9; text-decoration:none; font-size:.85em; }
+.museum-zone-right.has-mobility-story { display:flex; flex-direction:column; }
+.museum-zone-right.has-mobility-story .museum-right-stories { order:-1; margin-bottom:1.8em; }
+.mobility-walking-speeds { display:flex; gap:1.2em; margin:1.1em 0; font-size:.82em; }
+.mobility-walking-speeds strong { font-size:1.8em; letter-spacing:-.04em; }
+.mobility-walking-speeds small { display:block; font-size:.8em; color:#aebbbf; margin-top:.3em; }
+.mobility-walk-medium { color:#2dd4bf; }.mobility-walk-slow { color:#fb923c; }
+.mobility-connection-steps { display:flex; gap:.3em; margin:1em 0; font-size:.72em; color:#f2d990; }
+.mobility-connection-steps span+span:before { content:'→'; padding-right:.3em; color:#72828f; }
+.mobility-arrivals { display:flex; gap:1em; margin:1em 0; }
+.mobility-arrivals>div { display:flex; flex:1; flex-direction:column; }
+.mobility-arrivals strong { font-size:2em; font-variant-numeric:tabular-nums; line-height:1.2; }
+.mobility-arrivals span { font-size:.7em; color:#adbcc5; }
+.mobility-arrival-medium { color:#2dd4bf; }.mobility-arrival-slow { color:#fb923c; }
+
+.mobility-controls .mobility-insight { display:flex; align-items:center; gap:16px; padding:16px 0; border-block:1px solid #80959d44; margin:16px 0; }
+.mobility-controls .mobility-insight strong { font-size:36px; line-height:1; letter-spacing:-.04em; white-space:nowrap; font-variant-numeric:tabular-nums; }
+.mobility-controls .mobility-insight span { font-size:14px; line-height:1.4; max-width:220px; }
+.mobility-controls .mobility-control-prompt { padding:12px 14px; background:#55c4b815; border-left:3px solid #55c4b8; }
+.mobility-controls .mobility-model-note { margin:20px 0; font-size:14px; }
+.mobility-controls .mobility-model-note summary { cursor:pointer; padding:12px 0; font-weight:600; }

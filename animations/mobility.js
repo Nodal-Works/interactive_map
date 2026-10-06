@@ -8,19 +8,25 @@
   for(const [id,definition] of Object.entries(core.DEFINITIONS)){
     const key=definition.key,prefix=key==='synthpop'?'synthpop-':'slow-walkers-';
     let active=false,revision=0,abort=null,frame=null,last=null,elapsed=0,lastDraw=0,lastPublish=0;
-    let data=null,districts=null,journeys=null,error=null,canvas=null,context=null,projected=null;
+    let data=null,districts=null,journeys=null,error=null,canvas=null,context=null,projected=null,shading=null,displayData=null;
     const state={...definition,key,active:false,ready:false,view:'heatmap',playing:false,timeSeconds:0,duration:0,rate:120,departure:-1,arrivals:{medium:0,slow:0}};
-    const source=prefix+'cells',fill=prefix+'fill';
+    const source=prefix+'cells',fill=prefix+'fill',surface=prefix+'surface',imageSource=prefix+'shading';
     function snapshot(){return {...state,active,error,arrivals:{...state.arrivals}};}
     function publish(){const value=snapshot();channel.postMessage({type:key+'_state',...value});window.dispatchEvent(new CustomEvent('mr-mobility-state',{detail:{id,...value}}));}
     function stopFrames(){if(frame!==null)window.MR_FRAMES.cancel(frame);frame=null;last=null;}
     function schedule(){if(active&&state.playing&&!document.hidden&&frame===null)frame=window.MR_FRAMES.request(key,tick);}
     function cells(){
       if(!data||!viewMap.getSource(source))return;
-      const collection=key==='synthpop'?data:{type:'FeatureCollection',features:data.features.map(f=>({...f,properties:{delay:f.properties.values[state.departure+1]}}))};
+      const collection=key==='synthpop'?(displayData||=core.displayCells(data)):{type:'FeatureCollection',features:data.features.map(f=>({...f,properties:{delay:f.properties.values[state.departure+1]}}))};
       viewMap.getSource(source).setData(collection);
       viewMap.setFilter(fill,['!=',['get','delay'],null]);
       viewMap.setLayoutProperty(fill,'visibility',active&&(key!=='synthpop'||state.view==='heatmap')?'visible':'none');
+      if(shading){
+        const image=shading.image(state.departure+1);
+        if(viewMap.getSource(imageSource))viewMap.getSource(imageSource).updateImage(image);
+        else {viewMap.addSource(imageSource,{type:'image',...image});viewMap.addLayer({id:surface,type:'raster',source:imageSource,paint:{'raster-opacity':.72,'raster-fade-duration':0,'raster-resampling':'linear'}});}
+        viewMap.setLayoutProperty(fill,'visibility','none');viewMap.setLayoutProperty(surface,'visibility',active?'visible':'none');
+      }
       if(key==='slow_walkers'){
         const index=state.departure+1;
         state.maximumDistrict=districts.features.map(f=>({name:f.properties.name,value:f.properties.values[index]}))
@@ -39,7 +45,8 @@
     function drawJourneys(){
       if(!context||!projected)return;
       context.clearRect(0,0,canvas.width,canvas.height);
-      canvas.hidden=!active||state.view!=='journeys';if(canvas.hidden)return;
+      canvas.hidden=!active;if(canvas.hidden)return;
+      if(state.view!=='journeys'){drawDestination();return;}
       const scale=window.mrTableScale?.()??1;
       for(const walker of ['slow','medium']){
         context.strokeStyle=walker==='medium'?'#2dd4bf':'#fb923c';context.lineWidth=Math.max(.5,scale*.65);context.globalAlpha=.14;
@@ -52,12 +59,24 @@
         const medium=track.walker==='medium',radius=Math.max(2.5,scale*(medium?2.3:3.3));
         context.beginPath();context.arc(x,y,radius,0,Math.PI*2);context.fillStyle=medium?'#2dd4bf':'#fb923c';context.fill();
         context.strokeStyle=medium?'#143b38':'#fff';context.lineWidth=Math.max(.7,scale*.6);context.stroke();
+        if(p.waiting){context.beginPath();context.arc(x,y,radius+Math.max(2,scale*1.7),0,Math.PI*2);context.strokeStyle=medium?'#2dd4bf':'#fb923c';context.lineWidth=1;context.stroke();}
       }
-      const destination=data.metadata.destination.coordinates,t=window.getTableLayout(),r=window.map.getContainer().getBoundingClientRect(),p=window.map.project(destination);
-      const x=p.x+r.left-t.left,y=p.y+r.top-t.top;
-      context.fillStyle='#fff';context.strokeStyle='#111';context.lineWidth=2;context.beginPath();context.arc(x,y,Math.max(4,scale*4),0,Math.PI*2);context.fill();context.stroke();
+      drawDestination();
       window.MR_FRAMES.recordRender(key);
     }
+    function drawDestination(){
+      const destination=data.metadata.destination.coordinates,t=window.getTableLayout(),r=window.map.getContainer().getBoundingClientRect(),p=window.map.project(destination);
+      const x=p.x+r.left-t.left,y=p.y+r.top-t.top,scale=window.mrTableScale?.()??1;
+      if(x<0||y<0||x>canvas.width||y>canvas.height)return;
+      context.globalAlpha=1;context.fillStyle='#fff';context.strokeStyle='#132b35';context.lineWidth=3;
+      context.beginPath();context.arc(x,y,Math.max(5,scale*5),0,Math.PI*2);context.fill();context.stroke();
+      if(context.fillText){
+        context.font='600 13px system-ui';const text='Sahlgrenska',w=context.measureText(text).width+16;
+        const left=Math.max(0,Math.min(canvas.width-w,x+12)),top=Math.max(0,Math.min(canvas.height-27,y-14));
+        context.fillStyle='#102b32ee';context.fillRect(left,top,w,27);context.fillStyle='#eef8f3';context.fillText(text,left+8,top+18);
+      }
+    }
+
     function tick(now){
       frame=null;if(!active||!state.playing||document.hidden)return;
       const dt=last===null?0:Math.min(.1,(now-last)/1000);last=now;
@@ -71,7 +90,7 @@
       if(now-lastPublish>=1000||!state.playing){lastPublish=now;publish();}schedule();
     }
     async function load(file){const response=await fetch(window.mrAsset('media/mobility/'+file),{signal:abort.signal});if(!response.ok)throw Error('Prepared mobility data is unavailable');return response.json();}
-    function disable(){revision++;abort?.abort();abort=null;active=false;state.playing=false;stopFrames();if(viewMap.getLayer(fill))viewMap.setLayoutProperty(fill,'visibility','none');if(canvas){context.clearRect(0,0,canvas.width,canvas.height);canvas.hidden=true;}publish();}
+    function disable(){revision++;abort?.abort();abort=null;active=false;state.playing=false;stopFrames();if(viewMap.getLayer(fill))viewMap.setLayoutProperty(fill,'visibility','none');if(viewMap.getLayer(surface))viewMap.setLayoutProperty(surface,'visibility','none');if(canvas){context.clearRect(0,0,canvas.width,canvas.height);canvas.hidden=true;}publish();}
     async function enable(current){
       const generation=++revision;error=null;abort=new AbortController();
       try{
@@ -81,7 +100,7 @@
           else [data,districts]=await Promise.all([load('slow-walkers.geojson'),load('districts.geojson')]);
         }
         if(!current()||generation!==revision)return;
-        const meta=data.metadata;state.ready=true;state.legendMode=meta.legendMode||'bands';state.legend=core.legend(meta.bins,meta.colors,state.legendMode);state.statistics=meta;
+        const meta=data.metadata;state.ready=true;state.legendMode=meta.legendMode||'bands';state.legend=core.legend(meta.bins,core.palette(key,meta),state.legendMode);state.statistics=meta;
         state.description=meta.explanation||definition.description;state.note=meta.note||core.note({...state,note:null});
         state.routingDate=meta.routingDate;state.sampling=meta.sampling;state.districtScope=meta.districtScope;
         if(key==='synthpop'){
@@ -89,14 +108,15 @@
           state.journeysAvailable=state.duration>0&&journeys.tracks.some(track=>track.walker==='medium'&&track.legs.length)&&journeys.tracks.some(track=>track.walker==='slow'&&track.legs.length);
           state.journeyUnavailableReason=state.journeysAvailable?'':'No complete paired journeys lose more than one minute.';
           if(!state.journeysAvailable){state.view='heatmap';state.playing=false;state.timeSeconds=0;stopFrames();}
-          if(!canvas){canvas=document.createElement('canvas');canvas.id='synthpop-journey-canvas';canvas.setAttribute('aria-hidden','true');canvas.style.cssText='position:fixed;pointer-events:none;z-index:15';canvas.hidden=true;document.body.append(canvas);context=canvas.getContext('2d');placeCanvas();}
+          if(!canvas){canvas=document.createElement('canvas');canvas.id='synthpop-journey-canvas';canvas.setAttribute('aria-hidden','true');canvas.style.cssText='position:fixed;pointer-events:none;z-index:850';canvas.hidden=true;document.body.append(canvas);context=canvas.getContext('2d');placeCanvas();}
         }else Object.assign(state,{departures:meta.departures,completedDepartures:meta.completedDepartures,plannedDepartures:meta.plannedDepartures,routingDate:meta.routingDate});
         if(!viewMap.getSource(source))viewMap.addSource(source,{type:'geojson',data:empty()});
         if(!viewMap.getLayer(fill)){
-          const paint={'fill-color':core.colorExpression(meta.bins,meta.colors,state.legendMode),'fill-opacity':.72};
-          if(key==='synthpop')paint['fill-outline-color']='rgba(255,255,255,.08)';else paint['fill-antialias']=false;
+          const paint={'fill-color':core.colorExpression(meta.bins,core.palette(key,meta),state.legendMode),'fill-opacity':key==='synthpop'?.86:.62};
+          if(key==='slow_walkers')paint['fill-antialias']=false;
           viewMap.addLayer({id:fill,type:'fill',source,filter:['!=',['get','delay'],null],paint});
         }
+        if(key==='slow_walkers'&&!shading)shading=window.MR_MOBILITY_RASTER?.create(data.features,meta,core.palette(key,meta));
         active=true;cells();drawJourneys();publish();
       }catch(e){if(e.name==='AbortError'||generation!==revision)return;error=e.message;throw e;}
     }
@@ -122,7 +142,7 @@
     window.addEventListener('mr-museum-presentation',()=>{if(canvas)canvas.style.opacity=String(window.MR_MUSEUM?.getState().config.opacity[id]??1);});
     instances[key]={getState:snapshot,control};
     window.MR_LAYERS.register(id,{getEnabled:()=>active,enable,disable,isReady:()=>state.ready,getError:()=>error,
-      dispose(){stopFrames();abort?.abort();window.map.off('moveend',placeCanvas);window.removeEventListener('resize',placeCanvas);canvas?.remove();if(viewMap.getLayer(fill))viewMap.removeLayer(fill);if(viewMap.getSource(source))viewMap.removeSource(source);}});
+      dispose(){stopFrames();abort?.abort();window.map.off('moveend',placeCanvas);window.removeEventListener('resize',placeCanvas);canvas?.remove();shading?.dispose();shading=null;if(viewMap.getLayer(surface))viewMap.removeLayer(surface);if(viewMap.getSource(imageSource))viewMap.removeSource(imageSource);if(viewMap.getLayer(fill))viewMap.removeLayer(fill);if(viewMap.getSource(source))viewMap.removeSource(source);}});
   }
   window.MR_MOBILITY=instances;window.addEventListener('pagehide',()=>channel.close(),{once:true});
 })();

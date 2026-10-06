@@ -10,6 +10,7 @@
       this.departure=null;this.departureSignature=null;this.time=null;this.signature=null;
       this.container.classList.add('mobility-controls');
       this.description=element('p',this.definition.description);this.container.append(element('h3',this.definition.question),this.description);
+      this.insight=element('div');this.insight.className='mobility-insight';this.container.append(this.insight);
       this.summary=element('p','Preparing the exhibit data…');this.summary.setAttribute('role','status');this.container.append(this.summary);
       this.legend=element('div');this.legend.className='mobility-legend';this.container.append(this.legend);
       const send=(action,value)=>this.send({type:this.definition.key+'_control',action,...(value!==undefined?{value}:{})});
@@ -22,13 +23,17 @@
       }else this.departure=select('Departure time','departure','set_departure',[[-1,'Average of available samples']]);
       const actions=element('div');actions.className='actions';
       for(const [text,action]of [['Play','play'],['Pause','pause'],...(this.definition.key==='synthpop'?[['Restart','restart']]:[])]){const b=element('button',text);b.type='button';b.dataset.action=action;b.onclick=()=>send(action);this.buttons.push(b);actions.append(b);}this.container.append(actions);
-      this.note=element('p',this.definition.note);this.container.append(this.note);
+      this.prompt=element('p');this.prompt.className='mobility-control-prompt';this.container.append(this.prompt);
+      this.note=element('p',this.definition.note);const about=element('details');about.className='mobility-model-note';about.append(element('summary','About this model'),this.note);this.container.append(about);
       const credits=element('small');for(const [title,url]of [['Research and routing data','https://github.com/SaraAboebeid/slow_walkers'],['Synthetic population','https://zenodo.org/records/10801936']]){const a=element('a',title);a.href=url;a.target='_blank';a.rel='noopener';credits.append(a,document.createTextNode(' · '));}this.container.append(credits);
     }
     update(state,canEdit){
       const current=state||{},ready=!!current.ready;
       const unavailable=current.key==='synthpop'&&current.journeysAvailable===false;
+      const story=core.story({...current,key:current.key||this.definition.key});
       this.description.textContent=current.description||this.definition.description;
+      this.insight.replaceChildren(element('strong',story.metric),element('span',story.metricLabel));this.insight.hidden=!ready||!!current.error;
+      this.prompt.textContent=story.prompt;
       this.note.textContent=core.note({...current,key:current.key||this.definition.key});
       this.summary.textContent=current.error||core.summary(current);
       if(this.departure&&ready&&Array.isArray(current.departures)&&this.departureSignature!==JSON.stringify(current.departures)){this.departureSignature=JSON.stringify(current.departures);this.departure.replaceChildren(new Option('Average of available samples',-1),...current.departures.map((t,i)=>new Option(t,i)));}

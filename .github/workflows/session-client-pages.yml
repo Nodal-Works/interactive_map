@@ -51,6 +51,7 @@ jobs:
               fi
               if [ "$branch" = universeum ]; then
                 node scripts/test_mobility.cjs
+                node scripts/test_mobility_raster.cjs
                 node scripts/test_universeum_controls.cjs
               fi
             )

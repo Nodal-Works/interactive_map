@@ -114,3 +114,10 @@
 .mobility-legend i{display:inline-block;width:22px;height:16px;border:1px solid #777;border-radius:3px}
 
 .mobility-controls [hidden] { display: none !important; }
+
+.mobility-controls .mobility-insight { display:flex; align-items:center; gap:16px; padding:16px 0; border-block:1px solid #80959d44; margin:16px 0; }
+.mobility-controls .mobility-insight strong { font-size:36px; line-height:1; letter-spacing:-.04em; white-space:nowrap; font-variant-numeric:tabular-nums; }
+.mobility-controls .mobility-insight span { font-size:14px; line-height:1.4; max-width:220px; }
+.mobility-controls .mobility-control-prompt { padding:12px 14px; background:#55c4b815; border-left:3px solid #55c4b8; }
+.mobility-controls .mobility-model-note { margin:20px 0; font-size:14px; }
+.mobility-controls .mobility-model-note summary { cursor:pointer; padding:12px 0; font-weight:600; }
