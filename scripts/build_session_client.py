@@ -32,7 +32,7 @@ def build():
                      'media/logo-InfraVis-lightTextimage.png', 'media/logo-gbg.svg'):
         copy(relative)
     for path in (ROOT / 'media/artwork').glob('*'):
-        if path.suffix in ('.svg', '.json'):
+        if path.suffix in ('.svg', '.json', '.webp'):
             copy(str(path.relative_to(ROOT)))
     controller = (ROOT / 'controller.html').read_text()
     controller = re.sub(r'\s*<script src="calibration-config\.js(?:\?[^"]*)?"></script>', '', controller)

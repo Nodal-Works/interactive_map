@@ -3,10 +3,10 @@
   const C=window.ArtworkCore,channel=new BroadcastChannel('map_controller_channel');
   const canvas=document.createElement('canvas');canvas.id='artwork-canvas';canvas.hidden=true;document.body.append(canvas);
   const ctx=canvas.getContext('2d'),hud=document.createElement('div');hud.id='artwork-hud';hud.hidden=true;
-  hud.innerHTML='<div class="artwork-caption"><span id="artwork-chapter">Artwork</span><span>Vishvi Rajakaruna</span></div><div id="artwork-hint">Click to reveal · M to magnify</div><div class="artwork-controls"><button data-artwork="previous" aria-label="Previous chapter">Back</button><button data-artwork="next">Next</button><button data-artwork="restart">Replay</button><button data-artwork="show_all">Show all</button><button data-artwork="retry" hidden>Retry</button><button data-artwork="stop">Close</button></div>';
+  hud.innerHTML='<div class="artwork-caption"><span id="artwork-chapter">Artwork</span><span>Vishvi Rajakaruna</span></div><div id="artwork-hint">Click to reveal · M to magnify</div><div class="artwork-controls"><button data-artwork="previous" aria-label="Previous chapter">Back</button><button data-artwork="next">Next</button><span class="artwork-appearance" role="group" aria-label="Artwork appearance"><button data-artwork="set_appearance" data-appearance="line" aria-pressed="true">Line</button><button data-artwork="set_appearance" data-appearance="colour" aria-pressed="false">Colour</button></span><button data-artwork="restart">Replay</button><button data-artwork="show_all">Show all</button><button data-artwork="retry" hidden>Retry</button><button data-artwork="stop">Close</button></div>';
   document.body.append(hud);
   const media=matchMedia('(prefers-reduced-motion: reduce)');
-  const state={isActive:false,loading:false,error:null,chapter:0,artworkCount:C.count(),fromChapter:0,transitioning:false,startedAt:0,reducedMotion:media.matches,hover:0,lens:{enabled:false,pinned:false,x:.5,y:.5,zoom:3,diameter:600,span:600}};
+  const state={isActive:false,loading:false,error:null,chapter:0,artworkCount:C.count(),fromChapter:0,transitioning:false,startedAt:0,reducedMotion:media.matches,hover:0,colourError:null,colourAvailable:false,appearance:'line',colourFrom:0,colourStartedAt:0,colourDuration:0,lens:{enabled:false,pinned:false,x:.5,y:.5,zoom:3,diameter:600,span:600}};
   let scene=null,controller=null,generation=0,raf=0,transform=null,saved=[],latestPointer=0,pointerTimer=0,lastRender=0,dirty=true;
   const button=()=>document.getElementById('artwork-btn');
   function snapshot(){return {...state,lens:{...state.lens},sentAt:Date.now()};}
@@ -15,10 +15,12 @@
     button()?.classList.toggle('active',state.isActive);
     const mag=document.getElementById('artwork-magnifier-btn');if(mag){mag.hidden=!state.isActive;mag.classList.toggle('active',state.lens.enabled);mag.setAttribute('aria-pressed',String(state.lens.enabled));}
     document.getElementById('artwork-chapter').textContent=state.loading?'Preparing the drawing…':state.error?'Artwork unavailable':state.chapter===0?'Art in Lindholmen':state.chapter===C.finale(state)?`All ${C.count(state)} artworks`:`Artwork ${state.chapter} / ${C.count(state)}`;
-    document.getElementById('artwork-hint').textContent=state.error|| (state.lens.enabled?(state.lens.pinned?'Lens pinned · click to release':'Move to explore · click to pin') : state.chapter===C.finale(state)?'Hover to explore · M to magnify':'Click to reveal · M to magnify');
+    document.getElementById('artwork-hint').textContent=state.error|| (state.colourError?state.colourError:state.lens.enabled?(state.lens.pinned?'Lens pinned · click to release':'Move to explore · click to pin') : state.chapter===C.finale(state)?'Hover to explore · M to magnify':'Click to reveal · M to magnify');
     canvas.style.cursor=state.lens.enabled?'crosshair':'pointer';
-    hud.querySelector('[data-artwork="retry"]').hidden=!state.error;
-    for(const b of hud.querySelectorAll('[data-artwork]'))b.disabled= !['stop','retry'].includes(b.dataset.artwork)&&(state.loading||!!state.error||(state.transitioning&&['next','previous'].includes(b.dataset.artwork))||(b.dataset.artwork==='next'&&state.chapter===C.finale(state))||(b.dataset.artwork==='previous'&&state.chapter===0));
+    hud.querySelector('[data-artwork="retry"]').hidden=!state.error&&!state.colourError;
+    for(const b of hud.querySelectorAll('[data-artwork]')){b.disabled= !['stop','retry'].includes(b.dataset.artwork)&&(state.loading||!!state.error||(state.transitioning&&['next','previous'].includes(b.dataset.artwork))||(b.dataset.artwork==='next'&&state.chapter===C.finale(state))||(b.dataset.artwork==='previous'&&state.chapter===0));
+      if(b.dataset.artwork==='set_appearance'){b.disabled ||= !state.colourAvailable||state.chapter===0&&state.transitioning;const selected=b.dataset.appearance===state.appearance;b.classList.toggle('selected',selected);b.setAttribute('aria-pressed',String(selected));}
+    }
   }
   function resize(){if(!state.isActive)return;const dpr=Math.min(devicePixelRatio||1,2);canvas.width=Math.round(innerWidth*dpr);canvas.height=Math.round(innerHeight*dpr);dirty=true;project();schedule();}
   function project(){if(!scene||!window.map)return;const m=scene.manifest.registration.matrix,rect=map.getContainer().getBoundingClientRect();
@@ -47,15 +49,15 @@
       }
     }
     dirty=false;
-    if(state.lens.enabled&&!state.reducedMotion||now-(state.hoverStartedAt||0)<450)schedule();
+    if(state.lens.enabled&&!state.reducedMotion||f.colourAnimating||now-(state.hoverStartedAt||0)<450)schedule();
     if(state.transitioning){if(f.done){state.transitioning=false;publish();}else schedule();}
   }
   function setLayer(id,on){if(window.MR_ADAPTER)MR_ADAPTER.setLayer(id,on);else {const b=document.getElementById(id);if(b&&b.classList.contains('active')!==on)b.click();}}
   function suspend(){saved=(window.MR?.LAYERS||[]).filter(l=>l.id!=='artwork-btn'&&(window.MR_ADAPTER?.active[l.id]||document.getElementById(l.id)?.classList.contains('active'))).map(l=>l.id);for(const id of saved)setLayer(id,false);window.streetLifeAnimation?.stop();}
-  async function start(){if(state.isActive)return;state.isActive=true;state.loading=true;state.error=null;state.chapter=state.fromChapter=0;state.transitioning=false;state.lens.enabled=false;state.lens.pinned=false;
+  async function start(){if(state.isActive)return;state.isActive=true;state.loading=true;state.error=null;state.chapter=state.fromChapter=0;state.transitioning=false;state.colourError=null;state.colourAvailable=false;state.appearance='line';state.colourFrom=state.colourDuration=0;state.lens.enabled=false;state.lens.pinned=false;
     button()?.classList.add('active');document.body.classList.add('artwork-presenting');suspend();canvas.hidden=hud.hidden=false;bind();resize();channel.postMessage({type:'animation_state',animationId:'artwork-btn',isActive:true});publish();await load();}
-  async function load(){const own=++generation;controller?.abort();controller=new AbortController();state.loading=true;state.error=null;publish();schedule();
-    try{scene=scene||await C.Scene.load(controller.signal);if(own!==generation||!state.isActive)return;state.artworkCount=scene.manifest.items.length;state.loading=false;state.startedAt=Date.now();state.transitioning=true;project();publish();schedule();}
+  async function load(){const own=++generation;controller?.abort();controller=new AbortController();state.loading=true;state.error=null;state.colourError=null;publish();schedule();
+    try{scene=scene&&!(scene.manifest.colour&&!scene.colour)?scene:await C.Scene.load(controller.signal);if(own!==generation||!state.isActive)return;state.artworkCount=scene.manifest.items.length;state.loading=false;state.startedAt=Date.now();state.transitioning=true;state.colourAvailable=!!scene.colour;state.colourError=scene.manifest.colour&&!scene.colour?'Colour unavailable · line artwork is ready':null;C.resetColour(state,state.startedAt);project();publish();schedule();}
     catch(e){if(own!==generation||!state.isActive||e.name==='AbortError')return;state.loading=false;state.error='The artwork could not load. Please retry.';publish();schedule();}
   }
   function stop(exclude){if(!state.isActive)return;state.isActive=false;++generation;controller?.abort();cancelAnimationFrame(raf);raf=0;state.loading=false;state.transitioning=false;state.lens.enabled=false;canvas.hidden=hud.hidden=true;unbind();ctx.clearRect(0,0,canvas.width,canvas.height);button()?.classList.remove('active');document.body.classList.remove('artwork-presenting');channel.postMessage({type:'animation_state',animationId:'artwork-btn',isActive:false});publish();
@@ -64,7 +66,8 @@
     if(action==='request_state'){publish();return;}
     if(!state.isActive)return;
     if(action==='stop'){stop();return;}if(action==='retry'){load();return;}
-    if(action==='set_lens'){state.lens.enabled=!!value;state.lens.pinned=false;state.lens.changedAt=Date.now();}
+    if(action==='set_appearance'){if(!C.setAppearance(state,value,Date.now()))return;}
+    else if(action==='set_lens'){state.lens.enabled=!!value;state.lens.pinned=false;state.lens.changedAt=Date.now();}
     else if(action==='set_lens_position'){if(!state.lens.enabled||state.lens.pinned||!value||!Number.isFinite(value.x)||!Number.isFinite(value.y)||value.x<0||value.x>1||value.y<0||value.y>1)return;state.lens.x=value.x;state.lens.y=value.y;}
     else if(action==='set_zoom'){if(!Number.isFinite(value)||value<2||value>6)return;state.lens.zoom=value;project();}
     else if(action==='set_lens_diameter'){if(!Number.isFinite(value)||value<100||value>2160)return;state.lens.diameter=value;project();}
@@ -72,7 +75,8 @@
     else {
       if(state.loading||state.error||state.transitioning&&['next','previous'].includes(action))return;
       const chapter=action==='next'?state.chapter+1:action==='previous'?state.chapter-1:action==='restart'?0:action==='show_all'?C.finale(state):null;
-      if(chapter===null||!C.transition(state,chapter))return;
+      if(chapter===null||!C.transition(state,chapter,Date.now()))return;
+      if(action==='restart')C.resetColour(state,Date.now());
     }
     publish();dirty=true;schedule();
   }
@@ -91,9 +95,13 @@
   function bind(){canvas.addEventListener('pointermove',move);canvas.addEventListener('pointerleave',leave);canvas.addEventListener('click',click);window.addEventListener('keydown',keyboard,true);document.addEventListener('click',switching,true);window.addEventListener('resize',resize);document.addEventListener('visibilitychange',visibility);map.on('move',mapChanged);}
   function unbind(){clearTimeout(pointerTimer);pointerTimer=0;canvas.removeEventListener('pointermove',move);canvas.removeEventListener('pointerleave',leave);canvas.removeEventListener('click',click);window.removeEventListener('keydown',keyboard,true);document.removeEventListener('click',switching,true);window.removeEventListener('resize',resize);document.removeEventListener('visibilitychange',visibility);map.off('move',mapChanged);}
   channel.onmessage=({data})=>{if(data.type==='artwork_control'&&(!window.MR||MR.validControl(data)))control(data.action,data.value);};
-  hud.addEventListener('click',e=>{const b=e.target.closest('[data-artwork]');if(b)control(b.dataset.artwork);});
+  hud.addEventListener('click',e=>{const b=e.target.closest('[data-artwork]');if(b)control(b.dataset.artwork,b.dataset.appearance);});
   button()?.addEventListener('click',()=>{if(state.isActive)stop();else start().catch(error=>{console.error('Artwork activation failed',error);state.error=error.message;state.loading=false;publish();});});
   document.getElementById('artwork-magnifier-btn')?.addEventListener('click',()=>control('set_lens',!state.lens.enabled));
-  media.addEventListener('change',()=>{state.reducedMotion=media.matches;if(state.isActive){publish();schedule();}});
+  media.addEventListener('change',()=>{
+    const now=Date.now(),mix=C.colourFrame(state,now).colourMix;state.reducedMotion=media.matches;
+    if(state.reducedMotion){state.colourFrom=mix;state.colourDuration=0;state.colourStartedAt=state.chapter===0&&state.transitioning?Math.max(now,state.startedAt+C.duration(0,true)):now;}
+    if(state.isActive){publish();schedule();}
+  });
   window.artworkAnimation={start,stop,toggle:()=>state.isActive?stop():start(),control,getState:snapshot,isActive:()=>state.isActive};
 })();

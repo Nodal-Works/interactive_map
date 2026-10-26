@@ -310,5 +310,25 @@
     ],
     "rmsGroundMetres": 0.0772042918782684,
     "maxGroundMetres": 0.1453008829214315
+  },
+  "colour": "colour-3226c2c0c623.webp",
+  "colourSource": {
+    "source": "buildings - merged file with transparent background .pdf",
+    "sourceSha256": "e0517a83ab8479612d1334e391f8c2cbec2fea129039c4bb8a179bf3e70d38bc",
+    "pageSize": [
+      3367.43994140625,
+      2383.919921875
+    ],
+    "pixelSize": [
+      6740,
+      4768
+    ],
+    "artboardSize": [
+      3370.0,
+      2384.0
+    ],
+    "alignment": "normalized-to-line-artboard",
+    "alpha": true,
+    "imageSha256": "3226c2c0c623c372ca77cbecebe080851651e8dcc05301ad53485ddeded2e6ec"
   }
 }

@@ -38,6 +38,7 @@
       ['comfort-streets','Show streets on table','checkbox','showStreets','show_streets',true]
     ],actions:[['Clear route','clear_route'],['Play tour','tour_play'],['Pause tour','tour_pause'],['Previous','tour_back'],['Next','tour_next'],['End tour','tour_end']]},
     'artwork-btn':{state:'artwork',type:'artwork_control',fields:[
+      ['artwork-appearance','Artwork appearance','select','appearance','set_appearance',['line','colour'],'line'],
       ['artwork-lens','Magnifier on dashboard','checkbox','lensEnabled','set_lens',false],
       ['artwork-pin','Pin magnifier','checkbox','lensPinned','pin_lens',false],
       ['artwork-zoom','Magnification','range','zoom','set_zoom',2,6,.25,3,'×']
@@ -85,11 +86,11 @@
       }
       for(const button of this.element.querySelectorAll('button'))button.disabled=!canEdit;
       if(this.layer==='artwork-btn') {
-        for(const {input}of this.inputs){input.disabled ||= !values.isActive||values.loading||!!values.error||(input.id!=='artwork-lens'&&!values.lensEnabled);}
-        this.artworkStatus.textContent=values.error|| (values.loading?'Preparing artwork…':!values.isActive?'Turn on Artwork to begin':values.chapter===(values.artworkCount??10)+1?`All ${values.artworkCount??10} artworks`:values.chapter?`Artwork ${values.chapter} / ${values.artworkCount??10}`:'Art in Lindholmen');
+        for(const {input}of this.inputs){input.disabled ||= !values.isActive||values.loading||!!values.error||(input.id==='artwork-appearance'?(!values.colourAvailable||values.chapter===0&&values.transitioning):input.id!=='artwork-lens'&&!values.lensEnabled);}
+        this.artworkStatus.textContent=values.error|| (values.loading?'Preparing artwork…':!values.isActive?'Turn on Artwork to begin':values.colourError?values.colourError:values.chapter===(values.artworkCount??10)+1?`All ${values.artworkCount??10} artworks`:values.chapter?`Artwork ${values.chapter} / ${values.artworkCount??10}`:'Art in Lindholmen');
         for(const button of this.element.querySelectorAll('[data-action]')){
           const action=button.dataset.action;
-          button.hidden=action==='retry'&&!values.error;
+          button.hidden=action==='retry'&&!values.error&&!values.colourError;
           button.disabled=!canEdit||!values.isActive||values.loading||!!values.error&&action!=='retry'||values.transitioning&&['next','previous'].includes(action)||action==='next'&&values.chapter===(values.artworkCount??10)+1||action==='previous'&&values.chapter===0;
         }
       }

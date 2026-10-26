@@ -1,6 +1,6 @@
 (function(root) {
   'use strict';
-  const RELEASE = '20260928-lindholmen-coolpaths-inputs-1';
+  const RELEASE = '20261026-lindholmen-artwork-colour-1';
   const LAYERS = [
     ['cfd-simulation-btn', 'Wind · CFD', 'Environment', '🌬', 'obstacle'],
     ['stormwater-btn', 'Stormwater', 'Environment', '💧'],
@@ -20,7 +20,7 @@
     ['canvas-btn', 'Canvas', 'Create', '✎', 'pen']
   ].filter(([id]) => !(root.APP_CONFIG?.disabledLayers || []).includes(id)).map(([id, name, group, icon, tool]) => ({id, name, group, icon, tool}));
   const ACTIONS = {
-    artwork_control: 'next previous restart show_all request_state retry stop set_lens set_zoom pin_lens set_lens_diameter set_lens_position',
+    artwork_control: 'next previous restart show_all request_state retry stop set_lens set_zoom pin_lens set_lens_diameter set_lens_position set_appearance',
     cultural_gravity_control: 'advance request_state',
     cfd_control: 'get_state set_wind_speed set_wind_direction set_viscosity set_resolution toggle_trees set_particles set_visual_style set_facade_glow set_color_palette set_color_range set_particle_speed',
     thermal_control: 'request_state clear_route set_mode tour_play tour_pause tour_step tour_next tour_back tour_end tour_explore tour_layer set_hour show_raster show_streets',
@@ -42,6 +42,7 @@
     if (!ACTIONS[message.type]?.split(' ').includes(message.action)) return false;
     const v = message.value;
     if (message.type === 'artwork_control') {
+      if (message.action === 'set_appearance') return v === 'line' || v === 'colour';
       if (message.action === 'set_lens_position') return !!v && typeof v === 'object' && !Array.isArray(v) && Object.keys(v).length === 2 && ['x','y'].every(k => typeof v[k] === 'number' && Number.isFinite(v[k]) && v[k] >= 0 && v[k] <= 1);
       if (['set_lens','pin_lens'].includes(message.action)) return typeof v === 'boolean';
       if (message.action === 'set_zoom') return typeof v === 'number' && Number.isFinite(v) && v >= 2 && v <= 6;

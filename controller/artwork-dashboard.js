@@ -7,25 +7,25 @@
   const send=(action,value)=>{if(action==='request_state'||canControl())channel.postMessage({type:'artwork_control',action,...(value===undefined?{}:{value})});};
   function paint(now){frame=0;if(!visible||document.hidden||!scene||!state?.isActive)return;
     const canvas=document.getElementById('artwork-dashboard-view');if(!canvas)return;
-    const time=Date.now()+clockOffset;
+    const time=Date.now()+clockOffset,colourAnimating=C.colourFrame(state,time).colourAnimating;
     if(state.lens.enabled){
       if(!lens)lens=new C.Lens(canvas);
       if(now-lastDraw>32||state.reducedMotion){lens.draw(scene,state,time);lastDraw=now;}
       if(clientMode)drawNavigator(time);
-      if(!state.reducedMotion||state.transitioning)schedule();
+      if(!state.reducedMotion||state.transitioning||colourAnimating)schedule();
     }else{
       if(lens){lens.dispose();lens=null;}
       const r=canvas.getBoundingClientRect(),dpr=Math.min(devicePixelRatio||1,2),w=Math.round(r.width*dpr),h=Math.round(r.height*dpr);
       if(canvas.width!==w||canvas.height!==h){canvas.width=w;canvas.height=h;}
       const ctx=canvas.getContext('2d'),scale=Math.min(w/C.W,h/C.H);ctx.setTransform(1,0,0,1,0,0);ctx.fillStyle='#000';ctx.fillRect(0,0,w,h);ctx.setTransform(scale,0,0,scale,(w-C.W*scale)/2,(h-C.H*scale)/2);scene.draw(ctx,state,time);
-      if(state.transitioning||time-(state.hoverStartedAt||0)<450)schedule();
+      if(state.transitioning||colourAnimating||time-(state.hoverStartedAt||0)<450)schedule();
     }
   }
   function drawNavigator(time){
     const canvas=document.getElementById('artwork-navigator');if(!canvas||!scene)return;
     const w=Math.round(canvas.getBoundingClientRect().width*Math.min(devicePixelRatio||1,2)),h=Math.round(w*C.H/C.W);if(!w)return;
     if(canvas.width!==w||canvas.height!==h){canvas.width=w;canvas.height=h;navigatorKey='';}
-    const key=[w,h,state.chapter,state.fromChapter,state.startedAt,state.hover,state.transitioning?time:0].join(':');
+    const key=[w,h,state.chapter,state.fromChapter,state.startedAt,state.hover,state.appearance,state.colourFrom,state.colourStartedAt,state.colourDuration,state.transitioning||C.colourFrame(state,time).colourAnimating?time:0].join(':');
     navigatorBase ||= document.createElement('canvas');
     if(navigatorKey!==key){navigatorBase.width=w;navigatorBase.height=h;const c=navigatorBase.getContext('2d');c.fillStyle='#000';c.fillRect(0,0,w,h);c.scale(w/C.W,h/C.H);scene.draw(c,state,time);navigatorKey=key;}
     const c=canvas.getContext('2d');c.clearRect(0,0,w,h);c.drawImage(navigatorBase,0,0);c.strokeStyle='#ffe0a6';c.lineWidth=1.5*(devicePixelRatio||1);c.beginPath();c.arc(state.lens.x*w,state.lens.y*h,state.lens.span*w/C.W/2,0,Math.PI*2);c.stroke();
@@ -50,11 +50,12 @@
     const active=!!state?.isActive,enabled=active&&state.lens.enabled;panel.classList.toggle('lens-active',enabled);
     const title=document.getElementById('artwork-dashboard-title'),status=document.getElementById('artwork-dashboard-status');
     title.textContent=enabled?'Look closer':state?.chapter===C.finale(state)?'The complete composition':state?.chapter?`Artwork ${state.chapter}`:'Art in Lindholmen';
-    status.textContent=state?.error||(!active?'Turn on Artwork to begin':state.loading?'Preparing Vishvi’s drawing…':enabled?(state.lens.pinned?(clientMode?'Pinned · tap Unpin to explore':'Pinned · click the map to release'):(clientMode?'Drag across the drawing below to explore':'Move across the map · click to pin')):'A study of art, architecture and visibility');
+    status.textContent=state?.error||(!active?'Turn on Artwork to begin':state.loading?'Preparing Vishvi’s drawing…':state.colourError||scene?.manifest?.colour&&!scene.colour?'Colour unavailable · line artwork is ready':enabled?(state.lens.pinned?(clientMode?'Pinned · tap Unpin to explore':'Pinned · click the map to release'):(clientMode?'Drag across the drawing below to explore':'Move across the map · click to pin')):'A study of art, architecture and visibility');
     for(const b of panel.querySelectorAll('[data-artwork-action]')){
       const action=b.dataset.artworkAction;b.disabled=!active||state.loading||!!state.error;
       if(['next','previous'].includes(action))b.disabled ||= state.transitioning||action==='next'&&state.chapter===C.finale(state)||action==='previous'&&state.chapter===0;
-      if(action==='retry'){b.hidden=!state?.error;b.disabled=!active;}
+      if(action==='set_appearance'){b.disabled ||= !state.colourAvailable||!!scene&&!scene.colour||state.chapter===0&&state.transitioning;const selected=b.dataset.appearance===state?.appearance;b.classList.toggle('selected',selected);b.setAttribute('aria-pressed',String(selected));}
+      if(action==='retry'){b.hidden=!state?.error&&!state?.colourError&&!(scene?.manifest?.colour&&!scene.colour);b.disabled=!active||state.loading;}
       if(action==='set_lens'){b.classList.toggle('selected',enabled);b.setAttribute('aria-pressed',String(enabled));}
       if(action==='pin_lens'){b.hidden=!enabled;b.textContent=state?.lens.pinned?'Unpin':'Pin';}
     }
@@ -71,7 +72,7 @@
     if(active&&!scene&&!load)loadAssets();
     schedule();measure();
   }
-  async function loadAssets(){load=new AbortController();const own=load;try{const result=await C.Scene.load(own.signal);if(load!==own)return;scene=result;schedule();}catch(e){if(e.name!=='AbortError'&&visible){document.getElementById('artwork-dashboard-status').textContent='Dashboard artwork could not load. Retry to reconnect.';const b=document.querySelector('[data-artwork-action="retry"]');b.hidden=false;b.disabled=false;}}finally{if(load===own)load=null;}}
+  async function loadAssets(){load=new AbortController();const own=load;try{const result=await C.Scene.load(own.signal);if(load!==own)return;scene=result;refresh();}catch(e){if(e.name!=='AbortError'&&visible){document.getElementById('artwork-dashboard-status').textContent='Dashboard artwork could not load. Retry to reconnect.';const b=document.querySelector('[data-artwork-action="retry"]');b.hidden=false;b.disabled=false;}}finally{if(load===own)load=null;}}
   function measure(){if(clientMode||!visible||!state?.lens.enabled)return;const canvas=document.getElementById('artwork-dashboard-view'),diameter=Math.round(canvas.getBoundingClientRect().width);if(diameter>=100&&diameter<=2160&&Math.abs(diameter-measuredDiameter)>2){measuredDiameter=diameter;send('set_lens_diameter',diameter);}}
   function show(){if(visible&&document.getElementById('artwork-dashboard')){refresh();send('request_state');return;}if(visible)hide();visible=true;measuredDiameter=0;
     document.getElementById('main-panel').classList.add('artwork-mode');
@@ -84,12 +85,13 @@
       <div class="artwork-chapters" aria-label="Artwork chapters">${Array.from({length:C.count(state)},(_,i)=>`<span title="Artwork ${i+1}"></span>`).join('')}</div>
       <div class="artwork-dashboard-controls"><button data-artwork-action="previous">Back</button><button data-artwork-action="next">Next <span aria-hidden="true">→</span></button><button data-artwork-action="set_lens" aria-pressed="false"><span class="material-icons" aria-hidden="true">search</span> Magnifier</button><button data-artwork-action="pin_lens" hidden>Pin</button></div>
       <div class="artwork-zoom" hidden><label for="artwork-zoom">Magnification</label><input id="artwork-zoom" type="range" min="2" max="6" step=".25" value="3"><output id="artwork-zoom-value">3×</output></div>
+      <div class="artwork-appearance" role="group" aria-label="Artwork appearance"><button data-artwork-action="set_appearance" data-appearance="line" aria-pressed="true">Line</button><button data-artwork-action="set_appearance" data-appearance="colour" aria-pressed="false">Colour</button></div>
       <div class="artwork-secondary-controls"><button data-artwork-action="restart">Replay</button><button data-artwork-action="show_all">Show all</button><button data-artwork-action="retry" hidden>Retry</button></div>
       <p class="artwork-credit">Artwork and visibility studies by <strong>Vishvi Rajakaruna</strong></p></div>`;
     document.getElementById('legend-content').textContent=`Original architectural linework and ${C.count(state)} artwork visibility studies.`;
     const panel=document.getElementById('artwork-dashboard');panel.addEventListener('click',e=>{const b=e.target.closest('[data-artwork-action]');if(!b)return;const a=b.dataset.artworkAction;
-      if(a==='retry'){load?.abort();load=null;scene=null;loadAssets();if(state?.error)send('retry');}
-      else send(a,a==='set_lens'?!state?.lens.enabled:a==='pin_lens'?!state?.lens.pinned:undefined);
+      if(a==='retry'){load?.abort();load=null;scene=null;loadAssets();if(state?.error||state?.colourError)send('retry');}
+      else send(a,a==='set_lens'?!state?.lens.enabled:a==='pin_lens'?!state?.lens.pinned:a==='set_appearance'?b.dataset.appearance:undefined);
     });
     bindNavigator();
     document.getElementById('artwork-zoom').addEventListener('input',e=>send('set_zoom',Number(e.target.value)));

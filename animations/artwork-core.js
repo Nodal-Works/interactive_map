@@ -5,6 +5,23 @@
   const OPENING_FADE_MS=800,OPENING_DRAW_MS=10000;
   const count=state=>state?.artworkCount??10,finale=state=>count(state)+1;
   const duration=(chapter,reduced,artworkCount=10)=>reduced?180:chapter===0?OPENING_FADE_MS+OPENING_DRAW_MS:chapter===artworkCount+1?2000:3100;
+  // A separate clock lets chapters advance without interrupting the colour fade.
+  function colourFrame(state,now=Date.now()) {
+    if(!state.colourAvailable)return {colourMix:0,colourAnimating:false};
+    const target=state.appearance==='colour'?1:0,from=clamp(state.colourFrom??target);
+    const elapsed=now-(state.colourStartedAt??now),ms=Math.max(0,state.colourDuration||0);
+    const t=elapsed<0?0:ms?clamp(elapsed/ms):1;
+    return {colourMix:from+(target-from)*ease(t),colourAnimating:from!==target&&t<1};
+  }
+  function resetColour(state,now=Date.now()) {
+    Object.assign(state,{appearance:state.colourAvailable?'colour':'line',colourFrom:0,
+      colourStartedAt:now+duration(0,state.reducedMotion,count(state)),colourDuration:state.reducedMotion?180:5000});
+  }
+  function setAppearance(state,appearance,now=Date.now()) {
+    if(!state.isActive||state.loading||state.error||!state.colourAvailable||!['line','colour'].includes(appearance)||state.chapter===0&&state.transitioning)return false;
+    const from=colourFrame(state,now).colourMix;
+    Object.assign(state,{appearance,colourFrom:from,colourStartedAt:now,colourDuration:state.reducedMotion?0:650});return true;
+  }
   function frame(state,now=Date.now()) {
     const elapsed=Math.max(0,now-state.startedAt), d=duration(state.chapter,state.reducedMotion,count(state));
     const t=state.transitioning?clamp(elapsed/d):1;
@@ -17,7 +34,7 @@
     });
     if(state.reducedMotion)fields.forEach(f=>f.reveal=1);
     const opening=current===0;
-    return {fields,t,elapsed,done:t===1,locationsOpacity:(previous===finale(state)?1:0)+((current===finale(state)?1:0)-(previous===finale(state)?1:0))*ease(t),base:opening?ease(clamp((elapsed-(state.reducedMotion?0:OPENING_FADE_MS))/(state.reducedMotion?180:OPENING_DRAW_MS))):1,
+    return {...colourFrame(state,now),fields,t,elapsed,done:t===1,locationsOpacity:(previous===finale(state)?1:0)+((current===finale(state)?1:0)-(previous===finale(state)?1:0))*ease(t),base:opening?ease(clamp((elapsed-(state.reducedMotion?0:OPENING_FADE_MS))/(state.reducedMotion?180:OPENING_DRAW_MS))):1,
       black:opening?ease(clamp(elapsed/(state.reducedMotion?180:OPENING_FADE_MS))):1};
   }
   function transition(state,chapter,now=Date.now()) {
@@ -27,7 +44,8 @@
   function geo(matrix,x,y){const [a,b]=matrix,X=a[0]*x+a[1]*y+a[2],Y=b[0]*x+b[1]*y+b[2];return [X/6378137*180/Math.PI,(2*Math.atan(Math.exp(Y/6378137))-Math.PI/2)*180/Math.PI];}
   function affine(p0,p1,p2){const a=(p1.x-p0.x)/W,b=(p1.y-p0.y)/W,c=(p2.x-p0.x)/H,d=(p2.y-p0.y)/H,e=p0.x,f=p0.y,det=a*d-b*c;
     return {a,b,c,d,e,f,scale:Math.sqrt(Math.abs(det)),forward:(x,y)=>({x:a*x+c*y+e,y:b*x+d*y+f}),inverse:(x,y)=>({x:(d*(x-e)-c*(y-f))/det,y:(a*(y-f)-b*(x-e))/det})};}
-  function imageFromText(text){return new Promise((resolve,reject)=>{const url=URL.createObjectURL(new Blob([text],{type:'image/svg+xml'})),im=new Image();im.onload=()=>{URL.revokeObjectURL(url);resolve(im);};im.onerror=()=>{URL.revokeObjectURL(url);reject(Error('Could not decode original artwork'));};im.src=url;});}
+  function imageFromBlob(blob){return new Promise((resolve,reject)=>{const url=URL.createObjectURL(blob),im=new Image();im.onload=()=>{URL.revokeObjectURL(url);resolve(im);};im.onerror=()=>{URL.revokeObjectURL(url);reject(Error('Could not decode original artwork'));};im.src=url;});}
+  const imageFromText=text=>imageFromBlob(new Blob([text],{type:'image/svg+xml'}));
   // Source SVG paths are batched by stroke style, with their original matrices.
   // No tracing or path simplification. A lens draws these paths at its own resolution.
   function vectors(text){
@@ -62,7 +80,7 @@
   }
 
   class Scene {
-    constructor(manifest,base,paths,items,locations){Object.assign(this,{manifest,base,paths,items,locations});}
+    constructor(manifest,base,paths,items,locations,colour=null){Object.assign(this,{manifest,base,paths,items,locations,colour});}
     static async load(signal){
       const directory=new URL('media/artwork/',document.baseURI),response=await fetch(new URL('manifest.json',directory),{signal,cache:'no-cache'});
       if(!response.ok)throw Error('Artwork assets are unavailable');const manifest=await response.json();
@@ -70,7 +88,12 @@
       const text=await get(manifest.base),base=await imageFromText(text),paths=vectors(text);
       const items=await Promise.all(manifest.items.map(async item=>({...item,fieldImage:await imageFromText(await get(item.field)),sculptureImage:await imageFromText(await get(item.sculpture))})));
       const locations=manifest.locations?await imageFromText(await get(manifest.locations)):null;
-      if(signal?.aborted)throw new DOMException('Aborted','AbortError');return new Scene(manifest,base,paths,items,locations);
+      let colour=null;
+      if(manifest.colour)try{
+        const r=await fetch(new URL(manifest.colour,directory),{signal});
+        if(!r.ok)throw Error('Colour artwork is unavailable');colour=await imageFromBlob(await r.blob());
+      }catch(e){if(signal?.aborted||e.name==='AbortError')throw e;}
+      if(signal?.aborted)throw new DOMException('Aborted','AbortError');return new Scene(manifest,base,paths,items,locations,colour);
     }
     lines(ctx,lightOnly=false){
       ctx.save();ctx.beginPath();ctx.rect(0,0,W,H);ctx.clip();
@@ -95,8 +118,14 @@
     }
     draw(ctx,state,now=Date.now(),options={}){
       const f=frame(state,now);ctx.save();
-      if(!options.skipBase&&f.base<1)this.awaken(ctx,f.base,state.reducedMotion);
-      else if(!options.skipBase){options.vector?this.lines(ctx):ctx.drawImage(this.base,0,0,W,H);}
+      const mix=this.colour?f.colourMix:0;
+      if(!options.skipBase&&mix<1){
+        // Base renderers own globalAlpha internally; apply the crossfade to
+        // the original image after the opening, preserving its transparency.
+        if(f.base<1&&mix===0)this.awaken(ctx,f.base,state.reducedMotion);
+        else {ctx.save();ctx.globalAlpha=1-mix;ctx.drawImage(this.base,0,0,W,H);ctx.restore();}
+      }
+      if(mix>0){ctx.save();ctx.globalAlpha=mix;ctx.drawImage(this.colour,0,0,W,H);ctx.restore();}
       for(const id of this.manifest.stacking){const item=this.items[id-1],v=f.fields[id-1];if(!v.opacity)continue;
         ctx.save();const hoverMix=ease((now-(state.hoverStartedAt||0))/450);ctx.globalAlpha=state.chapter===finale(state)?v.opacity+(.97-v.opacity)*(state.hover===id?hoverMix:state.previousHover===id?1-hoverMix:0):v.opacity;
         if(v.reveal<1){ctx.beginPath();ctx.arc(...item.anchor,Math.max(...[0,2].flatMap(x=>[1,3].map(y=>Math.hypot(item.fieldBounds[x]-item.anchor[0],item.fieldBounds[y]-item.anchor[1]))))*v.reveal,0,Math.PI*2);ctx.clip();}
@@ -152,8 +181,9 @@
       const key=[cx,cy,span,size].join(',');
       if(key!==this.cacheKey){const c=this.linesCanvas.getContext('2d');c.setTransform(1,0,0,1,0,0);c.clearRect(0,0,size,size);c.setTransform(scale,0,0,scale,size/2-cx*scale,size/2-cy*scale);scene.lines(c);const light=this.lightCanvas.getContext('2d');light.setTransform(1,0,0,1,0,0);light.clearRect(0,0,size,size);light.setTransform(scale,0,0,scale,size/2-cx*scale,size/2-cy*scale);scene.lines(light,true);this.cacheKey=key;}
       const f=frame(state,now);
-      if(f.base<1)scene.awaken(ctx,f.base,state.reducedMotion);
-      else {ctx.save();ctx.setTransform(1,0,0,1,0,0);ctx.drawImage(this.linesCanvas,0,0);ctx.restore();}
+      const mix=scene.colour?f.colourMix:0;
+      if(f.base<1&&mix===0)scene.awaken(ctx,f.base,state.reducedMotion);
+      else {ctx.save();ctx.setTransform(1,0,0,1,0,0);ctx.globalAlpha=1-mix;ctx.drawImage(this.linesCanvas,0,0);ctx.restore();}
       scene.draw(ctx,state,now,{skipBase:true});
       ctx.setTransform(1,0,0,1,0,0);
       const glow=this.glow||(this.glow=document.createElement('canvas'));if(glow.width!==size)glow.width=glow.height=size;
@@ -168,11 +198,11 @@
         g.fillStyle=gradient;g.fillRect(0,0,size,size);
       }
       g.globalCompositeOperation='destination-in';g.drawImage(this.lightCanvas,0,0);g.globalCompositeOperation='source-over';
-      if(f.base===1){ctx.save();ctx.globalCompositeOperation='screen';ctx.filter='blur(2.3px)';ctx.drawImage(glow,0,0);ctx.filter='none';ctx.globalAlpha=.55;ctx.drawImage(glow,0,0);ctx.restore();}
+      if(f.base===1&&mix<1){ctx.save();ctx.globalAlpha=1-mix;ctx.globalCompositeOperation='screen';ctx.filter='blur(2.3px)';ctx.drawImage(glow,0,0);ctx.filter='none';ctx.globalAlpha=.55*(1-mix);ctx.drawImage(glow,0,0);ctx.restore();}
       if(this.gl){const gl=this.gl;if(this.glCanvas.width!==size)this.glCanvas.width=this.glCanvas.height=size;gl.viewport(0,0,size,size);gl.bindTexture(gl.TEXTURE_2D,this.texture);gl.texImage2D(gl.TEXTURE_2D,0,gl.RGBA,gl.RGBA,gl.UNSIGNED_BYTE,this.source);gl.drawArrays(gl.TRIANGLE_STRIP,0,4);this.ctx.drawImage(this.glCanvas,0,0);}
       else {const c=this.ctx;c.clearRect(0,0,size,size);c.save();c.beginPath();c.arc(size/2,size/2,size/2,0,Math.PI*2);c.clip();c.drawImage(this.source,0,0);c.restore();}
     }
     dispose(){if(this.gl){for(const [type,obj] of [['Texture',this.texture],['Buffer',this.buffer],['Program',this.program],['Shader',this.vs],['Shader',this.fs]])if(obj)this.gl['delete'+type](obj);}this.source.width=this.linesCanvas.width=this.lightCanvas.width=1;if(this.glow)this.glow.width=1;}
   }
-  const api={W,H,clamp,ease,count,finale,duration,frame,transition,geo,affine,Scene,Lens,lensRadius};root.ArtworkCore=api;if(typeof module!=='undefined')module.exports=api;
+  const api={W,H,clamp,ease,count,finale,duration,colourFrame,resetColour,setAppearance,frame,transition,geo,affine,Scene,Lens,lensRadius};root.ArtworkCore=api;if(typeof module!=='undefined')module.exports=api;
 })(typeof window==='undefined'?globalThis:window);

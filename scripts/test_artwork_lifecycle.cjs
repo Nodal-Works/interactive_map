@@ -10,9 +10,10 @@ function element(){const listeners={},classes=new Set(),buttons={};return {datas
  getBoundingClientRect:()=>({left:0,top:0,width:1920,height:1080})};}
 const els=new Map(),get=id=>{if(!els.has(id))els.set(id,element());return els.get(id);};
 const document={body:element(),hidden:false,createElement:()=>element(),getElementById:get,addEventListener(){},removeEventListener(){}};
-const pendingScene={manifest:{items:Array.from({length:10},(_,i)=>({id:i+1})),registration:{matrix:[[1,0,0],[0,1,0]]}},items:[],draw(){}};
+const media={matches:false,addEventListener(name,handler){this.change=handler;}};
+const pendingScene={manifest:{colour:'colour.webp',items:Array.from({length:10},(_,i)=>({id:i+1})),registration:{matrix:[[1,0,0],[0,1,0]]}},items:[],colour:{},draw(){}};
 const sandbox={console,document,Date:{now:()=>now},performance:{now:()=>now},devicePixelRatio:1,innerWidth:1920,innerHeight:1080,
- AbortController,matchMedia:()=>({matches:false,addEventListener(){}}),
+ AbortController,matchMedia:()=>media,
  requestAnimationFrame:f=>{frames.set(++serial,f);return serial;},cancelAnimationFrame:id=>frames.delete(id),
  setTimeout:f=>{timers.set(++serial,f);return serial;},clearTimeout:id=>timers.delete(id),
  BroadcastChannel:class {constructor(){this.onmessage=null;}postMessage(m){messages.push(m);}},
@@ -28,6 +29,12 @@ function tick(ms){now+=ms;const callbacks=[...frames.values()];frames.clear();ca
  const pending=api.start();assert.equal(api.getState().loading,true);api.stop();assert.equal(loads[0].signal.aborted,true);
  loads[0].resolve(pendingScene);await pending;assert.equal(api.isActive(),false);assert.equal(frames.size,0,'Stopping during preload must not resurrect a render loop');
  await api.start();tick(4000);assert.equal(api.getState().transitioning,true);api.control('next');assert.equal(api.getState().chapter,0);tick(6800);assert.equal(api.getState().transitioning,false);
+ assert.equal(api.getState().colourAvailable,true);assert.equal(Core.frame(api.getState(),now).colourMix,0);
+ tick(2500);assert.equal(Core.frame(api.getState(),now).colourMix,.5);assert.ok(frames.size,'Colour fade continues after chapter animation stops');
+ api.control('set_appearance','line');assert.equal(Core.frame(api.getState(),now).colourMix,.5);tick(650);assert.equal(Core.frame(api.getState(),now).colourMix,0);
+ api.control('set_appearance','colour');tick(325);const midway=Core.frame(api.getState(),now).colourMix;
+ api.control('next');assert.equal(Core.frame(api.getState(),now).colourMix,midway,'Chapter advance preserves colour clock');tick(3200);
+ api.control('previous');tick(10800);assert.equal(Core.frame(api.getState(),now).colourMix,1,'Going back preserves colour choice');
  api.control('next');api.control('next');assert.equal(api.getState().chapter,1,'Burst advances must be ignored');tick(3200);
  api.control('previous');tick(10800);assert.equal(api.getState().chapter,0);
  for(let chapter=1;chapter<=10;chapter++){api.control('next');tick(3200);assert.equal(api.getState().chapter,chapter);}
@@ -36,11 +43,16 @@ function tick(ms){now+=ms;const callbacks=[...frames.values()];frames.clear();ca
  api.control('set_lens_position',{x:.1,y:.2});assert.equal(api.getState().lens.x,.5,'Pinned lens rejects remote movement');api.control('pin_lens',false);api.control('set_lens_position',{x:.1,y:.2});assert.equal(api.getState().lens.x,.1);api.control('set_lens_position',{x:-1,y:0});assert.equal(api.getState().lens.x,.1);
  const previousSpan=api.getState().lens.span,previousDiameter=api.getState().lens.diameter;api.control('set_lens_diameter',1200);assert.equal(api.getState().lens.diameter,1200);assert.ok(Math.abs(api.getState().lens.span/previousSpan-1200/previousDiameter)<1e-8,'Table sampling ring follows the enlarged dashboard lens');api.control('set_lens_diameter',2161);assert.equal(api.getState().lens.diameter,1200);
  api.control('set_zoom',7);assert.equal(api.getState().lens.zoom,6);
- api.control('restart');assert.equal(api.getState().chapter,0);assert.ok(Core.frame(api.getState(),now).fields.every(f=>!f.opacity));
+ api.control('restart');assert.equal(api.getState().chapter,0);assert.equal(Core.frame(api.getState(),now).colourMix,0);assert.equal(api.getState().colourStartedAt,now+10800);assert.ok(Core.frame(api.getState(),now).fields.every(f=>!f.opacity));
+ media.matches=true;media.change();assert.equal(api.getState().colourDuration,0);tick(180);assert.equal(Core.frame(api.getState(),now).colourMix,1,'Live reduced motion settles colour after the shortened opening');
  api.stop();assert.equal(frames.size,0);assert.equal(api.getState().lens.enabled,false);
  // A prior selected layer is suspended once and restored after both exits.
  assert.ok(changes.some(([id,on])=>id==='grid-animation-btn'&&!on));assert.equal(sandbox.MR_ADAPTER.active['grid-animation-btn'],true);
  const phone=require('../session/js/phone-state.js').project({participants:[],messages:[{type:'artwork_state',...api.getState(),secretGeometry:[1,2]}]}, {layer:'artwork-btn'});
  assert.equal(phone.artwork.chapter,0);assert.equal(phone.artwork.artworkCount,10);assert.equal(phone.artwork.secretGeometry,undefined);assert.equal(phone.artwork.lens,undefined);
+ pendingScene.colour=null;const fallback=api.start();loads.at(-1).resolve(pendingScene);await fallback;
+ assert.equal(api.getState().error,null);assert.ok(api.getState().colourError);assert.equal(api.getState().colourAvailable,false);
+ const previousLoads=loads.length;api.control('retry');assert.equal(loads.length,previousLoads+1,'Retry reloads a failed optional asset');
+ loads.at(-1).resolve({...pendingScene,colour:{}});await new Promise(setImmediate);assert.equal(api.getState().colourAvailable,true);assert.equal(api.getState().colourError,null);api.stop();
  console.log('PASS Artwork preload cancellation, rapid advance guard, backwards/replay/finale, magnifier controls, layer restoration, cleanup and compact phone state');
 })().catch(e=>{console.error(e);process.exitCode=1;});
