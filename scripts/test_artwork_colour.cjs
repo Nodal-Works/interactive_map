@@ -3,21 +3,26 @@ const assert=require('node:assert/strict'),fs=require('node:fs'),vm=require('nod
 const C=require('../animations/artwork-core.js');
 const state={isActive:true,loading:false,error:null,chapter:0,fromChapter:0,transitioning:true,startedAt:1000,reducedMotion:false,colourAvailable:true,artworkCount:0};
 C.resetColour(state,1000);
-assert.equal(C.frame(state,11799).colourMix,0);assert.equal(C.frame(state,11800).base,1);assert.equal(C.frame(state,11800).colourMix,0);
+assert.equal(C.frame(state,21799).colourMix,0);assert.equal(C.frame(state,21800).base,1);
+assert.equal(C.frame(state,23799).colourMix,0,'Finished lines hold for two seconds before colour begins');
+assert.equal(C.frame(state,23800).colourMix,0);
 for(const fps of [30,60,120]){
- let previous=0;for(let i=0;i<=fps*5;i++){const f=C.frame(state,11800+i*1000/fps);assert.ok(f.colourMix>=previous);previous=f.colourMix;}
+ let previous=0;for(let i=0;i<=fps*15;i++){const f=C.frame(state,23800+i*1000/fps);assert.ok(f.colourMix>=previous);previous=f.colourMix;}
  assert.equal(previous,1);
 }
-assert.equal(C.frame(state,14300).colourMix,.5);assert.equal(C.frame(state,16800).colourAnimating,false);
+assert.equal(C.frame(state,31300).colourMix,.5);assert.equal(C.frame(state,38800).colourAnimating,false);
 assert.equal(C.setAppearance(state,'line',12000),false,'Opening must finish before manual selection');
-state.transitioning=false;C.setAppearance(state,'line',14300);assert.equal(C.frame(state,14300).colourMix,.5);
-const mid=C.frame(state,14500).colourMix;C.setAppearance(state,'colour',14500);assert.equal(C.frame(state,14500).colourMix,mid,'Reversing starts at the currently rendered mix');
-assert.equal(C.frame(state,15150).colourMix,1);
+state.transitioning=false;C.setAppearance(state,'line',31300);assert.equal(C.frame(state,31300).colourMix,.5);
+const mid=C.frame(state,31500).colourMix;C.setAppearance(state,'colour',31500);assert.equal(C.frame(state,31500).colourMix,mid,'Reversing starts at the currently rendered mix');
+assert.equal(C.frame(state,32150).colourMix,1);
 const recipe=JSON.stringify([state.appearance,state.colourFrom,state.colourStartedAt,state.colourDuration]);
-C.transition(state,1,15000);assert.equal(JSON.stringify([state.appearance,state.colourFrom,state.colourStartedAt,state.colourDuration]),recipe);
-C.resetColour(state,20000);assert.equal(C.frame(state,20000).colourMix,0);assert.equal(state.colourStartedAt,30800);
-state.reducedMotion=true;C.resetColour(state,30000);assert.equal(state.colourStartedAt,30180);assert.equal(C.frame(state,30360).colourMix,1);
-state.transitioning=false;C.setAppearance(state,'line',30360);assert.equal(C.frame(state,30360).colourMix,0);
+C.transition(state,1,32000);assert.equal(JSON.stringify([state.appearance,state.colourFrom,state.colourStartedAt,state.colourDuration]),recipe);
+C.resetColour(state,40000);assert.equal(C.frame(state,40000).colourMix,0);assert.equal(state.colourStartedAt,62800);
+state.reducedMotion=true;C.transition(state,0,50000);C.resetColour(state,50000);
+assert.equal(C.frame(state,50180).done,false,'Reduced motion must not compress the opening into a fraction of a second');
+assert.equal(C.frame(state,60800).base,.5);assert.equal(state.colourStartedAt,72800);
+assert.equal(C.frame(state,72799).colourMix,0);assert.equal(C.frame(state,80300).colourMix,.5);assert.equal(C.frame(state,87800).colourMix,1);
+state.transitioning=false;C.setAppearance(state,'line',87800);assert.equal(C.frame(state,87800).colourMix,0);
 assert.equal(C.colourFrame({}).colourMix,0,'Old state packets render lines');
 assert.equal(C.setAppearance({...state,colourAvailable:false},'colour',0),false);
 

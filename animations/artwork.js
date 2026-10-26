@@ -99,8 +99,8 @@
   button()?.addEventListener('click',()=>{if(state.isActive)stop();else start().catch(error=>{console.error('Artwork activation failed',error);state.error=error.message;state.loading=false;publish();});});
   document.getElementById('artwork-magnifier-btn')?.addEventListener('click',()=>control('set_lens',!state.lens.enabled));
   media.addEventListener('change',()=>{
-    const now=Date.now(),mix=C.colourFrame(state,now).colourMix;state.reducedMotion=media.matches;
-    if(state.reducedMotion){state.colourFrom=mix;state.colourDuration=0;state.colourStartedAt=state.chapter===0&&state.transitioning?Math.max(now,state.startedAt+C.duration(0,true)):now;}
+    // Change the drawing style without skipping the opening or its colour reveal.
+    state.reducedMotion=media.matches;
     if(state.isActive){publish();schedule();}
   });
   window.artworkAnimation={start,stop,toggle:()=>state.isActive?stop():start(),control,getState:snapshot,isActive:()=>state.isActive};

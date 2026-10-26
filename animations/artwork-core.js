@@ -2,9 +2,10 @@
 (function(root){
   'use strict';
   const W=3370,H=2384, clamp=(v,a=0,b=1)=>Math.max(a,Math.min(b,v)), ease=t=>{t=clamp(t);return t*t*(3-2*t);};
-  const OPENING_FADE_MS=800,OPENING_DRAW_MS=10000;
+  const OPENING_FADE_MS=800,OPENING_DRAW_MS=20000,COLOUR_HOLD_MS=2000,COLOUR_REVEAL_MS=15000;
   const count=state=>state?.artworkCount??10,finale=state=>count(state)+1;
-  const duration=(chapter,reduced,artworkCount=10)=>reduced?180:chapter===0?OPENING_FADE_MS+OPENING_DRAW_MS:chapter===artworkCount+1?2000:3100;
+  // Reduced motion removes tracing and flashes, while retaining the slow presentation pace.
+  const duration=(chapter,reduced,artworkCount=10)=>chapter===0?OPENING_FADE_MS+OPENING_DRAW_MS:reduced?180:chapter===artworkCount+1?2000:3100;
   // A separate clock lets chapters advance without interrupting the colour fade.
   function colourFrame(state,now=Date.now()) {
     if(!state.colourAvailable)return {colourMix:0,colourAnimating:false};
@@ -15,7 +16,7 @@
   }
   function resetColour(state,now=Date.now()) {
     Object.assign(state,{appearance:state.colourAvailable?'colour':'line',colourFrom:0,
-      colourStartedAt:now+duration(0,state.reducedMotion,count(state)),colourDuration:state.reducedMotion?180:5000});
+      colourStartedAt:now+duration(0,state.reducedMotion,count(state))+COLOUR_HOLD_MS,colourDuration:COLOUR_REVEAL_MS});
   }
   function setAppearance(state,appearance,now=Date.now()) {
     if(!state.isActive||state.loading||state.error||!state.colourAvailable||!['line','colour'].includes(appearance)||state.chapter===0&&state.transitioning)return false;
@@ -34,8 +35,8 @@
     });
     if(state.reducedMotion)fields.forEach(f=>f.reveal=1);
     const opening=current===0;
-    return {...colourFrame(state,now),fields,t,elapsed,done:t===1,locationsOpacity:(previous===finale(state)?1:0)+((current===finale(state)?1:0)-(previous===finale(state)?1:0))*ease(t),base:opening?ease(clamp((elapsed-(state.reducedMotion?0:OPENING_FADE_MS))/(state.reducedMotion?180:OPENING_DRAW_MS))):1,
-      black:opening?ease(clamp(elapsed/(state.reducedMotion?180:OPENING_FADE_MS))):1};
+    return {...colourFrame(state,now),fields,t,elapsed,done:t===1,locationsOpacity:(previous===finale(state)?1:0)+((current===finale(state)?1:0)-(previous===finale(state)?1:0))*ease(t),base:opening?ease(clamp((elapsed-OPENING_FADE_MS)/OPENING_DRAW_MS)):1,
+      black:opening?ease(clamp(elapsed/OPENING_FADE_MS)):1};
   }
   function transition(state,chapter,now=Date.now()) {
     if(state.loading||state.error||!state.isActive||chapter<0||chapter>finale(state))return false;

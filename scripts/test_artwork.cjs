@@ -8,7 +8,8 @@ assert.deepEqual(manifest.stacking,[10,9,8,7,6,5,4,3,2,1]);
 assert.ok(manifest.registration.rmsGroundMetres<.1);assert.ok(manifest.registration.validationPoints.every(p=>p.residualGroundMetres<.3));
 for(const size of [[1920,1080],[3840,2160]]){const t=C.affine({x:100,y:200},{x:size[0]-100,y:250},{x:20,y:size[1]-50});for(const p of [[0,0],[3370,2384],[1685,1192]]){const q=t.forward(...p),back=t.inverse(q.x,q.y);assert.ok(Math.abs(p[0]-back.x)<1e-8);assert.ok(Math.abs(p[1]-back.y)<1e-8);}}
 let state={isActive:true,loading:false,error:null,chapter:0,fromChapter:0,transitioning:true,startedAt:1000,reducedMotion:false};
-assert.equal(C.frame(state,1000).black,0);assert.equal(C.frame(state,1800).black,1);assert.equal(C.duration(0,false),10800);assert.ok(C.frame(state,4800).base<.5);assert.equal(C.frame(state,11800).base,1);assert.equal(C.frame(state,11800).done,true);
+assert.equal(C.frame(state,1000).black,0);assert.equal(C.frame(state,1800).black,1);assert.equal(C.duration(0,false),20800);assert.ok(C.frame(state,4800).base<.5);assert.equal(C.frame(state,11800).base,.5);assert.equal(C.frame(state,21800).base,1);assert.equal(C.frame(state,21800).done,true);
+assert.equal(C.duration(0,true),20800);assert.equal(C.frame({...state,reducedMotion:true},11800).base,.5);
 for(let chapter=1;chapter<=manifest.items.length;chapter++){
  const time=chapter*10000;assert.ok(C.transition(state,chapter,time));assert.equal(C.frame(state,time).fields[chapter-1].reveal,0);
  for(const fps of [30,60,120]){let f;for(let i=0;i<=fps*4;i++)f=C.frame(state,time+i*1000/fps);assert.ok(f.done);assert.equal(f.fields[chapter-1].opacity,1);f.fields.forEach((field,i)=>{if(i<chapter-1)assert.equal(field.opacity,.25);if(i>=chapter)assert.equal(field.opacity,0);});}

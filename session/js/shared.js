@@ -1,6 +1,6 @@
 (function(root) {
   'use strict';
-  const RELEASE = '20261026-lindholmen-artwork-colour-1';
+  const RELEASE = '20261026-lindholmen-artwork-colour-2';
   const LAYERS = [
     ['cfd-simulation-btn', 'Wind · CFD', 'Environment', '🌬', 'obstacle'],
     ['stormwater-btn', 'Stormwater', 'Environment', '💧'],
