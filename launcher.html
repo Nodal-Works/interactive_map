@@ -438,7 +438,7 @@
                 </select>
             </div>
             <label style="display:block;margin-top:16px;font-size:14px;cursor:pointer">
-                <input type="checkbox" id="hand-tracking-test">
+                <input type="checkbox" id="hand-tracking-test" checked>
                 Webcam hand tracking (experimental table test)
             </label>
         </div>
@@ -496,6 +496,18 @@
     </footer>
 
     <script>
+        // Hand tracking is on by default, so the desktop shortcut opens the
+        // projector with it; the last choice made here is remembered.
+        (function () {
+            const box = document.getElementById('hand-tracking-test');
+            try {
+                const saved = localStorage.getItem('mrStudio.handTracking');
+                if (saved !== null) box.checked = saved === '1';
+            } catch (e) { /* storage unavailable: keep the default */ }
+            box.addEventListener('change', function () {
+                try { localStorage.setItem('mrStudio.handTracking', box.checked ? '1' : '0'); } catch (e) {}
+            });
+        })();
         // Window references
         let mainWin = null;
         let controllerWin = null;
