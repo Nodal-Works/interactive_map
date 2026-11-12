@@ -3,6 +3,17 @@
 (function () {
     'use strict';
     const palette = (window.ECOM_PALETTE && window.ECOM_PALETTE.semantic) || {};
+    // What the lines on the map mean, for everyone who walks up to the table
+    // after the introduction.
+    const LINE_KEY = '<span class="ecom-flow-lines">' + [
+        ['From the grid', palette.grid || '#00ffe5'],
+        ['Between members', palette.building || '#ff00a6'],
+        ['From the battery', palette.battery || '#fa3600'],
+        ['Solar on the roof', palette.pv || '#eaff00']
+    ].map(function (item) {
+        return '<span class="ecom-flow-lines-item"><span class="ecom-flow-lines-swatch" style="background:' +
+            item[1] + '"></span>' + item[0] + '</span>';
+    }).join('') + '</span>';
     const style = document.createElement('style');
     style.textContent = `
         .ecom-flow-panel{--solar:${palette.pv || '#eaff00'};--battery:${palette.battery || '#fa3600'};--grid:${palette.grid || '#00ffe5'};
@@ -15,6 +26,7 @@
         .ecom-flow-header{display:flex;align-items:baseline;gap:16px;margin-bottom:14px;padding-right:135px}
         .ecom-flow-header strong{font-size:17px}.ecom-flow-time{font-size:14px;color:#c2ceda}
         .ecom-flow-context{margin-left:auto;font-size:12px;color:#b3c2ce}
+        .ecom-flow-lines{display:flex;align-items:center;gap:14px;font-size:11px;letter-spacing:0.04em;color:#c2ceda}.ecom-flow-lines-item{display:flex;align-items:center;gap:6px;white-space:nowrap}.ecom-flow-lines-swatch{width:18px;height:3px;border-radius:2px;flex:none}
         .ecom-flow-body{display:grid;grid-template-columns:1fr 1.25fr 1.1fr 2fr;gap:22px}
         .ecom-flow-card{min-width:0;border-left:1px solid #34404b;padding-left:22px}
         .ecom-flow-card:first-child{border:0;padding:0}
@@ -33,7 +45,7 @@
         @keyframes ecom-flow-pulse{50%{opacity:.35;transform:translateX(3px)}}
         @media(prefers-reduced-motion:reduce){.ecom-flow-panel,.ecom-flow-segment{transition:none}.ecom-flow-route.is-active .ecom-flow-arrow{animation:none}}
         @media(min-width:1800px){.ecom-flow-panel{padding:20px 28px 24px}.ecom-flow-number{font-size:38px}.ecom-flow-route,.ecom-flow-note,.ecom-flow-key{font-size:16px}.ecom-flow-label{font-size:14px}}
-        @media(max-width:1050px){.ecom-flow-panel{left:18px;right:18px}.ecom-flow-body{gap:12px;grid-template-columns:1fr 1.2fr 1fr 1.6fr}.ecom-flow-card{padding-left:12px}.ecom-flow-number{font-size:24px}.ecom-flow-context{display:none}}
+        @media(max-width:1050px){.ecom-flow-panel{left:18px;right:18px}.ecom-flow-body{gap:12px;grid-template-columns:1fr 1.2fr 1fr 1.6fr}.ecom-flow-card{padding-left:12px}.ecom-flow-number{font-size:24px}.ecom-flow-context,.ecom-flow-lines{display:none}}
         @media(max-width:720px){.ecom-flow-body{grid-template-columns:1fr 1fr;gap:14px}.ecom-flow-card:nth-child(3){border:0;padding:0}.ecom-flow-header{padding-right:0;flex-wrap:wrap;gap:5px 12px}.ecom-flow-panel{bottom:48px;padding:12px}}
     `;
     document.head.appendChild(style);
@@ -41,7 +53,7 @@
     panel.className = 'ecom-flow-panel ecom-kpi-bottom';
     panel.setAttribute('aria-label', 'Community energy flow for the displayed simulation hour');
     panel.innerHTML = `
-        <div class="ecom-flow-header"><strong>Community energy flow</strong><span class="ecom-flow-time"></span><span class="ecom-flow-context"></span></div>
+        <div class="ecom-flow-header"><strong>Community energy flow</strong><span class="ecom-flow-time"></span>${LINE_KEY}<span class="ecom-flow-context"></span></div>
         <div class="ecom-flow-body">
             <div class="ecom-flow-card"><div class="ecom-flow-label">☀ Solar PV</div><div class="ecom-flow-number ecom-flow-solar" data-value="solar"></div><div class="ecom-flow-note" data-value="solarState"></div></div>
             <div class="ecom-flow-card"><div class="ecom-flow-label">Where solar goes</div>

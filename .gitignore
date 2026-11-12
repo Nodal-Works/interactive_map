@@ -50,3 +50,12 @@ services.local.json
 studio/
 # Internal documentation
 theory/
+
+# Machine settings and secrets: which solver this machine uses, and the Gurobi
+# licence that makes it legal. The example beside it IS committed, and carries
+# no licence - see Dashboard/backend/.env.example. (The licence written from .env
+# lands in Dashboard/backend/cache/gurobi/, already ignored above.)
+**/.env
+**/.env.local
+!**/.env.example
+**/gurobi.lic

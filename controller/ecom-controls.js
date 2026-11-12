@@ -114,6 +114,36 @@
     //
     // The clock is held still until the last step. Time moving and a new
     // entity appearing at once is where an audience loses the thread.
+    /**
+     * The hour at which one colour of line carries the most.
+     *
+     * A step that introduces a colour has to be shown at an hour when that
+     * colour exists. Typed in by hand it goes stale: the red step was set to
+     * seven in the evening, which reads right - a battery covering the evening
+     * - and in this community the battery discharges at midnight and nowhere
+     * else, so the step that introduces red had no red on it at all.
+     *
+     * Read off the dispatched layer instead, so it follows the data: resize
+     * the battery or put panels on every roof and the step moves with it.
+     */
+    function busiestHour(kind, fallback) {
+        const flows = state.layer && state.layer.flows && state.layer.flows.features;
+        if (!flows) return fallback;
+        const total = [];
+        flows.forEach(function (feature) {
+            if (feature.properties.kind !== kind) return;
+            (feature.properties.flow_hourly || []).forEach(function (value, hour) {
+                total[hour] = (total[hour] || 0) + (value || 0);
+            });
+        });
+        let best = -1;
+        let most = 0;
+        total.forEach(function (value, hour) {
+            if (value > most) { most = value; best = hour; }
+        });
+        return best >= 0 ? best : fallback;
+    }
+
     const STORY = [
         {
             key: 'buildings',
@@ -154,9 +184,9 @@
         {
             key: 'grid',
             title: 'The grid',
-            line: 'The connection to everything outside the campus: a ' +
-                  'substation on Aschebergsgatan. Today every building buys ' +
-                  'from it on its own account.',
+            line: 'The connection to everything outside the campus, at ' +
+                  'Kraftcentralen. Today every building buys from it on ' +
+                  'its own account.',
             figure: 'Where the electricity comes from today',
             kinds: ['building', 'pv', 'grid'],
             pairs: [],
@@ -177,13 +207,70 @@
         {
             key: 'charging',
             title: 'The charge point',
-            line: 'A charger on Gibraltarvallsvagen, and the car that uses it. ' +
-                  'It arrives in the evening and leaves in the morning.',
+            line: 'A charger in the P-hus, where the cars on this campus ' +
+                  'park. It draws in the evening and overnight, when the ' +
+                  'roofs have nothing left to give.',
             figure: 'A new load, on a schedule',
             kinds: ['building', 'pv', 'grid', 'battery', 'charge_point'],
             pairs: [],
             hour: 20,
             uniform: true
+        },
+        {
+            key: 'lines-grid',
+            title: 'Teal: bought from the grid',
+            // The lines have a grammar and nobody is told it. Three steps, one
+            // colour each and only that colour - the previous one is taken
+            // away before the next arrives, because two colours on the table
+            // at once is a comparison, and this is a vocabulary.
+            //
+            // Teal first because it is the whole picture today: at this hour
+            // every building draws from Kraftcentralen and nothing else.
+            line: 'A teal line is electricity bought from outside. At this ' +
+                  'hour it is every line on the table - the campus as it is ' +
+                  'now, each building on its own account.',
+            figure: 'Teal - from the grid',
+            kinds: ['building', 'pv', 'grid', 'battery', 'charge_point'],
+            pairs: ['grid>building', 'grid>charge_point'],
+            hour: 'grid',
+            fallbackHour: 20,
+            flows: 'still',
+            uniform: false
+        },
+        {
+            key: 'lines-sharing',
+            title: 'Pink: between members',
+            // Midday, because this is the one colour that needs sunshine to
+            // exist at all: at nineteen hundred there is nothing to share.
+            line: 'Pink runs between members: a roof with more than it needs ' +
+                  'supplying a neighbour, or filling the battery, or charging ' +
+                  'the car. The yellow roofs are where it comes from. This is ' +
+                  'what a community adds - the teal lines were the campus ' +
+                  'without one.',
+            figure: 'Pink - shared inside the community',
+            kinds: ['building', 'pv', 'grid', 'battery', 'charge_point'],
+            pairs: ['building>building', 'building>battery',
+                    'building>charge_point', 'building>grid'],
+            hour: 'building',
+            fallbackHour: 12,
+            flows: 'still',
+            uniform: false
+        },
+        {
+            key: 'lines-battery',
+            title: 'Red: out of the battery',
+            line: 'Red is the battery giving back what the roofs made today. ' +
+                  'A few kilowatts against the grid\'s thousands, which is why ' +
+                  'the line is drawn heavier than its share - it is small, and ' +
+                  'it is the one thing on the table that moves energy through ' +
+                  'time rather than across the campus.',
+            figure: 'Red - out of the store',
+            kinds: ['building', 'pv', 'grid', 'battery', 'charge_point'],
+            pairs: ['battery>building'],
+            hour: 'battery',
+            fallbackHour: 19,
+            flows: 'still',
+            uniform: false
         },
         {
             key: 'community',
@@ -250,7 +337,9 @@
         busy: false,
         dirty: false,
         autoApply: true,
-        optimizer: null        // last optimizer run, or an in-flight job
+        optimizer: null,       // last optimizer run, or an in-flight job
+        optimizerSpan: 'day',  // how much of the year to solve
+        optimizerStartedAt: 0  // when the run began, for the clock while it waits
     };
     const sessionEditorId = Math.random().toString(36).slice(2);
     let sharedUi = null;
@@ -1112,8 +1201,10 @@
 
         // A held hour for every step but the last, so only one thing is moving
         // at a time. The last hands the clock back and lets the day run.
-        if (typeof step.hour === 'number') {
-            channel.postMessage({ type: 'ecom_hour', hour: step.hour });
+        const hour = typeof step.hour === 'string'
+            ? busiestHour(step.hour, step.fallbackHour) : step.hour;
+        if (typeof hour === 'number') {
+            channel.postMessage({ type: 'ecom_hour', hour: hour });
         } else {
             channel.postMessage({ type: 'ecom_release' });
         }
@@ -1549,6 +1640,70 @@
 
     // ------------------------------------------------------------ optimizer
 
+    // How much of the year to optimise, and what that costs in waiting.
+    //
+    // Measured on this campus with Gurobi: about 2.4 s a day for 38 buildings,
+    // near enough linear, so the estimates below are honest rather than
+    // hopeful. The dispatch the table animates is unaffected either way - the
+    // optimizer returns costs, not flows.
+    //
+    // A year is the calendar year, because the analysis period cannot wrap it:
+    // "a year from today" would end before it started. A month and a week run
+    // from the day the table is on, and slide back from the end of December if
+    // they would overrun it.
+    const OPTIMIZER_SPANS = [
+        { key: 'day', label: 'A day', days: 1 },
+        { key: 'week', label: 'A week', days: 7 },
+        { key: 'month', label: 'A month', days: 30 },
+        { key: 'year', label: 'A year', days: DAYS_PER_YEAR }
+    ];
+    const SECONDS_PER_DAY_SOLVED = 2.4;
+
+    function currentSpan() {
+        return OPTIMIZER_SPANS.find(function (option) {
+            return option.key === state.optimizerSpan;
+        }) || OPTIMIZER_SPANS[0];
+    }
+
+    /** "about 12 minutes", for a number of days. */
+    function optimizerEstimate(days) {
+        const seconds = Math.round(days * SECONDS_PER_DAY_SOLVED);
+        if (seconds < 90) return 'about ' + seconds + ' s';
+        const minutes = Math.round(seconds / 60);
+        return 'about ' + minutes + (minutes === 1 ? ' minute' : ' minutes');
+    }
+
+    /** "1 - 7 June", or "the whole year", for a period. */
+    function periodLabel(period) {
+        if (period.start_month === 1 && period.start_day === 1 &&
+            period.end_month === 12 && period.end_day === 31) {
+            return 'the whole year';
+        }
+        const from = period.start_day + ' ' + MONTH_NAMES[period.start_month - 1];
+        const to = period.end_day + ' ' + MONTH_NAMES[period.end_month - 1];
+        if (period.start_month === period.end_month) {
+            if (period.start_day === period.end_day) return to;
+            return period.start_day + ' - ' + to;
+        }
+        return from + ' - ' + to;
+    }
+
+    /** The period to optimise over, as the backend wants it. */
+    function optimizerPeriod(days) {
+        if (days >= DAYS_PER_YEAR) {
+            return { start_month: 1, start_day: 1, start_hour: 0,
+                     end_month: 12, end_day: 31, end_hour: 23 };
+        }
+        // From the day the table is on, pulled back if it would run past the
+        // end of December - the period is not allowed to wrap the new year.
+        const wanted = dayOfYear(state.startMonth, state.startDay);
+        const first = Math.min(wanted, DAYS_PER_YEAR - days + 1);
+        const from = fromDayOfYear(first);
+        const to = fromDayOfYear(first + days - 1);
+        return { start_month: from.month, start_day: from.day, start_hour: 0,
+                 end_month: to.month, end_day: to.day, end_hour: 23 };
+    }
+
     let pollTimer = null;
 
     async function runOptimizer() {
@@ -1558,16 +1713,21 @@
         render();
 
         try {
+            const span = OPTIMIZER_SPANS.find(function (option) {
+                return option.key === state.optimizerSpan;
+            }) || OPTIMIZER_SPANS[0];
+            // The community as the panel has it, over the span being asked
+            // for. The table's own period is left alone: it is showing a day,
+            // and optimising a year should not move it off that day.
+            const spec = clone(buildSpec());
+            spec.analysis_period = optimizerPeriod(span.days);
             const job = await postJson('/api/optimize', {
-                community: buildSpec(),
-                // One day. The MILP is roughly 0.25 s per building-day, so a
-                // 36-building campus is already a couple of minutes - long
-                // enough that anything more would not finish while someone is
-                // standing at the table.
-                days: 1,
+                community: spec,
+                days: span.days,
                 parameters: Object.keys(state.paramValues).length
                     ? state.paramValues : null
             });
+            state.optimizerStartedAt = Date.now();
             state.optimizer = job;
             render();
             poll(job.id);
@@ -2449,19 +2609,40 @@
             readout = '<p class="ecom-ctl-empty ecom-ctl-error">' +
                       esc(job.error || 'the optimizer failed') + '</p>';
         } else if (job) {
-            readout = '<p class="ecom-ctl-empty">Solving… ' +
-                      Math.round((job.progress || 0) * 100) + '%</p>';
+            // Elapsed rather than a percentage: the rolling horizon reports
+            // progress in steps that are not evenly spaced, and a bar that
+            // sticks at 4% for a minute reads as a hang. A clock that keeps
+            // counting says the same thing and cannot be wrong.
+            const waiting = state.optimizerStartedAt
+                ? Math.round((Date.now() - state.optimizerStartedAt) / 1000) : 0;
+            readout = '<p class="ecom-ctl-empty">Solving ' +
+                      currentSpan().label.toLowerCase() + '… ' + waiting + ' s of ' +
+                      optimizerEstimate(currentSpan().days) + '</p>';
         }
 
         return group('optimizer', 'Optimizer',
             changed ? changed + ' changed' : state.params.length + ' constants',
             '<span class="ecom-ctl-hint">These drive the MILP optimizer, not the ' +
-            'dispatch the table animates - a run is minutes, and it returns costs ' +
-            'rather than a new set of flows. Changing one leaves the table as it is.</span>' +
+            'dispatch the table animates - it returns costs rather than a new ' +
+            'set of flows, and changing one leaves the table as it is. A run ' +
+            'starts on the date chosen above, in Day, and covers the span ' +
+            'picked here; a year is the calendar year, because a period cannot ' +
+            'wrap the new year.</span>' +
+            '<div class="ecom-ctl-span">' +
+                OPTIMIZER_SPANS.map(function (option) {
+                    return '<button type="button" class="ecom-ctl-chip' +
+                        (option.key === state.optimizerSpan ? ' is-on' : '') +
+                        '" data-optimizer-span="' + option.key + '">' +
+                        option.label + '</button>';
+                }).join('') +
+                '<span class="ecom-ctl-hint">' +
+                    esc(periodLabel(optimizerPeriod(currentSpan().days))) +
+                    ' &middot; ' + optimizerEstimate(currentSpan().days) + '</span>' +
+            '</div>' +
             '<div class="ecom-ctl-actions">' +
                 '<button type="button" class="ecom-ctl-btn ecom-ctl-btn--primary"' +
                     ' data-action="optimize"' + (job && job.status === 'running' ? ' disabled' : '') + '>' +
-                    'Run one day</button>' +
+                    'Run ' + currentSpan().label.toLowerCase() + '</button>' +
                 (changed ? '<button type="button" class="ecom-ctl-btn" data-action="params-reset">' +
                     'Reset constants</button>' : '') +
             '</div>' +
@@ -2752,7 +2933,8 @@
     // closest() had nothing to match.
     const CLICK_ATTRIBUTES = [
         'data-group', 'data-action', 'data-kind',
-        'data-members', 'data-roofs', 'data-cp-remove', 'data-story-step'
+        'data-members', 'data-roofs', 'data-cp-remove', 'data-story-step',
+        'data-optimizer-span'
     ];
     const CLICK_SELECTOR = CLICK_ATTRIBUTES.map(function (name) {
         return '[' + name + ']';
@@ -2803,6 +2985,12 @@
             return;
         }
         if (action === 'optimize') { runOptimizer(); return; }
+        const span = el.getAttribute('data-optimizer-span');
+        if (span) {
+            state.optimizerSpan = span;
+            render();
+            return;
+        }
         if (action === 'params-reset') {
             state.paramValues = {};
             render();

@@ -46,6 +46,11 @@ JOIN_M = 20.0
 # no other way through.
 BLOCKED_EDGE_PENALTY_M = 2000.0
 
+# How many junctions to try at each end before giving up on the streets.
+# Six covers a node whose closest joins are all on the same disconnected
+# stub, without turning a failed route into a search of the whole campus.
+JOIN_TRIES = 6
+
 # Further than this from any street and a node is not on the network at all.
 # Its flow is rejected rather than drawn through buildings.
 SNAP_LIMIT_M = 250.0
@@ -153,7 +158,7 @@ def _street_graph():
             "cell": cell}
 
 
-def _nearest_street_node(graph, point, obstacles=()):
+def _nearest_street_node(graph, point, obstacles=(), want_all=False):
     """Where to join the network from a point.
 
     The nearest node is not always the right one. A building's centre is
@@ -163,6 +168,13 @@ def _nearest_street_node(graph, point, obstacles=()):
     are taken in order of distance and the first with a clear stub wins; if
     none is clear, the closest is used, because a line that has to cross
     something is still better than no line.
+
+    With want_all the whole ranked list comes back instead of the winner. The
+    nearest junction is not always one you can get anywhere from: the battery
+    in AWL joins a service drive seventeen metres away that connects to nothing
+    else, so the search for a route failed and its lines fell back to a
+    diagonal across the campus - which on the table crossed three buildings and
+    looked nothing like the lines around it.
     """
     lon_scale = 111320.0 * math.cos(math.radians(point[1]))
     cell = graph["cell"]
@@ -192,12 +204,13 @@ def _nearest_street_node(graph, point, obstacles=()):
         return None
     candidates.sort()
 
+    ranked = [index for _, index in candidates]
     if obstacles:
-        for _, index in candidates[:12]:
-            stub = [list(point), list(graph["points"][index])]
-            if _route_hits(stub, obstacles) == 0:
-                return index
-    return candidates[0][1]
+        clear = [index for index in ranked[:12]
+                 if _route_hits([list(point), list(graph["points"][index])],
+                                obstacles) == 0]
+        ranked = clear + [index for index in ranked if index not in clear]
+    return ranked if want_all else ranked[0]
 
 
 def street_route(a, b, obstacles=()):
@@ -211,11 +224,26 @@ def street_route(a, b, obstacles=()):
     if not graph or not graph["points"]:
         return None
 
-    start = _nearest_street_node(graph, a, obstacles)
-    goal = _nearest_street_node(graph, b, obstacles)
-    if start is None or goal is None or start == goal:
+    starts = _nearest_street_node(graph, a, obstacles, want_all=True) or []
+    goals = _nearest_street_node(graph, b, obstacles, want_all=True) or []
+    if not starts or not goals:
         return None
 
+    # A junction on a stub that joins nothing is no use however close it is,
+    # so the nearest pair that can actually reach each other wins. The usual
+    # case still takes the first pair and stops.
+    for start in starts[:JOIN_TRIES]:
+        for goal in goals[:JOIN_TRIES]:
+            if start == goal:
+                continue
+            route = _walk(graph, a, b, start, goal)
+            if route is not None:
+                return route
+    return None
+
+
+def _walk(graph, a, b, start, goal):
+    """The shortest way between two junctions, joined to a and b at the ends."""
     adjacency = graph["adjacency"]
     seen = {start: 0.0}
     previous: dict = {}
@@ -251,6 +279,69 @@ def street_route(a, b, obstacles=()):
         if _metres(trimmed[-1], point) > 0.5:
             trimmed.append(point)
     return trimmed if len(trimmed) > 2 else None
+
+
+def _segment_crossing(p1, p2, ring):
+    """Where the segment p1->p2 first meets the ring, coming from p1."""
+    best = None
+    for i in range(len(ring) - 1):
+        q1, q2 = ring[i], ring[i + 1]
+        d1 = _side(p1, p2, q1)
+        d2 = _side(p1, p2, q2)
+        d3 = _side(q1, q2, p1)
+        d4 = _side(q1, q2, p2)
+        if not ((d1 > 0) != (d2 > 0) and (d3 > 0) != (d4 > 0)):
+            continue
+        # Where along p1->p2 the crossing falls, as a fraction.
+        denominator = ((p2[0] - p1[0]) * (q2[1] - q1[1]) -
+                       (p2[1] - p1[1]) * (q2[0] - q1[0]))
+        if abs(denominator) < 1e-15:
+            continue
+        t = (((q1[0] - p1[0]) * (q2[1] - q1[1]) -
+              (q1[1] - p1[1]) * (q2[0] - q1[0])) / denominator)
+        if not 0.0 <= t <= 1.0:
+            continue
+        if best is None or t < best:
+            best = t
+    if best is None:
+        return None
+    return [p1[0] + (p2[0] - p1[0]) * best, p1[1] + (p2[1] - p1[1]) * best]
+
+
+def _trim_to_wall(route, rings):
+    """Stop the route where it first enters the building at its far end.
+
+    Every node sits at the middle of whatever it belongs to, so a line drawn to
+    a building runs from the street, through the wall, and on to the centroid -
+    across the roof of a hall a hundred metres wide. On the table that reads as
+    a cable laid over the building rather than a supply arriving at it.
+
+    Cut at the wall instead, keeping a couple of metres inside so the end is
+    plainly attached rather than merely touching. The route is walked from the
+    outside in, so a building the line has already passed through on its way -
+    an L-shaped block, say - does not end it early.
+    """
+    if not rings or len(route) < 2:
+        return route
+    for index in range(len(route) - 1):
+        p1, p2 = route[index], route[index + 1]
+        crossing = None
+        for ring in rings:
+            hit = _segment_crossing(p1, p2, ring)
+            if hit is not None and (crossing is None or
+                                    _metres(p1, hit) < _metres(p1, crossing)):
+                crossing = hit
+        if crossing is None:
+            continue
+        # A step past the wall, along the same heading, so the line ends inside
+        # the outline rather than balanced on it.
+        span = _metres(p1, p2)
+        if span > 0:
+            step = min(3.0 / span, 1.0)
+            crossing = [crossing[0] + (p2[0] - crossing[0]) * step,
+                        crossing[1] + (p2[1] - crossing[1]) * step]
+        return route[:index + 1] + [crossing]
+    return route
 
 
 def _rings_of(feature) -> list:
@@ -730,6 +821,17 @@ def build_layer(dispatch: dict, placements: dict | None = None) -> dict:
                 f"No street route for {source} -> {target}; check the node "
                 f"positions and {STREETS}"
             )
+
+        # Each end stops at its own building's wall rather than at the centroid
+        # inside it. Assets standing in a building - the battery in AWL - keep
+        # their full run: the line belongs to the thing in the building, not to
+        # the building, so it starts where that thing is.
+        if not host_of.get(target):
+            route = _trim_to_wall(route, rings_by_id.get(canonical(target), []))
+        if not host_of.get(source):
+            route = list(reversed(
+                _trim_to_wall(list(reversed(route)),
+                              rings_by_id.get(canonical(source), []))))
 
         flow_features.append({
             "type": "Feature",

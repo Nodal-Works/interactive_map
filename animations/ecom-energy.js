@@ -27,6 +27,28 @@
     const FILL_LAYER_ID = 'ecom-buildings-fill';
     const OUTLINE_LAYER_ID = 'ecom-buildings-outline';
     const SOLAR_LAYER_ID = 'ecom-buildings-solar';
+    const PANEL_SOURCE_ID = 'ecom-solar-panels-source';
+    const PANEL_LAYER_ID = 'ecom-solar-panels';
+
+    // Panels drawn on the roof, rather than a halo drawn around it.
+    //
+    // The halo says "this roof generates" and nothing else: a 129 kW array and
+    // a 586 kW one glow alike, and how much of the roof is actually covered -
+    // the thing a coverage slider changes - is invisible. Rows of panels say
+    // both at once, because the rows are the array: more coverage, more roof
+    // under them.
+    //
+    // Set PANELS to false to go back to the halo.
+    const PANELS = false;
+    // A 400 W module on two square metres, which is PVPlantSpec's own default:
+    // five modules to the kilowatt, ten square metres.
+    const PANEL_KW_PER_M2 = 0.2;
+    // Rows across the building, whatever its size. Fewer reads as stripes
+    // rather than panels; more turns to a smear at table scale.
+    const PANEL_ROWS = 7;
+    // No roof is all panel - plant rooms, walkways, the edge you cannot build
+    // to. The same ceiling the panel's coverage slider has.
+    const PANEL_MAX_COVER = 0.8;
 
     const NODES_SOURCE_ID = 'ecom-nodes-source';
     const NODE_LAYER_ID = 'ecom-nodes';
@@ -343,6 +365,9 @@
             // polygon, and neither can reach inside the nested `ecom` block.
             feature.properties.has_pv = (ecom && ecom.pv_kw > 0) ? 1 : 0;
             feature.properties.owner = (ecom && ecom.owner) || '';
+            // Which side of the outline is the roof, so the solar halo can be
+            // pushed onto it rather than straddling the wall.
+            feature.properties.inward = inwardSide(feature);
             (ecom && ecom.demand_hourly ? ecom.demand_hourly : []).forEach(
                 function (value) {
                     if (value > demandCeiling) demandCeiling = value;
@@ -1214,19 +1239,18 @@
         bindInteraction();
     }
 
-    // Flows: a wide low-opacity glow with a dashed core on top, which is how
-    // the dashboard draws them. The dash is uniform - a wide line swallows its
-    // own gaps and reads as solid, so "solid" means "high flow" without a
-    // second encoding having to say so.
+    // Flows: a wide low-opacity glow with a solid core on top.
     //
     // Colour follows the source node, and width follows magnitude, matching
-    // the 2D viewer exactly.
+    // the 2D viewer. The core used to be dashed, as the dashboard draws it,
+    // and the dash is gone - see the note above the pulse. Width in a dash is
+    // measured in line widths, so the same setting gave the grid a solid line
+    // and a neighbour's two kilowatts a row of dots: four kinds of line where
+    // there is one kind of thing.
     //
-    // A gradient from the source colour to the target colour was tried here and
-    // taken out again. It needed one layer per source/target pair, because
-    // line-gradient cannot be data-driven, and it could not be dashed at all -
-    // line-dasharray disables line-gradient. Losing the travelling dash cost
-    // more legibility than the second colour bought.
+    // A gradient from the source colour to the target colour was tried here
+    // and taken out again: it needed one layer per source/target pair, because
+    // line-gradient cannot be data-driven.
     function addFlowLayers() {
         if (!map.getSource(FLOWS_SOURCE_ID)) {
             map.addSource(FLOWS_SOURCE_ID, { type: 'geojson', data: flowData });
@@ -1246,12 +1270,6 @@
             'pv', KIND_COLORS.pv,
             KIND_COLORS.building
         ];
-        // Lines kept visible however little they carry: the battery's, and any
-        // ending at a charge point (node ids "CP_<name>").
-        const floored = ['any',
-            ['==', ['get', 'kind'], 'battery'],
-            ['==', ['slice', ['to-string', ['get', 'target']], 0, 3], 'CP_']];
-
         if (!map.getLayer(FLOW_GLOW_ID)) {
             map.addLayer({
                 id: FLOW_GLOW_ID,
@@ -1263,8 +1281,8 @@
                     // Narrow and faint: around the grid tie a dozen glows
                     // overlapped into one mass and the individual runs stopped
                     // being separable.
-                    'line-width': ['+', 1.5, ['*', 11, ['get', 'share']]],
-                    'line-opacity': ['*', 0.16, ['get', 'share'],
+                    'line-width': ['+', 1.5, ['*', 11, ['get', 'drawShare']]],
+                    'line-opacity': ['*', 0.16, ['get', 'drawShare'],
                                      ['get', 'revealed']],
                     'line-blur': 4
                 }
@@ -1279,28 +1297,17 @@
                 layout: { 'line-cap': 'round', 'line-join': 'round' },
                 paint: {
                     'line-color': colorByKind,
-                    // The battery's lines get a floor. Width and opacity follow
-                    // a line's share of the busiest flow on campus, which is the
-                    // grid at over a megawatt; the battery moves a few kilowatts,
-                    // so its lines came out at a fraction of a percent - there
-                    // but invisible, and the only red on the table was gone.
-                    // It is one asset the community is built around, and it
-                    // has to be seen doing what it does however small that is.
-                    // The same goes for a charge point: one car at 11 kW beside
-                    // a megawatt grid tie was drawn at under a fifth opacity and
-                    // two pixels wide, and read as no connection at all.
-                    'line-width': ['+',
-                        ['case', floored, 2.2, 0.8],
-                        ['*', 6.5, ['get', 'share']]],
+                    // Width, brightness and glow all follow drawShare, which
+                    // is share for an ordinary line and a floor for the small
+                    // ones the community is built around - see
+                    // FLOORED_DRAW_SHARE. One number, so a floored line is a
+                    // smaller line rather than a different sort of mark.
+                    'line-width': ['+', 0.8, ['*', 6.5, ['get', 'drawShare']]],
                     // Just short of full, so two crossing lines still read as
-                    // two rather than as a join.
-                    // Only while it is moving something: an idle battery or
-                    // charger line stays dark like any other.
+                    // two rather than as a join. Only while it is moving
+                    // something: an idle line stays dark like any other.
                     'line-opacity': ['*', 0.82, ['get', 'revealed'],
-                        ['case',
-                            ['all', floored, ['>', ['get', 'share'], 0]],
-                            ['max', 0.6, ['get', 'share']],
-                            ['get', 'share']]]
+                                     ['get', 'drawShare']]
                 }
             });
         }
@@ -1325,7 +1332,7 @@
                 paint: {
                     'circle-color': colorByKind,
                     'circle-radius': ['*',
-                        ['+', 9, ['*', 16, ['get', 'share']]],
+                        ['+', 9, ['*', 16, ['get', 'drawShare']]],
                         ['+', 1, ['*', 1.1, ['get', 'land']]]],
                     'circle-opacity': ['*', 0.45, ['get', 'alpha']],
                     'circle-blur': 1
@@ -1351,7 +1358,7 @@
                         'pv', lighten(KIND_COLORS.pv, 0.55),
                         lighten(KIND_COLORS.building, 0.55)],
                     'circle-radius': ['*',
-                        ['+', 2.4, ['*', 4.4, ['get', 'share']]],
+                        ['+', 2.4, ['*', 4.4, ['get', 'drawShare']]],
                         ['+', 1, ['*', 0.5, ['get', 'land']]]],
                     'circle-opacity': ['get', 'alpha'],
                     'circle-blur': 0.25
@@ -1864,9 +1871,43 @@
                     'line-color': KIND_COLORS.pv,
                     // Blurred and wide: a glow around the footprint, not a
                     // second outline competing with the pink one.
-                    'line-blur': 3,
-                    'line-width': ['+', 1.5, ['*', 9, ['get', 'solarNow']]],
+                    'line-blur': 2.5,
+                    'line-width': ['+', 1.5, ['*', 7, ['get', 'solarNow']]],
+                    // Pushed onto the roof rather than centred on the wall.
+                    // Centred, half of a ten-pixel glow and its blur lay on the
+                    // ground outside the building, and on the table a roof lit
+                    // up as a smudge around its own edge.
+                    //
+                    // About half the width, towards whichever side the inside
+                    // is. Not the full half plus the blur: an offset line
+                    // overshoots at a sharp corner, and MC2's notches grew
+                    // yellow spikes. This keeps the glow on the roof and the
+                    // corners honest, at the cost of a little softness over
+                    // the wall itself.
+                    'line-offset': ['*', ['coalesce', ['get', 'inward'], -1],
+                        ['+', 1.75, ['*', 3, ['get', 'solarNow']]]],
                     'line-opacity': ['*', 0.85, ['get', 'solarNow']]
+                }
+            });
+        }
+
+        if (PANELS && !map.getLayer(PANEL_LAYER_ID)) {
+            if (!map.getSource(PANEL_SOURCE_ID)) {
+                map.addSource(PANEL_SOURCE_ID, {
+                    type: 'geojson',
+                    data: { type: 'FeatureCollection', features: [] }
+                });
+            }
+            map.addLayer({
+                id: PANEL_LAYER_ID,
+                type: 'fill',
+                source: PANEL_SOURCE_ID,
+                paint: {
+                    'fill-color': KIND_COLORS.pv,
+                    // Dark and present at night, bright at noon: the panels are
+                    // on the roof whatever the hour, and what changes is what
+                    // they are doing.
+                    'fill-opacity': ['+', 0.22, ['*', 0.68, ['get', 'solarNow']]]
                 }
             });
         }
@@ -1980,7 +2021,9 @@
         const value = visible ? 'visible' : 'none';
         [
             CONTEXT_FILL_LAYER_ID, CONTEXT_OUTLINE_LAYER_ID,
-            FILL_LAYER_ID, OUTLINE_LAYER_ID, SOLAR_LAYER_ID,
+            FILL_LAYER_ID, OUTLINE_LAYER_ID,
+            PANELS ? PANEL_LAYER_ID : SOLAR_LAYER_ID,
+            // and the one PANELS replaces is hidden below
             BATTERY_HOST_FILL_ID, BATTERY_LEVEL_ID, BATTERY_HOST_LINE_ID,
             FLOW_GLOW_ID, FLOW_LAYER_ID, FLOW_HEAD_GLOW_ID, FLOW_HEAD_ID,
             NODE_LAYER_ID
@@ -1989,6 +2032,12 @@
                 map.setLayoutProperty(id, 'visibility', value);
             }
         });
+
+        // The one the other mode uses stays off either way.
+        const spare = PANELS ? SOLAR_LAYER_ID : PANEL_LAYER_ID;
+        if (map.getLayer(spare)) {
+            map.setLayoutProperty(spare, 'visibility', 'none');
+        }
 
         if (visible) {
             startPulse();
@@ -1999,20 +2048,19 @@
         }
     }
 
-    // Travelling dashes.
+    // Solid lines, and the light does the travelling.
     //
-    // A precomputed sequence stepped on a timer, not a fractional dasharray set
-    // every frame: MapLibre rebuilds its dash texture atlas whenever the array
-    // changes, so feeding it new fractional values at 60 fps thrashes that
-    // atlas and the animation stalls after about a second. Integer patterns
-    // cycled at ~50 ms is the pattern Mapbox's own "ant path" example uses, and
-    // it stays smooth because each entry is cached.
-    const DASH_SEQUENCE = [
-        [0, 4, 3], [0.5, 4, 2.5], [1, 4, 2], [1.5, 4, 1.5],
-        [2, 4, 1], [2.5, 4, 0.5], [3, 4, 0], [0, 0.5, 3, 3.5],
-        [0, 1, 3, 3], [0, 1.5, 3, 2.5], [0, 2, 3, 2], [0, 2.5, 3, 1.5],
-        [0, 3, 3, 1], [0, 3.5, 3, 0.5]
-    ];
+    // These used to be ant-path dashes, stepped through a precomputed sequence
+    // on a timer. The trouble is that MapLibre measures a dash in line widths,
+    // and a line's width here is its share of the busiest flow: the grid's
+    // seven-pixel line swallowed its own gaps and read as solid, while a
+    // neighbour sharing two kilowatts came out as a row of dots. Same setting,
+    // four different-looking kinds of line, and the difference said nothing
+    // about the energy - only about the width.
+    //
+    // So: every line solid, and the travelling light that was added later
+    // carries direction and motion on its own. One style, and width and
+    // brightness are left to mean what they say.
 
     let pulseStep = 0;
 
@@ -2114,11 +2162,6 @@
             // dash on a line that has only just been drawn says the energy is
             // already moving, and the whole point of the step is that it is not
             // moving yet.
-            if (!flowStill) {
-                pulseStep = (pulseStep + 1) % DASH_SEQUENCE.length;
-                map.setPaintProperty(FLOW_LAYER_ID, 'line-dasharray',
-                                     DASH_SEQUENCE[pulseStep]);
-            }
             ringStep = (ringStep + 1) % RING_STEPS;
             paintRings();
             paintHeads();
@@ -2136,7 +2179,12 @@
     // rather than nameplate capacity - the arrays never reach nameplate, so
     // scaling to it leaves every halo invisible even at midday.
     function setHour(hour) {
+        const moved = currentHour !== hour;
         currentHour = hour;
+        // Said once, here, rather than only where the table's own clock ticks:
+        // the controller's scrubber and the introduction's held hours move it
+        // too, and anything drawing a clock needs to hear about all three.
+        if (moved && isActive) announceHour();
         if (!isActive || !layerData) return;
 
         const source = map.getSource(NODES_SOURCE_ID);
@@ -2359,6 +2407,28 @@
      * 1,286 kW in a single hour, and on a linear scale everything but the
      * three biggest buildings would sit at the dark end all day.
      */
+    /**
+     * Which way is into the building, as a line-offset sign.
+     *
+     * MapLibre offsets a line to the right of the way it is drawn, so which
+     * sign points inwards depends on the winding of the ring - and these
+     * footprints come from Lantmäteriet by way of two scripts, with no promise
+     * about that. Read off the signed area instead: a ring wound clockwise on
+     * screen has its inside to the left.
+     */
+    function inwardSide(feature) {
+        const geometry = feature.geometry || {};
+        const parts = geometry.type === 'Polygon' ? [geometry.coordinates]
+            : geometry.type === 'MultiPolygon' ? geometry.coordinates : [];
+        const ring = (parts[0] || [])[0];
+        if (!ring || ring.length < 4) return -1;
+        let sum = 0;
+        for (let i = 0; i < ring.length - 1; i += 1) {
+            sum += ring[i][0] * ring[i + 1][1] - ring[i + 1][0] * ring[i][1];
+        }
+        return sum > 0 ? -1 : 1;
+    }
+
     /** The drawn building a point falls inside, if any. */
     function buildingUnder(point) {
         if (!layerData || !layerData.features) return null;
@@ -2470,6 +2540,118 @@
         if (out.length < 3) return null;
         out.push(out[0].slice());
         return out;
+    }
+
+    /** Panels or halo, whichever this build is set to, once both exist. */
+    function syncSolarMode() {
+        const spare = PANELS ? SOLAR_LAYER_ID : PANEL_LAYER_ID;
+        const used = PANELS ? PANEL_LAYER_ID : SOLAR_LAYER_ID;
+        if (map.getLayer(spare)) map.setLayoutProperty(spare, 'visibility', 'none');
+        if (map.getLayer(used) && isActive) {
+            map.setLayoutProperty(used, 'visibility', 'visible');
+        }
+        if (PANELS) {
+            buildPanels();
+            paintPanels();
+        }
+    }
+
+    /**
+     * Rows of panels on every roof that has an array.
+     *
+     * How much roof: the array's kilowatts turned back into square metres at
+     * five modules to the kilowatt, over the footprint the building actually
+     * has. A 129 kW array on AWL's 2,700 m2 covers about a quarter of it, and
+     * that quarter is what gets drawn.
+     *
+     * The rows lie along the building's own long wall, because a roof is laid
+     * out to its building and rows running across the grain read as a texture
+     * laid on top rather than something built there. Each row is the footprint
+     * clipped to a band, so courtyards stay courtyards and an L-shaped block
+     * keeps its L.
+     */
+    function buildPanels() {
+        const source = map.getSource(PANEL_SOURCE_ID);
+        if (!source || !layerData) return;
+
+        const features = [];
+        layerData.features.forEach(function (feature) {
+            const ecom = feature.properties.ecom;
+            if (!ecom || !(ecom.pv_kw > 0)) return;
+
+            const roof = feature.properties.footprint_m2 || 0;
+            if (!roof) return;
+            const panelArea = ecom.pv_kw / PANEL_KW_PER_M2;
+            const cover = Math.max(0.04, Math.min(PANEL_MAX_COVER, panelArea / roof));
+
+            const geometry = feature.geometry || {};
+            const parts = geometry.type === 'Polygon' ? [geometry.coordinates]
+                : geometry.type === 'MultiPolygon' ? geometry.coordinates : [];
+            if (!parts.length) return;
+
+            // Across the building's long wall: the direction the rows stack in.
+            const turn = (alongBuilding(feature) +
+                (typeof map.getBearing === 'function' ? map.getBearing() : 0) + 90)
+                * Math.PI / 180;
+            const ux = Math.sin(turn);
+            const uy = Math.cos(turn);
+            const metres = 111320 * Math.cos(57.689 * Math.PI / 180);
+            const across = function (point) {
+                return point[0] * metres * ux + point[1] * 110540 * uy;
+            };
+
+            parts.forEach(function (part) {
+                const ring = part[0];
+                if (!ring || ring.length < 4) return;
+                let low = Infinity;
+                let high = -Infinity;
+                ring.forEach(function (point) {
+                    const value = across(point);
+                    if (value < low) low = value;
+                    if (value > high) high = value;
+                });
+                const span = high - low;
+                if (!(span > 0)) return;
+
+                const slot = span / PANEL_ROWS;
+                for (let row = 0; row < PANEL_ROWS; row += 1) {
+                    // The covered share of each slot, centred in it, so the
+                    // gaps between rows grow as coverage falls.
+                    const middle = low + slot * (row + 0.5);
+                    const half = slot * cover / 2;
+                    let band = ringUnder(ring, across, middle + half);
+                    if (!band) continue;
+                    band = ringUnder(band, function (point) { return -across(point); },
+                                     -(middle - half));
+                    if (!band) continue;
+                    features.push({
+                        type: 'Feature',
+                        geometry: { type: 'Polygon', coordinates: [band] },
+                        properties: { id: feature.properties.id,
+                                      solarNow: feature.properties.solarNow || 0 }
+                    });
+                }
+            });
+        });
+
+        panelFeatures = features;
+        source.setData({ type: 'FeatureCollection', features: features });
+    }
+
+    let panelFeatures = [];
+
+    /** The hour's output, onto the panels already drawn. */
+    function paintPanels() {
+        const source = map.getSource(PANEL_SOURCE_ID);
+        if (!source || !panelFeatures.length || !layerData) return;
+        const level = {};
+        layerData.features.forEach(function (feature) {
+            level[feature.properties.id] = feature.properties.solarNow || 0;
+        });
+        panelFeatures.forEach(function (panel) {
+            panel.properties.solarNow = level[panel.properties.id] || 0;
+        });
+        source.setData({ type: 'FeatureCollection', features: panelFeatures });
     }
 
     /** The charge drawn as a level inside the building that holds it. */
@@ -2603,6 +2785,7 @@
         });
         source.setData(layerData);
         paintBatteryLevel(stored);
+        if (PANELS) paintPanels();
     }
 
     // ------------------------------------------------------- uniform reveal
@@ -2776,6 +2959,21 @@
     // nothing this hour.
     const MIN_VISIBLE_SHARE = 0.22;
 
+    // How strongly the floored lines are DRAWN, which is a separate question
+    // from how much they carry.
+    //
+    // Share drives width, brightness, glow and the size of the travelling
+    // light, and at 0.22 all four came out at their thinnest: a 3.6 px line at
+    // half brightness with no glow, and thin enough that the travelling dash
+    // showed its gaps. Beside a 7.3 px solid teal line that reads as a
+    // different kind of thing rather than a smaller flow - which is exactly
+    // what it is not. The battery and the chargers are what the community is
+    // built around; they are small, and they have to look like lines.
+    //
+    // The width already flattered them with a floor. This makes the flattery
+    // consistent across all four encodings instead of only one of them.
+    const FLOORED_DRAW_SHARE = 0.7;
+
     function setFlowHour(hour) {
         if (!flowData) return;
         const source = map.getSource(FLOWS_SOURCE_ID);
@@ -2790,6 +2988,13 @@
             feature.properties.share = (now > 0 && flowCeiling > 0)
                 ? Math.max(Math.sqrt(now / flowCeiling), MIN_VISIBLE_SHARE)
                 : 0;
+            // What it is drawn at, as against what it carries.
+            const kind = feature.properties.kind;
+            const floored = kind === 'battery' ||
+                String(feature.properties.target || '').indexOf('CP_') === 0;
+            feature.properties.drawShare = feature.properties.share > 0 && floored
+                ? Math.max(feature.properties.share, FLOORED_DRAW_SHARE)
+                : feature.properties.share;
         });
 
         source.setData(flowData);
@@ -2809,7 +3014,6 @@
     // towards.
     const KIND_ORDER = { grid: 0, battery: 1, pv: 2, building: 3 };
     const FLOW_REVEAL_MS = 2600;
-    const FLOW_STILL_DASH = [2, 2];
 
     let flowStill = false;
     let flowRevealFrame = null;
@@ -2850,9 +3054,6 @@
 
         // Still: the dashes stop travelling and every line starts undrawn.
         flowStill = true;
-        if (map.getLayer(FLOW_LAYER_ID)) {
-            map.setPaintProperty(FLOW_LAYER_ID, 'line-dasharray', FLOW_STILL_DASH);
-        }
         flowData.features.forEach(function (feature) {
             feature.properties.revealed = 0;
         });
@@ -2894,7 +3095,7 @@
     // keyboard, so a static hour would just look broken. The ECOM dashboard can
     // still take over - a timeline message stops the clock, because two things
     // driving the hour at once reads as a stutter.
-    const HOUR_MS = 1100;
+    const HOUR_MS = 10000;
 
     let clockTimer = null;
     let hourCount = 24;
@@ -2904,10 +3105,20 @@
         if (clockTimer !== null || externalControl) return;
         clockTimer = setInterval(function () {
             setHour((currentHour + 1) % hourCount);
-            ecomChannel.postMessage({
-                type: 'ecom_clock', hour: currentHour, hours: hourCount
-            });
         }, HOUR_MS);
+    }
+
+    function announceHour() {
+        // With the dates, so a clock drawn beside the table can say which day
+        // it is on. The committed export carries them in ecom_meta and a live
+        // dispatch in layer.meta; the opening picture only ever had the first,
+        // which is why the strip came up with an empty date on it.
+        const period = layerPeriod ||
+            (layerData && layerData.ecom_meta && layerData.ecom_meta.period) || '';
+        ecomChannel.postMessage({
+            type: 'ecom_clock', hour: currentHour, hours: hourCount,
+            period: period
+        });
     }
 
     function stopClock() {
@@ -2981,6 +3192,7 @@
     // them alongside the layer; the committed export keeps them in its meta.
     let layerKpis = null;
     let layerHours = null;
+    let layerPeriod = null;
 
     function announceKpis() {
         const kpis = layerKpis ||
@@ -3024,6 +3236,7 @@
         dataRevision++;
         layerKpis = layer.kpis || null;
         layerHours = (layer.meta && layer.meta.hours) || null;
+        layerPeriod = (layer.meta && layer.meta.period) || null;
 
         layerData = layer.buildings;
         nodeData = layer.nodes;
@@ -3084,6 +3297,8 @@
 
         ecomChannel.postMessage({ type: 'ecom_summary', summary: buildSummary() });
         announceKpis();
+        announceHour();
+        syncSolarMode();
 
         // Sent after the sources are written, not before: this is the
         // controller's evidence that the table actually redrew, rather than
@@ -3291,6 +3506,8 @@
             summary: buildSummary()
         });
         announceKpis();
+        announceHour();
+        syncSolarMode();
     }
 
     function deactivate() {
@@ -3541,6 +3758,8 @@
         setHour: setHour,
         applyLayer: applyLayer,
         applyFilters: applyFilters,
+        // For the harness: redraw the roof panels from the current data.
+        panels: function () { if (PANELS) buildPanels(); return panelFeatures.length; },
         getSummary: buildSummary,
         isActive: function () { return isActive; }
     };
