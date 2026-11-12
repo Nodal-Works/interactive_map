@@ -437,6 +437,10 @@
                     <option value="0">Loading...</option>
                 </select>
             </div>
+            <label style="display:block;margin-top:16px;font-size:14px;cursor:pointer">
+                <input type="checkbox" id="hand-tracking-test">
+                Webcam hand tracking (experimental table test)
+            </label>
         </div>
 
         <div class="card" style="flex: 1;">
@@ -694,7 +698,9 @@
             }
 
             const screenInfo = getScreenInfo(displayIndex);
-            mainWin = await launchWindowOnScreen('index.html', 'ACE_Main_Display', displayIndex);
+            const mainUrl = document.getElementById('hand-tracking-test').checked
+                ? 'index.html?handTracking=1' : 'index.html';
+            mainWin = await launchWindowOnScreen(mainUrl, 'ACE_Main_Display', displayIndex);
 
             if (mainWin) {
                 updateWindowStatus();

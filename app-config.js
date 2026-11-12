@@ -85,7 +85,7 @@ window.APP_CONFIG = {
     "media/sound/wind.mp3": "media/sound/wind.mp3",
     "media/street-network.geojson": "media/street-network.geojson",
     "media/sound/city.mp3": "media/sound/city.mp3",
-    "./media/mesh.stl": "./media/mesh.stl",
+    "./media/mesh.stl": "./media/mesh.stl?v=main-00bdfd9",
     "./media/trees_instanced.glb": "./media/trees_instanced.glb",
     "media/ecom/ecom-buildings.geojson": "media/ecom/ecom-buildings.geojson",
     "media/ecom/ecom-nodes.geojson": "media/ecom/ecom-nodes.geojson",
