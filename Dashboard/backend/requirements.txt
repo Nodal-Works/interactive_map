@@ -4,3 +4,10 @@ pydantic>=2.7
 pandas>=2.2
 numpy>=1.26
 networkx>=3.2
+
+# The LEC rolling-horizon optimizer (Optimization/LEC-Opt/functions1.py)
+# builds its model in Pyomo and solves it with HiGHS unless .env names
+# Gurobi; matplotlib is imported by functions1 at load time.
+pyomo>=6.7
+highspy>=1.7
+matplotlib>=3.8

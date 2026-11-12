@@ -126,7 +126,7 @@ def service_command(name, config):
     if name == 'ecom':
         directory = ROOT / 'Dashboard' / 'backend'
         python = ensure_environment(directory, directory / 'requirements.txt',
-                                   'import fastapi, uvicorn, pydantic, pandas, numpy, networkx')
+                                   'import fastapi, uvicorn, pydantic, pandas, numpy, networkx, pyomo, highspy')
         return [str(python), '-m', 'uvicorn', 'app.main:app', '--host', '127.0.0.1', '--port', str(config[name])], directory
     if name == 'coolpaths':
         directory = ROOT / 'coolpaths'
