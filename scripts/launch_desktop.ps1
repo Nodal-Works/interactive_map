@@ -96,6 +96,58 @@ try {
         $Splash.Show()
         [System.Windows.Forms.Application]::DoEvents()
     }
+    # Bring the checkout up to the latest merged main before starting it.
+    # Only ever a fast-forward of a clean main checkout: anything else (another
+    # branch, local edits, offline, diverged) is left exactly as it is and the
+    # launch carries on with what is checked out.
+    if ($Detail) {
+        $Detail.Text = "Checking for updates..."
+        [System.Windows.Forms.Application]::DoEvents()
+    }
+    $UpdateLog = Join-Path $Root '.runtime\desktop-update.log'
+    $UpdateNote = $null
+    $Git = Get-Command git -ErrorAction SilentlyContinue
+    if (-not $Git) {
+        $UpdateNote = 'git was not found; launching the checked-out version.'
+    } else {
+        $PreviousPreference = $ErrorActionPreference
+        $ErrorActionPreference = 'Continue'
+        try {
+            $Branch = (& git -C $Root rev-parse --abbrev-ref HEAD 2>$null | Out-String).Trim()
+            $Dirty = (& git -C $Root status --porcelain --untracked-files=no 2>$null | Out-String).Trim()
+            $Before = (& git -C $Root rev-parse --short HEAD 2>$null | Out-String).Trim()
+            $FetchOutput = & git -C $Root fetch origin main 2>&1 | Out-String
+            $Fetched = $LASTEXITCODE -eq 0
+            if ($Branch -ne 'main') {
+                $UpdateNote = "Not updated: $Root is on branch '$Branch', not main."
+            } elseif ($Dirty) {
+                $UpdateNote = "Not updated: $Root has uncommitted changes."
+            } elseif (-not $Fetched) {
+                $UpdateNote = "Not updated: could not reach origin (offline?). $($FetchOutput.Trim())"
+            } else {
+                $MergeOutput = & git -C $Root merge --ff-only origin/main 2>&1 | Out-String
+                $Merged = $LASTEXITCODE -eq 0
+                $After = (& git -C $Root rev-parse --short HEAD 2>$null | Out-String).Trim()
+                if (-not $Merged) {
+                    $UpdateNote = "Not updated: main cannot fast-forward to origin/main. $($MergeOutput.Trim())"
+                } elseif ($Before -ne $After) {
+                    $UpdateNote = "Updated main $Before -> $After."
+                } else {
+                    $UpdateNote = "Already up to date at $After."
+                }
+            }
+        } catch {
+            $UpdateNote = "Update check failed: $($_.Exception.Message)"
+        } finally {
+            $ErrorActionPreference = $PreviousPreference
+        }
+    }
+    try { "$(Get-Date -Format s) $Target $UpdateNote" | Out-File $UpdateLog -Append -Encoding utf8 } catch {}
+    if ($Detail -and $UpdateNote -like 'Not updated*') {
+        $Detail.Text = $UpdateNote.Substring(0, [Math]::Min(60, $UpdateNote.Length))
+        [System.Windows.Forms.Application]::DoEvents()
+        Start-Sleep -Seconds 3
+    }
     if ($Detail) {
         $Detail.Text = "Switching to $Target workspace..."
         [System.Windows.Forms.Application]::DoEvents()
