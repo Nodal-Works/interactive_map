@@ -480,11 +480,12 @@ def scenario_peaks(name: str) -> dict:
     if not path.is_file():
         raise HTTPException(status_code=404, detail=f"no scenario named {name!r}")
 
-    definition = json.loads(path.read_text(encoding="utf-8"))
+    definition = local_demand_paths(json.loads(path.read_text(encoding="utf-8")))
     years = scenario_years(name)["years"]
-    # Keyed on the scenario's own mtime: change which buildings are members and
-    # the peaks are recomputed, otherwise the first answer stands.
-    key = (name, path.stat().st_mtime_ns, tuple(years))
+    # Keyed on the scenario's own mtime and on where the CSVs were found, since
+    # ECOM_DEMAND_DIR can move them: change which buildings are members and the
+    # peaks are recomputed, otherwise the first answer stands.
+    key = (name, path.stat().st_mtime_ns, str(DEMAND_DIR), tuple(years))
     return peaks.for_scenario(definition, years, key)
 
 # --------------------------------------------------------------- MR table
