@@ -11,3 +11,6 @@ networkx>=3.2
 pyomo>=6.7
 highspy>=1.7
 matplotlib>=3.8
+
+# Live battery readings from the EHUB gateway (app/services/ehub.py).
+requests>=2.31

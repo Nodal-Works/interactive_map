@@ -17,7 +17,7 @@ if [[ ! -x "$venv_python" ]]; then
     python3 -m venv "$backend_dir/.venv"
 fi
 
-if ! "$venv_python" -c 'import fastapi, uvicorn, pydantic, pandas, numpy, networkx, pyomo, highspy' >/dev/null 2>&1; then
+if ! "$venv_python" -c 'import fastapi, uvicorn, pydantic, pandas, numpy, networkx, pyomo, highspy, requests' >/dev/null 2>&1; then
     "$venv_python" -m pip install -r "$backend_dir/requirements.txt"
 fi
 
