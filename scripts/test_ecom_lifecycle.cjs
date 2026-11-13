@@ -10,7 +10,8 @@ function fixture(){
     setLayerVisibility:on=>visibility.push(on),applyFilters(){},viewFilters:null,
     setHour(){},currentHour:0,window:{},heldCaption:null,showCaption(){},
     syncButton(){},quietTheStreets(){},ecomChannel:{postMessage:e=>events.push(e)},
-    buildSummary:()=>null,announceKpis(){},setFlowMode(){},setUniform(){},endChange(){},
+    buildSummary:()=>null,announceKpis(){},announceHour(){},syncSolarMode(){},
+    setFlowMode(){},setUniform(){},endChange(){},
     previousBasemap:null,
   });
   vm.runInContext('let isActive=false,desiredActive=false,activationRevision=0,activationPromise=null;'+source.slice(source.indexOf('    async function activate(revision)'),source.indexOf('    function buildSummary()'))+'\nthis.setEnabled=setEnabled;this.toggle=toggle;this.active=()=>isActive;',context);

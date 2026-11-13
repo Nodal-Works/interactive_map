@@ -62,8 +62,12 @@
         return String(value).padStart(2, '0');
     }
 
+    // state.year, not DATA_YEAR: the year picker can move off the scenario's
+    // own year, and this date is what the sky card prints. Pinned to the
+    // constant it showed "Sep 21, 2022" while the table was running 2023 -
+    // wrong year, and a weekday to match.
     function isoDate(month, day) {
-        return DATA_YEAR + '-' + pad(month) + '-' + pad(day);
+        return (state.year || DATA_YEAR) + '-' + pad(month) + '-' + pad(day);
     }
 
     function parseIso(value) {
@@ -319,6 +323,7 @@
         startDay: 1,
         year: DATA_YEAR,
         years: [],            // what the backend says there is data for
+        peaks: [],            // busiest hour and day of each of those years
         // Whether a display is actually listening. Without this the panel looks
         // identical whether the table is following along or the two are on
         // different origins and nothing is getting through.
@@ -337,6 +342,7 @@
         busy: false,
         dirty: false,
         autoApply: true,
+        live: null,            // the real battery's last reading
         optimizer: null,       // last optimizer run, or an in-flight job
         optimizerSpan: 'day',  // how much of the year to solve
         optimizerStartedAt: 0  // when the run began, for the clock while it waits
@@ -684,7 +690,7 @@
     }
 
     function chargePoints() {
-        return state.working.charge_points || [];
+        return (state.working || {}).charge_points || [];
     }
 
     /** A charger like the ones already there, on a free stretch of the street. */
@@ -838,7 +844,11 @@
         state.year = year;
     }
 
-    function battery() { return (state.working.batteries || [])[0] || null; }
+    // Tolerates a missing spec: the table can announce its own totals before
+    // the panel's scenario fetch has landed, and renderKpis reads this to fill
+    // the "Settings on this run" column. Without the guard that announcement
+    // threw and the headline tiles it carries never appeared.
+    function battery() { return ((state.working || {}).batteries || [])[0] || null; }
 
     /** How many days the period really covers.
      *
@@ -2117,7 +2127,7 @@
                         (k.avg_grid_price_import === undefined ? 'N/A'
                          : k.avg_grid_price_import.toFixed(2) + ' SEK/kWh')) +
                     row('sell', 'Export price',
-                        (((state.working.grid || {}).selling_price || {}).fixed === undefined
+                        ((((state.working || {}).grid || {}).selling_price || {}).fixed === undefined
                          ? 'N/A'
                          : state.working.grid.selling_price.fixed.toFixed(2) + ' SEK/kWh')) +
                     row('ev_station', 'Charge points',
@@ -2176,6 +2186,49 @@
         return options.join('');
     }
 
+    /** Shortcuts to the hardest moments in each year of measured demand.
+     *
+     * A campus day picked at random is a mild one, and a battery or a tariff
+     * that looks fine on it has not been asked a hard question. The peak hour
+     * is the hour the community would have to answer for; the peak day is the
+     * day a peak charge would be struck on. Both come from the backend, which
+     * sums the measured CSVs - see app/services/peaks.py.
+     */
+    function peakChips() {
+        if (!state.peaks || !state.peaks.length) return '';
+        const label = function (month, day) {
+            return day + ' ' + (MONTH_NAMES[month - 1] || '').slice(0, 3);
+        };
+        const chips = state.peaks.map(function (p) {
+            const h = p.peak_hour;
+            const d = p.peak_day;
+            return '' +
+                '<button type="button" class="ecom-peak-chip" ' +
+                    'data-peak="hour" data-peak-year="' + p.year + '" ' +
+                    'data-peak-month="' + h.month + '" data-peak-day="' + h.day + '" ' +
+                    'data-peak-hour="' + h.hour + '" ' +
+                    'title="The single busiest hour of ' + p.year + ': ' +
+                        Math.round(h.kwh).toLocaleString() + ' kWh in that hour. ' +
+                        'Loads that day and stops on it.">' +
+                    '<b>' + p.year + ' peak hour</b>' +
+                    '<span>' + label(h.month, h.day) + ' ' + pad(h.hour) + ':00</span>' +
+                '</button>' +
+                '<button type="button" class="ecom-peak-chip" ' +
+                    'data-peak="day" data-peak-year="' + p.year + '" ' +
+                    'data-peak-month="' + d.month + '" data-peak-day="' + d.day + '" ' +
+                    'data-peak-hour="' + d.busiest_hour + '" ' +
+                    'title="The busiest day of ' + p.year + ': ' +
+                        Math.round(d.kwh).toLocaleString() + ' kWh over the day. ' +
+                        'Opens on its busiest hour.">' +
+                    '<b>' + p.year + ' peak day</b>' +
+                    '<span>' + label(d.month, d.day) + '</span>' +
+                '</button>';
+        }).join('');
+        return '<div class="ecom-peak-row">' +
+                   '<label>Jump to</label>' + chips +
+               '</div>';
+    }
+
     function heroMarkup() {
         return '' +
             '<div class="ecom-sky-card">' +
@@ -2231,6 +2284,9 @@
                     '</b>' +
                 '</div>' +
                 '<span id="ecom-span-note" class="ecom-when-note"></span>' +
+                // Filled once the backend answers; empty until then, so the
+                // row does not flash an empty label on every render.
+                '<div id="ecom-peaks">' + peakChips() + '</div>' +
                 // Which control costs a dispatch and which is free, in one line
                 // rather than a paragraph under every row.
                 '<div class="ecom-when-legend">' +
@@ -2371,6 +2427,105 @@
             '<div class="ecom-roofs">' + rows + '</div>');
     }
 
+    // ---------------------------------------------------- the real battery
+    //
+    // AWL's battery is a real one, and the site publishes what it is doing. The
+    // model above is a proposal; this is the building. Shown side by side and
+    // labelled, because the two will not agree - the site runs its own control
+    // and the model does not know about it - and a reader who cannot tell
+    // which is which learns nothing from either.
+    //
+    // Read-only. The same gateway takes setpoints; this panel never sends one.
+    const LIVE_EVERY_MS = 5000;
+
+    let liveTimer = null;
+
+    function watchLive() {
+        if (liveTimer !== null || state.api === null) return;
+        const tick = async function () {
+            try {
+                const reading = await getJson('/api/live/battery');
+                const was = JSON.stringify(state.live);
+                state.live = reading;
+                // Only when something changed: this fires every five seconds,
+                // and re-rendering the panel under a finger moves the slider
+                // it is resting on.
+                if (JSON.stringify(reading) !== was &&
+                    state.openGroup === 'storage') render();
+            } catch (error) {
+                state.live = { available: false, detail: String(error.message || error) };
+            }
+        };
+        tick();
+        liveTimer = setInterval(tick, LIVE_EVERY_MS);
+    }
+
+    /** The live reading, as a line of the Storage group. */
+    function liveBattery() {
+        const live = state.live;
+        if (!live) return '';
+        if (!live.available) {
+            return '<span class="ecom-ctl-hint">No live reading: ' +
+                esc(live.detail || 'the gateway did not answer') + '</span>';
+        }
+
+        const one = function (reading, unit, digits) {
+            if (!reading || reading.value === null || reading.value === undefined) {
+                return '--';
+            }
+            return reading.value.toFixed(digits === undefined ? 1 : digits) + ' ' + unit;
+        };
+        const power = live.power_kw || {};
+        const stale = power.fresh === false;
+        // No timestamp means the gateway has never held a value for the tag,
+        // so there is nothing to date and nothing to say it is doing.
+        const reported = !!power.at;
+        const doing = live.doing === 'charging' ? 'charging'
+            : live.doing === 'discharging' ? 'discharging'
+            : live.doing === 'idle' ? 'idle' : null;
+
+        // "15:04" is enough while it is today's reading; once it is older than
+        // that, the day matters more than the minute.
+        const seenAt = function (at) {
+            const text = String(at || '');
+            const day = text.slice(0, 10);
+            const time = text.slice(11, 16);
+            const today = new Date().toISOString().slice(0, 10);
+            return day === today ? time : day + ' ' + time;
+        };
+
+        return '' +
+            '<div class="ecom-ctl-live' + (stale || !reported ? ' is-stale' : '') + '">' +
+                '<div class="ecom-ctl-live-head">' +
+                    '<span class="ecom-ctl-live-dot"></span>' +
+                    (reported ? 'The battery' : 'The battery - no reading') +
+                    '<span class="ecom-ctl-note">' +
+                        (reported
+                            ? (stale ? 'last updated ' : 'updated ') +
+                              esc(seenAt(power.at))
+                            : 'the gateway holds no value for these tags') +
+                    '</span>' +
+                '</div>' +
+                '<div class="ecom-ctl-live-rows">' +
+                    '<div><span>Power</span><b>' + one(power, 'kW') +
+                        (doing ? ' &middot; ' + doing : '') + '</b></div>' +
+                    '<div><span>Charge</span><b>' +
+                        one(live.soc_percent, '%', 0) + '</b></div>' +
+                    '<div><span>Roof</span><b>' + one(live.solar_kw, 'kW') + '</b></div>' +
+                    '<div><span>Setpoint</span><b>' + one(live.setpoint_kw, 'kW') +
+                        // Null is "nobody said", which is not the same as
+                        // "stopped" - the one claims the battery is off.
+                        ((live.command || {}).value == null ? ''
+                            : ' &middot; ' +
+                              ((live.command || {}).value ? 'running' : 'stopped')) +
+                        '</b></div>' +
+                '</div>' +
+                '<span class="ecom-ctl-hint">Positive is discharging, negative is ' +
+                'charging, as the site reads it. Read-only: the table never ' +
+                'sends the battery a command.</span>' +
+            '</div>';
+    }
+
     function storageGroup() {
         const bat = battery();
         if (!bat) {
@@ -2378,6 +2533,7 @@
                 '<p class="ecom-ctl-empty">No battery in this community.</p>');
         }
         return group('storage', 'Storage', Math.round(bat.capacity) + ' kWh',
+            liveBattery() +
             slider({
                 name: 'battery_kwh', label: 'Battery capacity',
                 value: bat.capacity, min: 0, max: 5000, step: 50, unit: 'kWh',
@@ -2389,8 +2545,37 @@
                     ? bat.initial_soc_fraction : 0.5) * 100),
                 min: 0, max: 100, step: 5, unit: '%',
                 hint: 'A fraction of capacity, so it holds as the battery resizes.'
+            }) +
+            // How fast it can run, not how much it holds. Shown in kW as well
+            // as in C, because the rate is the number people argue about and
+            // the kW is the number they recognise.
+            slider({
+                // The C goes in the format, not the unit: the slider puts a
+                // space before the unit, and "0.25 C" is not how a rate is
+                // written.
+                name: 'battery_crate', label: 'Charge rate',
+                value: cRate(bat), min: 0.05, max: 2, step: 0.05, unit: '',
+                format: function (v) {
+                    return Number(v).toFixed(2) + 'C';
+                },
+                hint: rateHint(bat.capacity, cRate(bat))
             })
         );
+    }
+
+    /** The battery's C-rate, defaulting to what the campus workbook assumes. */
+    function cRate(bat) {
+        return bat && bat.c_rate != null ? bat.c_rate : 0.25;
+    }
+
+    /** The same rate said twice: as power, and as time to empty. */
+    function rateHint(capacity, rate) {
+        const kw = capacity * rate;
+        const hours = 1 / rate;
+        return kw.toFixed(1) + ' kW - ' +
+            (hours >= 10 ? hours.toFixed(0) : hours.toFixed(1)) +
+            ' h to fill or empty. The campus unit at AWL holds 247 kWh ' +
+            'against 112 kW.';
     }
 
     function gridGroup() {
@@ -2906,6 +3091,11 @@
                 set(value + ' %');
                 markDirty();
                 break;
+            case 'battery_crate':
+                w.batteries[0].c_rate = value;
+                set(value.toFixed(2) + 'C');
+                markDirty();
+                break;
             case 'buy_price':
                 w.grid.buying_price = { fixed: value };
                 set(value.toFixed(2) + ' SEK/kWh');
@@ -2934,7 +3124,7 @@
     const CLICK_ATTRIBUTES = [
         'data-group', 'data-action', 'data-kind',
         'data-members', 'data-roofs', 'data-cp-remove', 'data-story-step',
-        'data-optimizer-span'
+        'data-optimizer-span', 'data-peak'
     ];
     const CLICK_SELECTOR = CLICK_ATTRIBUTES.map(function (name) {
         return '[' + name + ']';
@@ -2964,6 +3154,45 @@
         if (action === 'story-back') { storyGo(Math.max(0, state.story - 1)); return; }
         if (action === 'story-exit') { storyGo(-1); return; }
         if (action === 'apply') { applyNow(); return; }
+
+        // Jump to the busiest hour or the busiest day of a measured year.
+        // Unlike the other date controls this dispatches on its own: the point
+        // of a shortcut is to arrive, not to set three pickers and then press
+        // Apply.
+        const peak = el.getAttribute('data-peak');
+        if (peak) {
+            const year = Number(el.getAttribute('data-peak-year'));
+            const hour = Number(el.getAttribute('data-peak-hour'));
+            if (year !== state.year) setYear(year);
+            state.startMonth = Number(el.getAttribute('data-peak-month'));
+            state.startDay = Number(el.getAttribute('data-peak-day'));
+            state.spanDays = 1;        // one day, so the hour index is the hour
+            applyPeriod();
+
+            const dayList = document.getElementById('ecom-day');
+            if (dayList) dayList.innerHTML = dayOptions();
+            render();
+            paintSpan();
+            paintSky();
+
+            applyNow().then(function () {
+                // Land on the hour worth looking at rather than at midnight.
+                // After the dispatch, or the scrub would be against the
+                // previous day's window. Stopping the table's own clock, for
+                // the same reason the hour slider does: two things driving the
+                // hour at once reads as a stutter.
+                state.hour = Math.max(0, Math.min(state.hours - 1, hour));
+                state.playing = false;
+                setPlayButton();
+                channel.postMessage({
+                    type: 'ecom_hour', hour: state.hour, totalHours: state.hours
+                });
+                const slider = document.getElementById('ecom-hour');
+                if (slider) slider.value = String(state.hour);
+                paintSky();
+            });
+            return;
+        }
         if (action === 'reset') { resetAll(); return; }
         if (action === 'play') {
             state.playing = !state.playing;
@@ -3138,6 +3367,9 @@
             return;
         }
 
+        // The real battery, every few seconds, for the Storage group.
+        watchLive();
+
         // The car park the chargers stand in, for the position slider. Not
         // awaited: the panel opens on Members and the group is closed until
         // someone asks for it.
@@ -3198,6 +3430,16 @@
             const select = document.getElementById('ecom-year');
             if (select) select.innerHTML = yearOptions();
         } catch (error) { /* the picker keeps the scenario year only */ }
+
+        // The two days of each year worth aiming at. Same reasoning as the
+        // year list: late enough not to hold up the panel, early enough to be
+        // there before anyone looks for a hard day to test against.
+        try {
+            const found = await getJson('/api/scenarios/' + SCENARIO + '/peaks');
+            state.peaks = found.peaks || [];
+            const host = document.getElementById('ecom-peaks');
+            if (host) host.innerHTML = peakChips();
+        } catch (error) { /* no shortcuts, the date pickers still work */ }
 
     }
 

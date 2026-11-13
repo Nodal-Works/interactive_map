@@ -33,11 +33,12 @@ from app.services.dispatch import run_dispatch
 from app.services.nordpool import NordPoolClient, NordPoolUnavailable
 from app.services.jobs import runner
 from app.services.mr_layer import build_layer
+from app.services import peaks
 from app.services.optimize import run_optimization, solver_status
 from app.services.sweep import run_sweep
 from app.schemas.optimizer_params import OptimizerParameters, describe_parameters
 from app.services.pvgis_cache import PVGISCache, PVGISUnavailable
-from app.services import optimize_process, quiet
+from app.services import ehub, optimize_process, quiet
 
 PROJECT_ROOT = Path(__file__).resolve().parents[3]
 BACKEND_ROOT = Path(__file__).resolve().parents[1]
@@ -256,6 +257,23 @@ class OptimizeRequest(BaseModel):
     temperature_c: float = Field(18.0, description="Ambient temperature for aging.")
 
 
+@app.get("/api/live/battery")
+def live_battery(force: bool = False) -> dict:
+    """What the battery in AWL is doing at this moment.
+
+    Read-only. The gateway accepts setpoints too and this never sends one: the
+    table shows the building, it does not drive it.
+
+    Never fails the caller - a dashboard polling every few seconds should not
+    fill with errors because somebody is off the Chalmers network. "available"
+    says whether there is a reading, and "detail" says why not.
+    """
+    try:
+        return ehub.battery(force=force)
+    except ehub.EHubUnavailable as err:
+        return {"available": False, "detail": str(err)}
+
+
 @app.get("/api/optimize/solver")
 def optimizer_solver() -> dict:
     """Whether the optimizer can run here, and with which solver."""
@@ -445,6 +463,30 @@ def scenario_years(name: str) -> dict:
         "current": int(sorted(current)[0]) if len(current) == 1 else None,
         "buildings_with_measured_demand": len(per_building),
     }
+
+
+@app.get("/api/scenarios/{name}/peaks")
+def scenario_peaks(name: str) -> dict:
+    """The busiest hour and busiest day of each year, for aiming the table.
+
+    A day picked at random is a mild one. These are the two moments the
+    community actually has to answer for, so they are worth one click rather
+    than a hunt through the date pickers.
+    """
+    if not re.fullmatch(r"[A-Za-z0-9_-]+", name):
+        raise HTTPException(status_code=400, detail="invalid scenario name")
+
+    path = SCENARIO_DIR / f"{name}.json"
+    if not path.is_file():
+        raise HTTPException(status_code=404, detail=f"no scenario named {name!r}")
+
+    definition = local_demand_paths(json.loads(path.read_text(encoding="utf-8")))
+    years = scenario_years(name)["years"]
+    # Keyed on the scenario's own mtime and on where the CSVs were found, since
+    # ECOM_DEMAND_DIR can move them: change which buildings are members and the
+    # peaks are recomputed, otherwise the first answer stands.
+    key = (name, path.stat().st_mtime_ns, str(DEMAND_DIR), tuple(years))
+    return peaks.for_scenario(definition, years, key)
 
 # --------------------------------------------------------------- MR table
 
