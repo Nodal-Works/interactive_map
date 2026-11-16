@@ -32,8 +32,9 @@ from app.schemas.community import CommunitySpec
 from app.services.dispatch import run_dispatch
 from app.services.nordpool import NordPoolClient, NordPoolUnavailable
 from app.services.jobs import runner
-from app.services.mr_layer import build_layer
+from app.services.mr_layer import build_layer, has_footprint
 from app.services import peaks
+from app.services.comparison import compare, peak_grid_import_kw
 from app.services.optimize import run_optimization, solver_status
 from app.services.sweep import run_sweep
 from app.schemas.optimizer_params import OptimizerParameters, describe_parameters
@@ -255,6 +256,11 @@ class OptimizeRequest(BaseModel):
     parameters: OptimizerParameters | None = Field(
         None, description="Overrides for LEC-Opt's hardcoded constants.")
     temperature_c: float = Field(18.0, description="Ambient temperature for aging.")
+    mode: Literal["community", "separate"] = Field(
+        "community",
+        description="community: the buildings optimised together as one energy "
+        "community. separate: the same buildings as they are today, each on its "
+        "own connection with nothing shared.")
 
 
 @app.get("/api/live/battery")
@@ -364,6 +370,7 @@ def start_optimization(request: OptimizeRequest) -> dict:
             "store_hours": request.store_hours,
             "aging": request.aging,
             "v2g": request.v2g,
+            "mode": request.mode,
             "temperature_c": request.temperature_c,
             "parameters": (request.parameters.model_dump(mode="json")
                            if request.parameters else None),
@@ -482,17 +489,50 @@ def scenario_peaks(name: str) -> dict:
 
     definition = local_demand_paths(json.loads(path.read_text(encoding="utf-8")))
     years = scenario_years(name)["years"]
+    # Only buildings the table can draw: they are the only ones that can be
+    # members, so the busiest hour of a community that could never exist - one
+    # with the four buildings that have no outline in it - is not a number
+    # anyone can reproduce at the table.
+    definition["buildings"] = [
+        b for b in definition.get("buildings") or [] if has_footprint(b["name"])
+    ]
     # Keyed on the scenario's own mtime and on where the CSVs were found, since
     # ECOM_DEMAND_DIR can move them: change which buildings are members and the
     # peaks are recomputed, otherwise the first answer stands.
-    key = (name, path.stat().st_mtime_ns, str(DEMAND_DIR), tuple(years))
+    key = (name, path.stat().st_mtime_ns, str(DEMAND_DIR), tuple(years), "drawn")
     return peaks.for_scenario(definition, years, key)
+
+
+@app.get("/api/scenarios/{name}/geometry")
+def scenario_geometry(name: str) -> dict:
+    """Which of the scenario's buildings the table has an outline for.
+
+    The community can only be built from buildings that can be drawn: a member
+    with no footprint is dispatched and counted in every total and then appears
+    nowhere on the table, so the controller offers only the ones that do.
+
+    The test is the one the layer builder applies (see mr_layer.has_footprint),
+    so this list and the table cannot disagree.
+    """
+    if not re.fullmatch(r"[A-Za-z0-9_-]+", name):
+        raise HTTPException(status_code=400, detail="invalid scenario name")
+
+    path = SCENARIO_DIR / f"{name}.json"
+    if not path.is_file():
+        raise HTTPException(status_code=404, detail=f"no scenario named {name!r}")
+
+    definition = json.loads(path.read_text(encoding="utf-8"))
+    names = [b["name"] for b in definition.get("buildings") or []]
+    return {
+        "with_geometry": [n for n in names if has_footprint(n)],
+        "without_geometry": [n for n in names if not has_footprint(n)],
+    }
 
 # --------------------------------------------------------------- MR table
 
 
 @app.post("/api/mr/layer")
-def mr_layer(spec: CommunitySpec) -> dict:
+def mr_layer(spec: CommunitySpec, baseline: bool = False) -> dict:
     """Dispatch a community and return it as the MR table's three GeoJSON layers.
 
     The table is a static site with no build step and no access to this app's
@@ -519,6 +559,25 @@ def mr_layer(spec: CommunitySpec) -> dict:
         if cp.lat is not None and cp.lon is not None
     }
     try:
-        return build_layer(dispatch, placements=placements)
+        layer = build_layer(dispatch, placements=placements)
     except ValueError as err:
         raise HTTPException(status_code=422, detail=str(err)) from err
+
+    # The peak the community draws from the grid, measured the same way as the
+    # baseline's so that the two can be compared. Always included - it is a sum
+    # over arrays already in hand.
+    layer["kpis"]["peak_grid_import_kw"] = peak_grid_import_kw(dispatch)
+
+    # The same members with no community, for the comparison. Asked for rather
+    # than always done: it is a second dispatch, so it roughly doubles the time,
+    # and a caller that only wants the picture should not pay for it.
+    if baseline:
+        try:
+            layer["baseline"] = compare(spec, nordpool=nordpool)
+        except (CommunityBuildError, PVGISUnavailable, NordPoolUnavailable,
+                ValueError) as err:
+            # The community itself dispatched fine. Failing the whole request
+            # because the comparison could not be made would take the picture
+            # down with it, so say what went wrong and carry on.
+            layer["baseline"] = {"error": str(err)}
+    return layer
