@@ -346,7 +346,7 @@
         autoApply: true,
         live: null,            // the real battery's last reading
         optimizer: null,       // last optimizer run, or an in-flight job
-        optimizerSpan: 'day',  // how much of the year to solve
+        optimizerSpan: 'table', // how much of the year to solve: the timeline's span by default
         optimizerMode: 'both', // community | separate | both
         // Re-solve whenever something changes, and show the answer against the
         // one before the change. Off, the optimizer runs only when asked.
@@ -2387,7 +2387,11 @@
     // "a year from today" would end before it started. A month and a week run
     // from the day the table is on, and slide back from the end of December if
     // they would overrun it.
+    // 'table' follows the timeline's span slider, so the optimizer solves the
+    // same days the table is showing - two days on the slider, two days solved.
+    // The longer fixed spans stay for asking about a month or the year.
     const OPTIMIZER_SPANS = [
+        { key: 'table', label: 'The timeline\'s span', days: null },
         { key: 'day', label: 'A day', days: 1 },
         { key: 'week', label: 'A week', days: 7 },
         { key: 'month', label: 'A month', days: 30 },
@@ -2396,9 +2400,14 @@
     const SECONDS_PER_DAY_SOLVED = 2.4;
 
     function currentSpan() {
-        return OPTIMIZER_SPANS.find(function (option) {
-            return option.key === state.optimizerSpan;
+        const option = OPTIMIZER_SPANS.find(function (o) {
+            return o.key === state.optimizerSpan;
         }) || OPTIMIZER_SPANS[0];
+        if (option.days !== null) return option;
+        // The span on the timeline, cut short at 31 December as the table is.
+        const days = effectiveSpan();
+        return { key: option.key, days: days,
+                 label: days + (days === 1 ? ' day' : ' days') };
     }
 
     /** "about 12 minutes", for a number of days. */
@@ -5555,10 +5564,12 @@
             '</div>' +
             '<div class="ecom-ctl-span">' +
                 OPTIMIZER_SPANS.map(function (option) {
+                    const label = option.days === null
+                        ? 'As the timeline (' + spanLabel() + ')' : option.label;
                     return '<button type="button" class="ecom-ctl-chip' +
                         (option.key === state.optimizerSpan ? ' is-on' : '') +
                         '" data-optimizer-span="' + option.key + '">' +
-                        option.label + '</button>';
+                        esc(label) + '</button>';
                 }).join('') +
                 '<span class="ecom-ctl-hint">' +
                     esc(periodLabel(optimizerPeriod(currentSpan().days))) +
