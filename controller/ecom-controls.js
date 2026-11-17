@@ -6468,10 +6468,10 @@
         const period = state.base.analysis_period || {};
         state.startMonth = period.start_month || 6;
         state.startDay = period.start_day || 1;
-        state.spanDays = Math.max(1, Math.min(14,
-            dayOfYear(period.end_month || state.startMonth,
-                      period.end_day || state.startDay) -
-            dayOfYear(state.startMonth, state.startDay) + 1));
+        // The span always opens on one day, whatever length the scenario
+        // was saved with: a day is the quickest picture to dispatch and to
+        // optimise, and the slider is there for more.
+        state.spanDays = 1;
         applyPeriod();
 
 
