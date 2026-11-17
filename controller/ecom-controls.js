@@ -92,6 +92,206 @@
         { key: 'charge_point', label: 'Charging', color: PALETTE.charge_point || '#00ff5e' }
     ];
 
+    // ----------------------------------------------------------- the story
+    //
+    // An introduction, for showing the community to a room. The entities are
+    // introduced one at a time and only then do they start trading, because
+    // sharing cannot be explained until there is something to share between.
+    //
+    // The order is demand, then supply, then the outside world, then the two
+    // new things, then the community. Buildings first because they are what
+    // the room already recognises; the grid third rather than last because it
+    // is the reference point - total dependency is what makes self-sufficiency
+    // mean anything two steps later.
+    //
+    // Nothing is connected to anything until the last step. The entities are
+    // introduced as objects on a campus - a building, a roof, a substation, a
+    // store, a charger - and only then does energy start moving between them.
+    // That is what makes the last step land: the community is not another
+    // object to add, it is the lines appearing between the ones already there.
+    //
+    // One new entity per step and nothing is ever taken away, so the picture
+    // accumulates instead of being replaced. The encodings arrive in order of
+    // how hard they grab attention - colour, then lines, then a moving level,
+    // then motion, then sound - because a car driving about and a transformer
+    // buzzing from the first step means nobody hears the first three sentences.
+    //
+    // The clock is held still until the last step. Time moving and a new
+    // entity appearing at once is where an audience loses the thread.
+    /**
+     * The hour at which one colour of line carries the most.
+     *
+     * A step that introduces a colour has to be shown at an hour when that
+     * colour exists. Typed in by hand it goes stale: the red step was set to
+     * seven in the evening, which reads right - a battery covering the evening
+     * - and in this community the battery discharges at midnight and nowhere
+     * else, so the step that introduces red had no red on it at all.
+     *
+     * Read off the dispatched layer instead, so it follows the data: resize
+     * the battery or put panels on every roof and the step moves with it.
+     */
+    function busiestHour(kind, fallback) {
+        // The introduction's own campus while it is running, not the panel's.
+        const shown = storyLayer || state.layer;
+        const flows = shown && shown.flows && shown.flows.features;
+        if (!flows) return fallback;
+        const total = [];
+        flows.forEach(function (feature) {
+            // By the node a line leaves: a building's shared solar is drawn
+            // yellow but is still a building's line.
+            const from = feature.properties.origin || feature.properties.kind;
+            if (from !== kind) return;
+            (feature.properties.flow_hourly || []).forEach(function (value, hour) {
+                total[hour] = (total[hour] || 0) + (value || 0);
+            });
+        });
+        let best = -1;
+        let most = 0;
+        total.forEach(function (value, hour) {
+            if (value > most) { most = value; best = hour; }
+        });
+        return best >= 0 ? best : fallback;
+    }
+
+    const STORY = [
+        {
+            key: 'buildings',
+            title: 'The buildings',
+            // Counts are filled in from the scenario when the step is sent -
+            // see storyText. They were typed in once, and went stale the day
+            // AWL's measurements arrived and the community grew by one.
+            line: '{members} buildings on campus, each with a year of measured ' +
+                  'electricity behind it. This is the demand the community has ' +
+                  'to cover.',
+            figure: 'Members of the energy community',
+            kinds: ['building'],
+            pairs: [],
+            hour: 12,
+            // Every member alike, faded in together. Shading them by demand
+            // here would answer a question nobody has asked yet, and answer it
+            // badly: one hall dwarfs the rest, so thirty-one of the thirty-two
+            // would come up nearly black on the very step that introduces them
+            // as the community.
+            uniform: true,
+            reveal: 'buildings'
+        },
+        {
+            key: 'solar',
+            title: 'The roofs',
+            // Arrays and roofs are counted separately: several roofs carry two
+            // arrays, and an earlier wording that counted arrays as buildings
+            // was contradicted by the table, where fewer footprints light up.
+            line: '{arrays} arrays on {roofs} of the {members} roofs. Brightest at ' +
+                  'midday, nothing at night - and never enough on its own.',
+            figure: 'Generation, where it is made',
+            kinds: ['building', 'pv'],
+            pairs: [],
+            hour: 12,
+            uniform: true,
+            reveal: 'solar'
+        },
+        {
+            key: 'grid',
+            title: 'The grid',
+            line: 'The connection to everything outside the campus, at ' +
+                  'Kraftcentralen. Today every building buys from it on ' +
+                  'its own account.',
+            figure: 'Where the electricity comes from today',
+            kinds: ['building', 'pv', 'grid'],
+            pairs: [],
+            hour: 12,
+            uniform: true
+        },
+        {
+            key: 'battery',
+            title: 'The battery',
+            line: 'The battery already installed in AWL. It fills when there ' +
+                  'is more sun than demand and empties again after dark.',
+            figure: 'Shifting energy through the day',
+            kinds: ['building', 'pv', 'grid', 'battery'],
+            pairs: [],
+            hour: 19,
+            uniform: true
+        },
+        {
+            key: 'charging',
+            title: 'The charge point',
+            line: 'A charger in the P-hus, where the cars on this campus ' +
+                  'park. It draws in the evening and overnight, when the ' +
+                  'roofs have nothing left to give.',
+            figure: 'A new load, on a schedule',
+            kinds: ['building', 'pv', 'grid', 'battery', 'charge_point'],
+            pairs: [],
+            hour: 20,
+            uniform: true
+        },
+        {
+            key: 'lines-grid',
+            title: 'Teal: bought from the grid',
+            // The lines have a grammar and nobody is told it. Three steps, one
+            // colour each and only that colour - the previous one is taken
+            // away before the next arrives, because two colours on the table
+            // at once is a comparison, and this is a vocabulary.
+            //
+            // Teal first because it is the whole picture today: at this hour
+            // every building draws from Kraftcentralen and nothing else.
+            line: 'A teal line is electricity bought from outside. At this ' +
+                  'hour it is every line on the table - the campus as it is ' +
+                  'now, each building on its own account.',
+            figure: 'Teal - from the grid',
+            kinds: ['building', 'pv', 'grid', 'battery', 'charge_point'],
+            pairs: ['grid>building', 'grid>charge_point'],
+            hour: 'grid',
+            fallbackHour: 20,
+            flows: 'still',
+            uniform: false
+        },
+        {
+            key: 'lines-sharing',
+            title: 'Yellow: solar shared between members',
+            // Midday, because sharing needs sunshine to exist at all: at
+            // nineteen hundred there is nothing to share.
+            line: 'Yellow between buildings is solar being shared: a roof with ' +
+                  'more than it needs supplying a neighbour, filling the ' +
+                  'battery, or charging the car. This is what a community adds ' +
+                  '- the teal lines were the campus without one.',
+            figure: 'Yellow - solar shared inside the community',
+            kinds: ['building', 'pv', 'grid', 'battery', 'charge_point'],
+            pairs: ['building>building', 'building>battery',
+                    'building>charge_point', 'building>grid'],
+            // Only the solar in them: a building's line can carry the battery
+            // too, and red has its own step next.
+            carries: ['pv'],
+            hour: 'building',
+            fallbackHour: 12,
+            flows: 'still',
+            uniform: false
+        },
+        {
+            key: 'lines-battery',
+            title: 'Red: out of the battery',
+            line: 'Red is the battery giving back what the roofs made today. ' +
+                  'A few kilowatts against the grid\'s thousands, which is why ' +
+                  'the line is drawn heavier than its share - it is small, and ' +
+                  'it is the one thing on the table that moves energy through ' +
+                  'time rather than across the campus.',
+            figure: 'Red - out of the store. Press Finish to build your own.',
+            kinds: ['building', 'pv', 'grid', 'battery', 'charge_point'],
+            // From the battery itself, and the battery's share of what a
+            // building passes on.
+            pairs: ['battery>building', 'battery>charge_point',
+                    'building>building', 'building>charge_point', 'building>grid'],
+            carries: ['battery'],
+            hour: 'battery',
+            fallbackHour: 19,
+            flows: 'still',
+            uniform: false
+        }
+        // There used to be a ninth step, the whole community wired up and set
+        // running. The introduction now ends on the last colour and hands the
+        // table back empty: the point is for the room to build one themselves.
+    ];
+
     const state = {
         api: undefined,        // '' same origin, a URL, or null when unreachable
         stale: false,          // reachable, but too old to have /api/mr/layer
@@ -118,11 +318,15 @@
         kpiDetails: false,    // the three detail columns under the KPI tiles, folded away
         paramInfo: {},        // optimizer constants whose explanation is open, by name
         profileMode: 'kw',    // load profiles in kW, or each as a share of its own peak
+        profileView: 'profiles', // the card beside the parameters: 'profiles' or 'sharing'
+        shareMode: 'period',     // the sharing graph: totals over the period, or this 'hour'
         profileFocus: null,   // the one building being followed on that chart
         // For a building that is not a member: whether the community rents its
         // roof ('community') or the panels are the building's own and sit
         // dormant ('own', the default - it changes no numbers).
-        roofOwner: {},
+        // Equipment of buildings outside the community that it rents, by kind and
+        // building: 'pv:SB2', 'battery:AWL', 'charger:HC'. Absent is own use.
+        rented: {},
         // Whether a display is actually listening. Without this the panel looks
         // identical whether the table is following along or the two are on
         // different origins and nothing is getting through.
@@ -132,6 +336,7 @@
         hours: 24,
         playing: true,        // whether the table is running its own clock
         sound: false,         // the table's sonification, off until asked for
+        story: -1,            // which step of the introduction, -1 for none
         flash: null,          // the control keeping time with a change on the table
         layer: null,          // the last layer dispatched, for the hourly PV readout
         openGroup: 'members',
@@ -143,7 +348,13 @@
         live: null,            // the real battery's last reading
         optimizer: null,       // last optimizer run, or an in-flight job
         optimizerSpan: 'day',  // how much of the year to solve
-        optimizerMode: 'community', // community | separate | both
+        optimizerMode: 'both', // community | separate | both
+        // Re-solve whenever something changes, and show the answer against the
+        // one before the change. Off, the optimizer runs only when asked.
+        autoOptimize: true,
+        spotByYear: {},        // hourly SE3 spot prices by year, SEK/kWh
+        spotHover: null,       // the hour under the pointer on the spot chart
+        optimizerPrevious: null, // the last complete set of results, before this run
         optimizerResults: {},  // finished runs by mode, for the display
         optimizerRunning: '',  // the mode being solved right now
         optimizerStartedAt: 0  // when the run began, for the clock while it waits
@@ -495,7 +706,7 @@
                 max_charging_power: 11,
                 daily_distance: 40,
                 v2g_enabled: false,
-                availability: [1,1,1,1,1,1,1,0,0,0,0,0,0,0,0,0,0,0,1,1,1,1,1,1]
+                availability: plugSchedule(DEFAULT_PLUG.arrival, DEFAULT_PLUG.departure)
             }
         });
         render();
@@ -566,24 +777,66 @@
         return state.base.buildings.length - state.excluded.size;
     }
 
+    /**
+     * Whether a building outside the community rents its equipment to it.
+     *
+     * By default a building that is not ticked keeps its panels, battery and
+     * chargers for its own use: they serve that building, which is not part of
+     * the community, so they are not in its dispatch. The OWN USE / RENTED
+     * badge on its row rents them to the community instead ('community'): they
+     * then feed the members and are drawn on that building, panels with their
+     * halo. A member's equipment is always its own and always in.
+     */
+    function sharesAssets(name, kind) {
+        return !!state.rented[kind + ':' + name];
+    }
+
+    /**
+     * OWN USE / RENTED for one kind of equipment on a building outside the
+     * community. Own use: it serves the building, which is not a member, so the
+     * community does not have it. Rented: the community uses it and the table
+     * draws it on the building.
+     */
+    function ownerBadge(name, kind, label, noun) {
+        const rented = sharesAssets(name, kind);
+        // A two-sided switch, both choices always visible, the one in force lit:
+        // a single tag read as a status, and nobody guessed it could be tapped.
+        const side = function (value, text, on, title) {
+            return '<button type="button" class="ecom-owner-side' + (on ? ' is-on' : '') +
+                (value === 'rented' ? ' is-rented' : ' is-own') + '"' +
+                ' data-roofowner="' + esc(name) + '" data-owner-kind="' + kind + '"' +
+                ' data-owner-set="' + value + '" aria-pressed="' + on + '"' +
+                ' title="' + esc(title) + '">' + esc(text) + '</button>';
+        };
+        return '<span class="ecom-owner-switch is-' + kind + '" role="group"' +
+                ' aria-label="' + esc(label) + ': own use or rented">' +
+            '<span class="ecom-owner-kind">' + esc(label) + '</span>' +
+            side('own', 'Own use', !rented,
+                 'The ' + noun + ' serve this building only. It is not in the ' +
+                 'community, so they do not count in the KPIs or the optimization.') +
+            side('rented', 'Rented', rented,
+                 'The community rents the ' + noun + ': they feed the members, ' +
+                 'count in the KPIs and the optimization, and their lines are drawn.') +
+        '</span>';
+    }
+
     /** The definition to dispatch: the working copy minus excluded members. */
     function buildSpec() {
         const spec = clone(state.working);
 
         if (state.excluded.size) {
-            // Which non-members' roofs the community rents, and which keep
-            // their panels to themselves. A rented array stays in the spec
+            // Which non-members' roofs the community uses, and which keep
+            // their panels to themselves. A shared array stays in the spec
             // attached to nobody, which is how the builder recognises a
             // community plant, and carries a host so the table still draws it
-            // on the right roof. A building's own array leaves with it.
+            // on the right roof. A dormant one leaves with its building.
             const rented = new Set();
             const dormant = new Set();
             spec.buildings.forEach(function (b) {
                 if (!state.excluded.has(b.name)) return;
                 const names = b.pv_plants || [];
                 if (!names.length) return;
-                const target = state.roofOwner[b.name] === 'community'
-                    ? rented : dormant;
+                const target = sharesAssets(b.name, 'pv') ? rented : dormant;
                 names.forEach(function (name) { target.add(name); });
             });
 
@@ -612,14 +865,21 @@
                 return p;
             });
 
-            // A battery belongs to its building: out it goes with it. Community
-            // storage - the unattached kind - stays whatever happens.
+            // A battery in a building outside the community: shared, it becomes
+            // a store the community uses - unattached, which is what makes it
+            // everyone's - still drawn in its building by its host. Dormant, it
+            // leaves with the building. Community storage stays regardless.
             spec.batteries = (spec.batteries || []).filter(function (b) {
-                return !(b.attached && b.host && state.excluded.has(b.host));
+                return !(b.attached && b.host && state.excluded.has(b.host) &&
+                         !sharesAssets(b.host, 'battery'));
+            }).map(function (b) {
+                if (b.attached && b.host && state.excluded.has(b.host)) b.attached = false;
+                return b;
             });
-            // So does a charger: it is mounted on that building's wall.
+            // Chargers the same: shared, they stay and the community supplies
+            // them; dormant, they go with the building.
             spec.charge_points = (spec.charge_points || []).filter(function (cp) {
-                return !(cp.host && state.excluded.has(cp.host));
+                return !(cp.host && state.excluded.has(cp.host) && !sharesAssets(cp.host, 'charger'));
             });
         }
 
@@ -967,7 +1227,7 @@
                 v2g_enabled: false,
                 availability: template && template.ev && template.ev.availability
                     ? template.ev.availability.slice()
-                    : [1,1,1,1,1,1,1,0,0,0,0,0,0,0,0,0,0,0,1,1,1,1,1,1]
+                    : plugSchedule(DEFAULT_PLUG.arrival, DEFAULT_PLUG.departure)
             }
         };
         if (spot[0] != null) { cp.lon = spot[0]; cp.lat = spot[1]; }
@@ -1088,6 +1348,15 @@
             }
         });
         state.year = year;
+
+        // The spot price goes with the demand: 2023's buildings are priced at
+        // 2023's spot. Only while the import price is on spot - a fixed price
+        // is somebody's choice and stays.
+        const grid = state.working.grid;
+        const prices = state.spotByYear[year];
+        if (grid && grid.buying_price && Array.isArray(grid.buying_price.hourly) && prices) {
+            grid.buying_price = { hourly: prices.slice() };
+        }
     }
 
     // Tolerates a missing spec: the table can announce its own totals before
@@ -1199,6 +1468,22 @@
     let pendingWaiters = [];
 
     function markDirty() {
+        // Someone is building a community: the introduction gives way. It starts
+        // by itself when the page loads and can take a while to prepare, and
+        // arriving at step one over a community already being built - members
+        // ticked, panels added - took the table away from the person using it.
+        if (storyLoading) storySkipRequested = true;
+        if (state.story >= 0) {
+            state.story = -1;
+            storyLayer = null;
+            storySpec = null;
+            channel.postMessage({ type: 'ecom_caption', caption: null });
+            channel.postMessage({ type: 'ecom_uniform', on: false });
+            channel.postMessage({ type: 'ecom_flows', mode: 'running' });
+            pushFilters();
+            channel.postMessage({ type: 'ecom_release' });
+            render();
+        }
         publishSharedUi();
         state.dirty = true;
         renderKpis();       // dims them, rather than leaving last run looking live
@@ -1211,6 +1496,28 @@
         } else {
             setStatus('Edited - press Apply.', 'idle');
         }
+        scheduleOptimize();
+    }
+
+    // How long to wait after the last change before solving. A slider drag is
+    // dozens of changes a second and each solve is seconds long; this lets go of
+    // it first, and runOptimizer drops the answer of any run that a newer one
+    // has overtaken.
+    const AUTO_OPTIMIZE_DEBOUNCE_MS = 1800;
+    let optimizeTimer = null;
+
+    function scheduleOptimize() {
+        if (!state.autoOptimize || state.api === null || state.api === undefined) return;
+        // Not while the introduction is on the table: a solve in the middle of
+        // it would hold the room's picture up for something they did not ask for.
+        if (state.story >= 0) return;
+        if (optimizeTimer !== null) clearTimeout(optimizeTimer);
+        optimizeTimer = setTimeout(function () {
+            optimizeTimer = null;
+            // Nobody in the community is nothing to optimise.
+            if (!memberCount() || state.story >= 0) return;
+            runOptimizer();
+        }, AUTO_OPTIMIZE_DEBOUNCE_MS);
     }
 
     function scheduleApply() {
@@ -1371,6 +1678,18 @@
 
     function resetAll() {
         state.working = clone(state.base);
+        // The scenario comes back in its own year - its demand files and its
+        // spot prices - while the picker may be on another. Put the picker's
+        // year back on it, or a reset on 2023 quietly ran 2022.
+        const shownYear = state.year;
+        const fileYear = (state.working.buildings || []).map(function (b) {
+            const m = ((b.demand || {}).csv_path || '').match(/_(\d{4})\.csv$/);
+            return m ? Number(m[1]) : null;
+        }).filter(Boolean)[0];
+        if (fileYear && fileYear !== shownYear) {
+            state.year = fileYear;
+            setYear(shownYear);
+        }
         // Reset is itself a change, and the next Apply should describe the
         // difference from what the table is showing - not from the scenario
         // it happens to be returning to.
@@ -1396,22 +1715,333 @@
         });
     }
 
-    // ------------------------------------------------------- presentation
+    // -------------------------------------------------------------- story
 
-    // The guided introduction is gone, but a display opened while it was
-    // running can still be holding its last step: flows frozen at one hour,
-    // buildings shaded flat, a caption up, a filter on the lines. Said once per
-    // session so such a display goes back to showing the running community.
-    let presentationReset = false;
+    // Once per session. Coming back out of the introduction is a decision, and
+    // the next display ping should not undo it.
+    let storyOffered = false;
 
-    function resetPresentation() {
-        if (presentationReset) return;
-        presentationReset = true;
-        channel.postMessage({ type: 'ecom_caption', caption: null });
-        channel.postMessage({ type: 'ecom_uniform', on: false });
-        channel.postMessage({ type: 'ecom_flows', mode: 'running' });
-        channel.postMessage({ type: 'ecom_release' });
-        pushFilters();
+    /**
+     * Start at the first step when the layer comes up.
+     *
+     * The introduction is the first thing the room sees, so the table opens on
+     * the buildings rather than on the finished community - the whole point is
+     * to arrive at that, not to begin with it. Exit or Finish leaves it, and it
+     * does not come back until the page does.
+     */
+    function offerStory() {
+        if (storyOffered || state.story >= 0) return;
+        storyOffered = true;
+        storyGo(0);
+    }
+
+    // What the sound was doing before the introduction muted it.
+    let soundBeforeStory = null;
+
+    /**
+     * A step's words with the community's own numbers in them.
+     *
+     * Members are the buildings the table actually colours - the layer's
+     * match count - not every building in the definition: four of those have
+     * a demand and no footprint, and a figure the table cannot show is a
+     * figure the room can check against the table and find wrong.
+     */
+    function storyText(text) {
+        if (!text) return text;
+        // While the introduction runs, its own example campus: those are the
+        // roofs and arrays the table is showing.
+        const base = storySpec || state.base || {};
+        const buildings = base.buildings || [];
+        const shown = storyLayer || state.layer;
+        const members = (shown && shown.matched) || buildings.length;
+        const roofs = buildings.filter(function (b) {
+            return (b.pv_plants || []).length > 0;
+        }).length;
+        const arrays = (base.pv_plants || []).length;
+        return String(text)
+            .replace(/\{members\}/g, members)
+            .replace(/\{roofs\}/g, roofs)
+            .replace(/\{arrays\}/g, arrays);
+    }
+
+    // The whole campus, dispatched for the introduction alone. The panel's own
+    // community is not touched: it opens empty and stays empty, because building
+    // it up is the room's to do once the introduction has shown what there is.
+    let storyLayer = null;
+    let storySpec = null;
+    let storyLoading = false;
+
+    // The introduction is an example, not the campus as measured. With only
+    // the panels that are really there (SB2's), there is almost no surplus at
+    // midday and the pink step - the one that shows what a community adds -
+    // had next to nothing on it. So the example puts panels on every roof that
+    // has none, at the same share of the roof the Members list gives one, and
+    // keeps the measured arrays as they are.
+    const STORY_ROOF_COVERAGE = ADDED_ROOF_COVERAGE;
+
+    /** The campus the introduction shows: everyone in, panels on every roof. */
+    function storyExampleSpec() {
+        const keptWorking = state.working;
+        const keptExcluded = state.excluded;
+        state.working = clone(keptWorking);
+        state.excluded = new Set();
+        try {
+            (state.working.buildings || []).forEach(function (b) {
+                if (!roofPlants(b.name).length) setRoofCoverage(b.name, STORY_ROOF_COVERAGE);
+            });
+            // The campus has no chargers until someone adds one, but the
+            // introduction has a step for the charge point: the example gets
+            // one at the P-hus, where Community's "Add a charger" would put it.
+            if (!chargePoints().length) addChargePoint();
+            const spec = buildSpec();
+            // The red step needs red lines. AWL's battery belongs to AWL, so it
+            // only ever discharges into AWL itself - a line with no length,
+            // drawn nowhere. In the example it is a store the whole community
+            // shares, so its discharge runs out to the members and can be seen.
+            (spec.batteries || []).forEach(function (b) { b.attached = false; });
+            return spec;
+        } finally {
+            state.working = keptWorking;
+            state.excluded = keptExcluded;
+        }
+    }
+
+    /**
+     * Fetch the campus with every building in it, hand it to the table, then
+     * show the step.
+     *
+     * The introduction paints every building pink, then brings in the roofs,
+     * the grid, the battery and the charger, then the flows between them. An
+     * empty community has none of that - the table drops it all when told the
+     * campus is empty - so the introduction needs a full one to show. It gets
+     * one of its own, and the members list in the panel stays as it was.
+     */
+    // Skip pressed while the introduction is still being prepared: when the
+    // example arrives it is dropped instead of shown.
+    let storySkipRequested = false;
+
+    function loadStoryLayer(index) {
+        if (storyLoading) return;
+        storyLoading = true;
+        storySkipRequested = false;
+        const spec = storyExampleSpec();
+        setStatus('Preparing the introduction…', 'busy');
+        render();          // the strip shows "Preparing" with a Skip button
+        postJson('/api/mr/layer?baseline=true', spec).then(function (layer) {
+            if (storySkipRequested) return;
+            storyLayer = layer;
+            storySpec = spec;
+            channel.postMessage({ type: 'ecom_layer', layer: layer });
+        }, function (error) {
+            if (storySkipRequested) return;
+            setStatus('The introduction could not load the campus: ' +
+                      String(error.message || error), 'error');
+        }).then(function () {
+            storyLoading = false;
+            if (storySkipRequested) {
+                storySkipRequested = false;
+                // Buildings ticked while the example loaded already have their
+                // own dispatch and status; only an empty panel needs this line.
+                if (!memberCount()) setStatus('No members yet - tick a building to start.', 'idle');
+                render();
+                return;
+            }
+            if (storyLayer) storyGo(index);
+        });
+    }
+
+    /** Back to the community the panel actually has, once the introduction ends. */
+    function restorePanelCommunity() {
+        storyLayer = null;
+        storySpec = null;
+        if (!memberCount()) {
+            // Empty, as the panel is: the table goes back to a campus nobody
+            // has joined yet.
+            state.layer = null;
+            channel.postMessage({ type: 'ecom_empty' });
+            setStatus('No members yet - tick a building to start.', 'idle');
+        } else {
+            // Someone ticked buildings before or during the introduction; the
+            // table shows theirs, not the introduction's.
+            applyNow();
+        }
+    }
+
+    function storyGo(index) {
+        const from = state.story;
+        const leaving = state.story >= 0 && index < 0;
+        const starting = state.story < 0 && index >= 0;
+
+        if (starting && !storyLayer) {
+            loadStoryLayer(index);
+            return;
+        }
+        // Finishing the introduction is not the same as walking out of it. The
+        // last step ends with a community wired up and standing still, and
+        // Finish is the moment it starts running - so that hands the table over
+        // with the day going and the sound up, where Exit puts back whatever
+        // was there before.
+        const finishing = leaving && from === STORY.length - 1;
+        if (starting) soundBeforeStory = state.sound;
+        state.story = index;
+
+        if (index < 0) {
+            // Back to whatever the panel's own view filters say, the table's
+            // own clock, and no caption.
+            channel.postMessage({ type: 'ecom_caption', caption: null });
+            channel.postMessage({ type: 'ecom_uniform', on: false });
+            channel.postMessage({ type: 'ecom_flows', mode: 'running' });
+            pushFilters();
+            if (leaving) {
+                channel.postMessage({ type: 'ecom_release' });
+                // Every step mutes the sound, so quitting at step three used to
+                // leave the table silent with no way to tell why. Finishing
+                // hands over to a running table and brings it up; exiting part
+                // way puts back whatever was there before.
+                // An empty community has nothing to play, so Finish only brings
+                // the sound up when there are members to hear.
+                if (finishing && memberCount()) {
+                    channel.postMessage({ type: 'ecom_sound', on: true });
+                } else if (soundBeforeStory !== null) {
+                    channel.postMessage({ type: 'ecom_sound',
+                                          on: !!soundBeforeStory });
+                }
+                soundBeforeStory = null;
+                // The introduction's example campus goes; the panel's own
+                // community - empty unless someone has ticked buildings -
+                // comes back.
+                restorePanelCommunity();
+            }
+            render();
+            return;
+        }
+
+        const step = STORY[index];
+
+        // First, because everything below describes a layer that has to be on.
+        // Harmless when it already is.
+        channel.postMessage({ type: 'ecom_activate' });
+
+        channel.postMessage({
+            type: 'ecom_filters',
+            filters: (step.kinds === null && step.pairs === null)
+                ? null
+                : { kinds: step.kinds || NODE_KINDS.map(function (k) { return k.key; }),
+                    pairs: step.pairs,
+                    // What the lines may carry - solar for the yellow step,
+                    // battery for the red - so a step shows its own colour only.
+                    carries: step.carries || null }
+        });
+
+        // A held hour for every step but the last, so only one thing is moving
+        // at a time. The last hands the clock back and lets the day run.
+        const hour = typeof step.hour === 'string'
+            ? busiestHour(step.hour, step.fallbackHour) : step.hour;
+        if (typeof hour === 'number') {
+            channel.postMessage({ type: 'ecom_hour', hour: hour });
+        } else {
+            channel.postMessage({ type: 'ecom_release' });
+        }
+
+        channel.postMessage({
+            type: 'ecom_uniform',
+            on: !!step.uniform,
+            reveal: step.reveal || null
+        });
+
+        channel.postMessage({
+            type: 'ecom_flows',
+            mode: step.flows === 'still' ? 'still' : 'running'
+        });
+
+        // Sound arrives with the community, not before it.
+        channel.postMessage({ type: 'ecom_sound', on: !!step.sound });
+
+        channel.postMessage({
+            type: 'ecom_caption',
+            caption: { title: step.title, line: storyText(step.line),
+                       figure: storyText(step.figure),
+                       step: index + 1, of: STORY.length }
+        });
+
+        render();
+    }
+
+    /**
+     * Space or right arrow for the next step, left for back, Escape to leave.
+     *
+     * Bound on the panel document, because that is the window the presenter has
+     * a hand on. Ignored while typing into a field, so renaming a charge point
+     * does not advance the story under you.
+     */
+    function onStoryKey(event) {
+        const tag = (event.target && event.target.tagName) || '';
+        if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return;
+        if (event.metaKey || event.ctrlKey || event.altKey) return;
+
+        if (event.key === ' ' || event.key === 'ArrowRight') {
+            // Space scrolls a page by default, which on a panel this tall is
+            // the last thing wanted mid-sentence.
+            event.preventDefault();
+            storyGo(state.story + 1 >= STORY.length ? -1 : state.story + 1);
+            return;
+        }
+        if (state.story < 0) return;          // the rest only while running
+        if (event.key === 'ArrowLeft') {
+            event.preventDefault();
+            storyGo(Math.max(0, state.story - 1));
+        } else if (event.key === 'Escape') {
+            storyGo(-1);
+        }
+    }
+
+    function storyMarkup() {
+        const running = state.story >= 0;
+        const step = running ? STORY[state.story] : null;
+        const last = state.story === STORY.length - 1;
+
+        const dots = STORY.map(function (item, index) {
+            return '<button type="button" class="ecom-ctl-dot' +
+                (index === state.story ? ' is-on' : '') +
+                (index < state.story ? ' is-done' : '') +
+                '" data-story-step="' + index + '" title="' + esc(item.title) +
+                '"></button>';
+        }).join('');
+
+        return '<div class="ecom-ctl-story' + (running ? ' is-running' : '') + '">' +
+            '<div class="ecom-ctl-story-head">' +
+                '<span class="ecom-ctl-story-label" title="Space or right arrow ' +
+                    'for the next step, left arrow to go back, Escape to leave.">' +
+                    (running
+                        ? esc(step.title) + ' &middot; ' + (state.story + 1) +
+                          ' of ' + STORY.length
+                        : (storyLoading && !storySkipRequested)
+                            ? 'Preparing the introduction…' : 'Introduction') +
+                '</span>' +
+                '<div class="ecom-ctl-dots">' + dots + '</div>' +
+            '</div>' +
+            '<div class="ecom-ctl-story-bar">' +
+                (running
+                    ? '<button type="button" class="ecom-ctl-btn" ' +
+                          'data-action="story-back"' +
+                          (state.story === 0 ? ' disabled' : '') + '>Back</button>' +
+                      '<button type="button" class="ecom-ctl-btn ' +
+                          'ecom-ctl-btn--primary" data-action="story-next">' +
+                          (last ? 'Finish' : 'Next') + '</button>' +
+                      '<button type="button" class="ecom-ctl-btn" ' +
+                          'data-action="story-exit" title="Leave the introduction ' +
+                          'and start building a community">Skip</button>'
+                    : (storyLoading && !storySkipRequested)
+                    // Skippable before it has even started.
+                    ? '<button type="button" class="ecom-ctl-btn" disabled>Preparing…</button>' +
+                      '<button type="button" class="ecom-ctl-btn" ' +
+                          'data-action="story-skip" title="Do not show the ' +
+                          'introduction - start building a community">Skip</button>'
+                    : '<button type="button" class="ecom-ctl-btn ' +
+                          'ecom-ctl-btn--primary" data-action="story-next">' +
+                          'Start the introduction</button>') +
+            '</div>' +
+        '</div>';
     }
 
     // --------------------------------------------------------------- change
@@ -1824,7 +2454,66 @@
     let optimizerRun = 0;
 
     /** Tell the display what the optimizer is doing and what it found. */
+    // ------------------------------------------------- calculating, on the panel
+    //
+    // The optimizer is quick - seconds for a day - but a cost figure that just
+    // changes, with nothing to say it was being worked out, reads as a number
+    // that was always there. A pill on the panel says a calculation is under
+    // way and which scenario it is on, then that it is done. Attached to the
+    // body, so a re-render of the panel cannot take it away mid-run.
+    let optBusyEl = null;
+    let optBusyTimer = null;
+
+    function paintOptimizerBusy() {
+        if (!document.body || !document.createElement) return;
+        if (!optBusyEl) {
+            optBusyEl = document.createElement('div');
+            optBusyEl.className = 'ecom-opt-busy';
+            optBusyEl.setAttribute('role', 'status');
+            optBusyEl.setAttribute('aria-live', 'polite');
+            document.body.appendChild(optBusyEl);
+        }
+        if (optBusyTimer !== null) { clearTimeout(optBusyTimer); optBusyTimer = null; }
+
+        const running = state.optimizerRunning;
+        const job = state.optimizer;
+        if (running) {
+            const modes = state.optimizerMode === 'both' ? ['separate', 'community'] : [running];
+            const step = modes.indexOf(running) + 1;
+            const seconds = state.optimizerStartedAt
+                ? Math.max(0, Math.round((Date.now() - state.optimizerStartedAt) / 1000)) : 0;
+            optBusyEl.innerHTML =
+                '<span class="ecom-busy-spinner"></span>' +
+                '<span><b>Calculating costs</b> - ' +
+                    esc((OPTIMIZER_MODE_LABELS[running] || running).toLowerCase()) +
+                    (modes.length > 1 ? ' (' + step + ' of ' + modes.length + ')' : '') +
+                    '&hellip; <span class="ecom-opt-busy-time">' + seconds + ' s</span></span>';
+            optBusyEl.className = 'ecom-opt-busy is-on';
+            return;
+        }
+        if (job && job.status === 'error') {
+            optBusyEl.innerHTML = '<span class="ecom-opt-busy-mark is-error">!</span>' +
+                '<span>Cost calculation failed - ' + esc(job.error || 'see the Optimizer tab') + '</span>';
+            optBusyEl.className = 'ecom-opt-busy is-on is-error';
+            optBusyTimer = setTimeout(function () { optBusyEl.className = 'ecom-opt-busy'; }, 6000);
+            return;
+        }
+        if (Object.keys(state.optimizerResults || {}).length &&
+            optBusyEl.classList.contains('is-on')) {
+            optBusyEl.innerHTML = '<span class="ecom-opt-busy-mark">&#10003;</span>' +
+                '<span>Costs updated - see the table</span>';
+            optBusyEl.className = 'ecom-opt-busy is-on is-done';
+            optBusyTimer = setTimeout(function () { optBusyEl.className = 'ecom-opt-busy'; }, 2500);
+            return;
+        }
+        optBusyEl.className = 'ecom-opt-busy';
+    }
+
     function broadcastOptimization() {
+        paintOptimizerBusy();
+        // The KPI panel carries the optimizer's figures too: "calculating…"
+        // while it runs, its numbers when it is done.
+        renderKpis();
         const job = state.optimizer;
         channel.postMessage({
             type: 'ecom_optimization',
@@ -1833,7 +2522,8 @@
                 error: job && job.status === 'error' ? (job.error || 'failed') : '',
                 label: currentSpan().label,
                 period: periodLabel(optimizerPeriod(currentSpan().days)),
-                results: state.optimizerResults
+                results: state.optimizerResults,
+                previous: state.optimizerPrevious
             }
         });
     }
@@ -1846,6 +2536,11 @@
                     const job = await getJson('/api/optimize/' + encodeURIComponent(jobId));
                     if (token !== optimizerRun) { stopPolling(); return; }
                     state.optimizer = job;
+                    // A heartbeat for the display. It lightens itself while a run
+                    // is solving and must be able to tell "still solving" from "the
+                    // controller went away" - which it cannot if the only message
+                    // is the one that says the run started.
+                    if (state.optimizerRunning) broadcastOptimization();
                     if (job.status === 'done') { stopPolling(); resolve(job); }
                     else if (job.status === 'error') {
                         stopPolling();
@@ -1867,6 +2562,12 @@
         const modes = state.optimizerMode === 'both'
             ? ['separate', 'community'] : [state.optimizerMode];
         state.optimizer = { status: 'queued', progress: 0 };
+        // What the last finished run found, kept to set this one against. Only
+        // a complete set counts: a run cut short by a newer change has half an
+        // answer, and comparing against half of one would mislead.
+        if (modes.every(function (m) { return state.optimizerResults[m]; })) {
+            state.optimizerPrevious = state.optimizerResults;
+        }
         state.optimizerResults = {};
         state.optimizerStartedAt = Date.now();
         state.optimizerRunning = modes[0];
@@ -1889,6 +2590,11 @@
                     community: spec,
                     days: span.days,
                     mode: mode,
+                    // The optimizer has one switch for every car, not one per
+                    // charger: on when any charger in the community offers V2G.
+                    v2g: (spec.charge_points || []).some(function (cp) {
+                        return cp.is_v2g;
+                    }),
                     horizon_hours: OPTIMIZER_LOOKAHEAD_H,
                     store_hours: OPTIMIZER_KEEP_H,
                     parameters: Object.keys(state.paramValues).length
@@ -2122,14 +2828,27 @@
 
     function slider(opts) {
         const value = opts.value;
+        // `typed`: the figure beside the slider is a box that can be typed in,
+        // not just a readout. Applied on commit, up to the slider's own maximum.
+        const figure = opts.typed
+            ? '<span class="ecom-kw-field">' +
+                  '<input type="number" inputmode="decimal" min="0"' +
+                      ' step="' + opts.step + '"' +
+                      ' data-slider-typed="' + esc(opts.name) + '"' +
+                      ' data-readout="' + esc(opts.name) + '"' +
+                      ' data-typed-max="' + opts.max + '"' +
+                      ' aria-label="' + esc(opts.label) + '"' +
+                      ' value="' + Math.round(value) + '">' +
+                  '<i>' + esc(opts.unit || '') + '</i></span>'
+            : '<b data-readout="' + esc(opts.name) + '">' +
+                  esc(opts.format ? opts.format(value) : value) +
+                  ' ' + esc(opts.unit || '') +
+              '</b>';
         return '' +
             '<label class="ecom-ctl-slider">' +
                 '<span class="ecom-ctl-slider-head">' +
                     '<span>' + esc(opts.label) + '</span>' +
-                    '<b data-readout="' + esc(opts.name) + '">' +
-                        esc(opts.format ? opts.format(value) : value) +
-                        ' ' + esc(opts.unit || '') +
-                    '</b>' +
+                    figure +
                 '</span>' +
                 '<input type="range" data-slider="' + esc(opts.name) + '"' +
                     ' min="' + opts.min + '" max="' + opts.max + '"' +
@@ -2145,7 +2864,6 @@
         members: { icon: 'apartment', accent: 'pink' },
         community: { icon: 'solar_power', accent: 'yellow' },
         grid: { icon: 'bolt', accent: 'cyan' },
-        mobility: { icon: 'ev_station', accent: 'green' },
         view: { icon: 'visibility', accent: 'slate' },
         optimizer: { icon: 'insights', accent: 'violet' }
     };
@@ -2174,7 +2892,6 @@
         membersGroup();
         communityGroup();
         gridGroup();
-        mobilityGroup();
         optimizerGroup();
 
         const active = sections.some(function (s) { return s.id === state.openGroup; })
@@ -2249,6 +2966,15 @@
             '</div>';
     }
 
+    /** A tile with one of the optimizer's costs, or what it is waiting for. */
+    function optTile(mode, label, tone, hint) {
+        const result = (state.optimizerResults || {})[mode];
+        const cost = result && result.totals ? result.totals.overall_cost : null;
+        const value = state.optimizerRunning ? 'calculating…'
+            : cost != null ? Math.round(cost).toLocaleString() + ' SEK' : 'not run yet';
+        return tile('payments', value, label, tone, hint);
+    }
+
     function row(icon, label, value, hint) {
         return '' +
             '<div class="ecom-kpi-row"' + (hint ? ' title="' + esc(hint) + '"' : '') + '>' +
@@ -2288,20 +3014,6 @@
         return Math.max(0, 1 - (kpis.total_grid_export || 0) / kpis.total_pv_gen) * 100;
     }
 
-    /** Energy bought less energy sold, at the scenario's own prices.
-     *
-     * Energy only - no grid fees, no tax - and only when both prices are fixed:
-     * a price that varies by the hour needs the hourly flows, which the layer
-     * does not carry per hour in a form worth summing here.
-     */
-    function gridBill(kpis) {
-        const grid = (state.working && state.working.grid) || {};
-        const buy = (grid.buying_price || {}).fixed;
-        const sell = (grid.selling_price || {}).fixed;
-        if (!kpis || buy == null || sell == null) return null;
-        return (kpis.total_grid_import || 0) * buy - (kpis.total_grid_export || 0) * sell;
-    }
-
     function signed(value, digits) {
         const text = Math.abs(value).toLocaleString(undefined, {
             minimumFractionDigits: digits, maximumFractionDigits: digits });
@@ -2322,17 +3034,6 @@
               get: function (x) { return x.self_sufficiency; },
               show: function (v) { return v.toFixed(1) + ' %'; },
               diff: function (d) { return signed(d, 1) + ' pts'; } },
-            { label: 'Grid import', tone: 'cyan', better: 'down',
-              hint: 'Drawn from the grid over the period.',
-              get: function (x) { return x.total_grid_import; },
-              show: function (v) { return (v / 1000).toFixed(2) + ' MWh'; },
-              diff: function (d) { return signed(d / 1000, 2) + ' MWh'; } },
-            { label: 'Grid export', tone: 'blue', better: null,
-              hint: 'Sent back to the grid. Less is more solar used on site, ' +
-                    'and also less sold.',
-              get: function (x) { return x.total_grid_export; },
-              show: function (v) { return (v / 1000).toFixed(2) + ' MWh'; },
-              diff: function (d) { return signed(d / 1000, 2) + ' MWh'; } },
             { label: 'Solar used on site', tone: 'yellow', better: 'up',
               hint: 'Share of the solar that was used on the campus rather than ' +
                     'exported - including what a building lent to its neighbours.',
@@ -2345,27 +3046,65 @@
               get: function (x) { return x.peak_grid_import_kw; },
               show: function (v) { return Math.round(v).toLocaleString() + ' kW'; },
               diff: function (d) { return signed(d, 0) + ' kW'; } },
-            { label: 'Grid bill', tone: 'green', better: 'down',
-              hint: 'Energy bought less energy sold, at this scenario\'s prices. ' +
-                    'Energy only: no grid fees and no tax.',
-              get: gridBill,
+            // From the optimizer, not the dispatch: its community run against
+            // its "as today" run, which are the same two rows this table has.
+            // Grid import and export used to be the dispatch's figures here,
+            // beside the optimizer's own on the table - two numbers for one
+            // thing. And the grid bill could only be worked out at a fixed
+            // price, so with spot prices it was always a dash.
+            { label: 'Grid import (optimized)', tone: 'cyan', better: 'down', opt: 'grid_import_kwh',
+              hint: 'Bought from the grid, as the optimizer runs the buildings.',
+              show: function (v) { return Math.round(v).toLocaleString() + ' kWh'; },
+              diff: function (d) { return signed(d, 0) + ' kWh'; } },
+            { label: 'Grid export (optimized)', tone: 'blue', better: null, opt: 'grid_export_kwh',
+              hint: 'Sold to the grid, as the optimizer runs the buildings.',
+              show: function (v) { return Math.round(v).toLocaleString() + ' kWh'; },
+              diff: function (d) { return signed(d, 0) + ' kWh'; } },
+            { label: 'Cost (optimized)', tone: 'green', better: 'down', opt: 'overall_cost',
+              hint: 'Everything the optimizer counts: electricity, grid fees and ' +
+                    'subscription, tax and VAT. The difference is what being a ' +
+                    'community saves.',
               show: function (v) { return Math.round(v).toLocaleString() + ' SEK'; },
               diff: function (d) { return signed(d, 0) + ' SEK'; } }
         ];
+
+        // The optimizer's two runs, if both have come back.
+        const optWith = (state.optimizerResults || {}).community;
+        const optAlone = (state.optimizerResults || {}).separate;
+        const optTotals = function (result, key) {
+            return result && result.totals ? result.totals[key] : undefined;
+        };
 
         // One column per measure, one row per way of running the same buildings:
         // with the community, each on its own, and what the difference is. Side by
         // side the two figures can be read straight across, which two numbers
         // folded into a tile could not.
         const cols = metrics.map(function (m) {
+            const have = function (v) {
+                return v !== null && v !== undefined && isFinite(v);
+            };
+            if (m.opt) {
+                // Not run yet, or running now: say which, rather than a dash.
+                if (state.optimizerRunning) return { m: m, pending: 'calculating…' };
+                const a = optTotals(optWith, m.opt);
+                const b = optTotals(optAlone, m.opt);
+                if (!have(a)) return { m: m, pending: 'run the optimizer' };
+                const out = { m: m, mine: m.show(a) };
+                if (have(b)) {
+                    const d = a - b;
+                    const same = Math.abs(d) < 0.5;
+                    out.theirs = m.show(b);
+                    out.diff = same ? 'no difference' : m.diff(d);
+                    out.verdict = same || m.better === null ? 'neutral'
+                        : ((d > 0) === (m.better === 'up') ? 'good' : 'bad');
+                }
+                return out;
+            }
             // The baseline's peak comes from its own sub-object, the rest from
             // its kpis; fold the peak in so every getter reads one shape.
             const mine = m.get(k);
             const theirs = m.get(Object.assign({}, bk,
                 { peak_grid_import_kw: base.peak_grid_import_kw }));
-            const have = function (v) {
-                return v !== null && v !== undefined && isFinite(v);
-            };
 
             if (!have(mine)) {
                 // Not "N/A": that reads as a fault. The usual reason is simply
@@ -2399,6 +3138,13 @@
         const row = function (name, cls, pick) {
             return '<div class="ecom-kpi-rowhead ' + cls + '">' + name + '</div>' +
                 cols.map(function (c) {
+                    if (c.pending) {
+                        // Said once, in the first row; the others stay quiet.
+                        return cell(cls + ' is-pending', c.m.tone,
+                                    cls === 'is-with' ? esc(c.pending) : '',
+                                    'The optimizer works these out. Make a change ' +
+                                    'or press Run in the Optimizer tab.');
+                    }
                     if (c.none) {
                         return cell(cls, c.m.tone, '&ndash;',
                                     'Nothing to measure for this in the community.');
@@ -2470,10 +3216,12 @@
                      'Everything the member buildings consumed over the period.') +
                 tile('wb_sunny', mwh(k.total_pv_gen), 'PV generated', 'yellow',
                      'What the roof arrays produced.') +
-                tile('south', mwh(k.total_grid_import), 'Grid import', 'cyan',
-                     'Drawn from the grid.') +
-                tile('north', mwh(k.total_grid_export), 'Grid export', 'blue',
-                     'Sent back to the grid.') +
+                // The optimizer's costs in place of the dispatch's grid import
+                // and export - the table shows the optimizer's, so these do too.
+                optTile('community', 'Cost as a community', 'cyan',
+                        'Optimized cost of running the buildings as an energy community.') +
+                optTile('separate', 'Cost as today', 'blue',
+                        'Optimized cost of the same buildings each on its own connection.') +
                 tile('recycling', percent(k.self_consumption), 'Self-consumed', 'green',
                      'Share of what the panels made that the community used itself.') +
             '</div>') +
@@ -2720,6 +3468,16 @@
     // table clock, and rebuilding the panel each second would snatch away
     // whatever slider is under a finger.
     function paintSky() {
+        // The spot chart keeps the table's hour too. Here, because every hour
+        // change already comes through this function.
+        paintSpotNow();
+        // And the sharing graph, when it is showing one hour: it is that hour's
+        // picture, so it is redrawn as the hour moves on.
+        if (state.profileView === 'sharing' && state.shareMode === 'hour' &&
+            state.hour !== lastSharingHour) {
+            lastSharingHour = state.hour;
+            paintProfiles();
+        }
         const sky = document.getElementById('ecom-sky');
         // sun-study-ui.js owns the solar maths and loads after this file. If it
         // is missing the panel is still usable - the sky just stays flat.
@@ -3044,13 +3802,22 @@
     }
 
     function profilesCard() {
+        const sharingView = state.profileView === 'sharing';
         return '<div class="ecom-ctl-group ecom-ctl-group--pink is-open ecom-profiles-card">' +
             '<div class="ecom-ctl-head ecom-profiles-head">' +
-                '<span class="material-icons ecom-ctl-head-icon">timeline</span>' +
-                '<span>Load profiles</span>' +
+                '<span class="material-icons ecom-ctl-head-icon">' +
+                    (sharingView ? 'hub' : 'timeline') + '</span>' +
+                // Two views in one card: the space is there, and a second card
+                // would squeeze both.
+                '<span class="ecom-seg ecom-view-tabs">' +
+                    '<button type="button" data-profile-view="profiles"' +
+                        (sharingView ? '' : ' class="is-on"') + '>Load profiles</button>' +
+                    '<button type="button" data-profile-view="sharing"' +
+                        (sharingView ? ' class="is-on"' : '') + '>Sharing</button>' +
+                '</span>' +
             '</div>' +
             '<div id="ecom-profiles" class="ecom-ctl-body ecom-profiles-body">' +
-                profilesBody() +
+                (sharingView ? sharingBody() : profilesBody()) +
             '</div>' +
         '</div>';
     }
@@ -3059,9 +3826,292 @@
      *  finger is inside it. */
     function paintProfiles() {
         const body = document.getElementById('ecom-profiles');
-        if (body) body.innerHTML = profilesBody();
+        if (body) body.innerHTML = state.profileView === 'sharing' ? sharingBody() : profilesBody();
     }
 
+    // ------------------------------------------------------- sharing graph
+    //
+    // Who gives energy to whom inside the community, over the period on the
+    // table: a weighted directed graph. Each member sits where it is on the
+    // campus, shrunk to the card, so "nearest first" can be seen for what it
+    // is; an arrow A -> B is what A gave B, as thick as the kWh, yellow where
+    // it was mostly solar and red where it was mostly a battery's. Only the
+    // strongest connections are drawn - thirty buildings all linked is a
+    // hairball - and the ones left out are counted.
+    const SHARE_W = 600;
+    const SHARE_H = 300;
+    const SHARE_PAD = 34;
+    const SHARE_MAX_EDGES = 12;
+    const SHARING_RULE_LABELS = {
+        order: 'in list order',
+        proportional: 'in proportion to need',
+        nearest: 'nearest first'
+    };
+
+    /**
+     * Totals per link from the layer, [{from, to, kwh, solar, battery, origin}]:
+     * member to member (the sharing), and the grid, a community battery and
+     * community solar to the members - so a community with nothing to share
+     * still shows where its energy comes from.
+     */
+    /** A series summed over the period, or its value at one hour. */
+    function shareAmount(series, hour) {
+        const s = series || [];
+        if (hour !== null && hour !== undefined) return Math.max(0, s[hour] || 0);
+        return s.reduce(function (t, v) { return t + Math.max(0, v || 0); }, 0);
+    }
+
+    function sharingEdges(layer, hour) {
+        const pairs = {};
+        ((layer && layer.flows && layer.flows.features) || []).forEach(function (f) {
+            const p = f.properties || {};
+            const origin = p.origin || p.kind;
+            const into = p.target_kind;
+            const wanted = origin === 'building'
+                ? into === 'building'
+                : (origin === 'grid' || origin === 'battery' || origin === 'pv') &&
+                  (into === 'building' || into === 'charge_point');
+            if (!wanted) return;
+            const kwh = shareAmount(p.flow_hourly, hour);
+            if (!(kwh > 0.0005)) return;
+            const key = p.source + '>' + p.target;
+            const e = pairs[key] || (pairs[key] = {
+                from: p.source, to: p.target, kwh: 0, solar: 0, battery: 0, origin: origin
+            });
+            e.kwh += kwh;
+            if (p.kind === 'battery') e.battery += kwh;
+            else if (p.kind === 'pv') e.solar += kwh;
+        });
+        return Object.keys(pairs).map(function (k) { return pairs[k]; })
+            .sort(function (a, b) { return b.kwh - a.kwh; });
+    }
+
+    // The grid supplies far more than members pass between them: on one scale
+    // every sharing arrow would be a hairline next to it. So the grid's arrows
+    // are scaled among themselves, drawn thinner and fainter, and capped.
+    const SHARE_MAX_GRID_EDGES = 10;
+    // The hour the sharing graph was last drawn for, so a repaint of the sky
+    // that is not an hour change does not redraw it.
+    let lastSharingHour = null;
+    const SHARE_COLOURS = { grid: '#00ffe5', battery: '#fa3600', solar: '#eaff00', building: '#ff2bd6' };
+
+    function sharingBody() {
+        const layer = state.layer;
+        const rule = (state.working && state.working.sharing_rule) || 'order';
+        const ruleLine = '<span class="ecom-ctl-hint">Sharing rule: <b>' +
+            esc(SHARING_RULE_LABELS[rule] || rule) + '</b> - change it in the Community tab.</span>';
+        if (!layer || !layer.flows) {
+            return '<p class="ecom-ctl-empty">Tick buildings in Members and the energy they ' +
+                'share with each other appears here.</p>' + ruleLine;
+        }
+        // The whole period, or the hour the table is on - which then redraws
+        // as the clock moves (see paintSky).
+        const hours = (layer.meta && layer.meta.hours) || state.hours || 24;
+        const hourMode = state.shareMode === 'hour';
+        const hour = hourMode ? ((state.hour || 0) % Math.max(1, hours)) : null;
+        const when = hourMode
+            ? 'at ' + String(hour % 24).padStart(2, '0') + ':00, day ' + (Math.floor(hour / 24) + 1)
+            : 'over ' + ((layer.meta && layer.meta.period) || 'the period');
+        const toggle = '<span class="ecom-seg">' +
+            '<button type="button" data-share-mode="period"' + (hourMode ? '' : ' class="is-on"') +
+                ' title="Totals over the days on the table.">Whole period</button>' +
+            '<button type="button" data-share-mode="hour"' + (hourMode ? ' class="is-on"' : '') +
+                ' title="The hour the table is on, following its clock.">This hour</button>' +
+            '</span>';
+
+        const everything = sharingEdges(layer, hour);
+        const all = everything.filter(function (e) { return e.origin === 'building'; });
+        const supply = everything.filter(function (e) { return e.origin !== 'building'; });
+
+        // Each member's own solar, used where it was made - never an arrow,
+        // because it never leaves the building. The ring around a member.
+        const ownSolar = {};
+        ((layer.nodes && layer.nodes.features) || []).forEach(function (f) {
+            const p = f.properties || {};
+            if (p.kind === 'building') ownSolar[p.id] = shareAmount(p.solar_hourly, hour);
+        });
+        if (!everything.length && !Object.keys(ownSolar).some(function (k) { return ownSolar[k] > 0; })) {
+            return '<div class="ecom-share-top">' + toggle + '</div>' +
+                '<p class="ecom-ctl-empty">Nothing flowed ' + esc(when) + '.</p>' + ruleLine;
+        }
+        const gridEdges = supply.filter(function (e) { return e.origin === 'grid'; })
+            .slice(0, SHARE_MAX_GRID_EDGES);
+        const localEdges = supply.filter(function (e) { return e.origin !== 'grid'; });
+        const edges = all.slice(0, SHARE_MAX_EDGES).concat(localEdges);
+
+        // Where everything is, from the layer's own markers, and what it is.
+        const where = {};
+        const kindOf = {};
+        ((layer.nodes && layer.nodes.features) || []).forEach(function (f) {
+            if (f.properties && f.geometry) {
+                where[f.properties.id] = f.geometry.coordinates;
+                kindOf[f.properties.id] = f.properties.kind;
+            }
+        });
+        // Every member, arrows or not - at an hour when a building only uses its
+        // own solar it still belongs on the picture, with its ring.
+        const names = Object.keys(ownSolar);
+        edges.concat(gridEdges).forEach(function (e) {
+            [e.from, e.to].forEach(function (n) { if (names.indexOf(n) === -1) names.push(n); });
+        });
+        const pts = names.map(function (n) { return where[n]; }).filter(Boolean);
+        const lat0 = pts.length ? pts.reduce(function (s, c) { return s + c[1]; }, 0) / pts.length : 57.69;
+        const kx = Math.cos(lat0 * Math.PI / 180);
+        const xs = pts.map(function (c) { return c[0] * kx; });
+        const ys = pts.map(function (c) { return c[1]; });
+        const minX = Math.min.apply(null, xs), maxX = Math.max.apply(null, xs);
+        const minY = Math.min.apply(null, ys), maxY = Math.max.apply(null, ys);
+        // One scale for both directions, the largest that fits the card both
+        // ways - so the campus keeps its shape and nothing falls off an edge.
+        const scale = Math.min((SHARE_W - 2 * SHARE_PAD) / Math.max(maxX - minX, 1e-6),
+                               (SHARE_H - 2 * SHARE_PAD) / Math.max(maxY - minY, 1e-6));
+        const pos = {};
+        names.forEach(function (n, i) {
+            const c = where[n];
+            if (c) {
+                pos[n] = {
+                    x: SHARE_W / 2 + ((c[0] * kx) - (minX + maxX) / 2) * scale,
+                    y: SHARE_H / 2 - (c[1] - (minY + maxY) / 2) * scale + 6
+                };
+            } else {
+                // No marker for it: on a ring, so it is still shown.
+                const a = 2 * Math.PI * i / names.length;
+                pos[n] = { x: SHARE_W / 2 + 0.4 * SHARE_W * Math.cos(a), y: SHARE_H / 2 + 0.4 * SHARE_H * Math.sin(a) };
+            }
+        });
+
+        const maxShare = Math.max(1e-6, edges.reduce(function (m, e) { return Math.max(m, e.kwh); }, 0));
+        const maxGrid = Math.max(1e-6, gridEdges.reduce(function (m, e) { return Math.max(m, e.kwh); }, 0));
+        const given = {}, received = {}, bought = {};
+        all.forEach(function (e) {
+            given[e.from] = (given[e.from] || 0) + e.kwh;
+            received[e.to] = (received[e.to] || 0) + e.kwh;
+        });
+        supply.forEach(function (e) {
+            if (e.origin === 'grid') bought[e.to] = (bought[e.to] || 0) + e.kwh;
+        });
+
+        // What an arrow carries decides its colour: the grid teal, a battery red,
+        // solar yellow. A member's line takes the colour of what it mostly carried.
+        const colourOf = function (e) {
+            if (e.origin === 'grid') return 'grid';
+            if (e.origin === 'battery' || e.battery > e.solar) return 'battery';
+            return 'solar';
+        };
+        const R = 7;
+        const arrow = function (e, isGrid) {
+            const a = pos[e.from], b = pos[e.to];
+            if (!a || !b) return '';
+            const dx = b.x - a.x, dy = b.y - a.y, len = Math.max(1, Math.hypot(dx, dy));
+            // Curved, so A->B and B->A are two arcs rather than one line, and
+            // stopped short of the circles so the arrowhead shows.
+            const ux = dx / len, uy = dy / len;
+            const sx = a.x + ux * R, sy = a.y + uy * R, ex = b.x - ux * (R + 3), ey = b.y - uy * (R + 3);
+            const bend = Math.min(40, len * 0.2);
+            const cx = (sx + ex) / 2 - uy * bend, cy = (sy + ey) / 2 + ux * bend;
+            const c = colourOf(e);
+            const width = isGrid ? 0.8 + 3.2 * e.kwh / maxGrid : 1.2 + 6 * e.kwh / maxShare;
+            const label = e.from + ' -> ' + e.to + ': ' + Math.round(e.kwh).toLocaleString() + ' kWh' +
+                (e.origin === 'building'
+                    ? ' (' + Math.round(e.solar).toLocaleString() + ' solar, ' +
+                      Math.round(e.battery).toLocaleString() + ' battery)' : '');
+            return '<path d="M' + sx.toFixed(1) + ' ' + sy.toFixed(1) + ' Q' + cx.toFixed(1) + ' ' +
+                cy.toFixed(1) + ' ' + ex.toFixed(1) + ' ' + ey.toFixed(1) + '" fill="none" stroke="' +
+                SHARE_COLOURS[c] + '" stroke-opacity="' + (isGrid ? 0.5 : 0.88) +
+                '" stroke-width="' + width.toFixed(1) + '" marker-end="url(#share-arrow-' + c + ')">' +
+                '<title>' + esc(label) + '</title></path>';
+        };
+        // Grid first, underneath; what members share on top.
+        const lines = gridEdges.map(function (e) { return arrow(e, true); }).join('') +
+                      edges.map(function (e) { return arrow(e, false); }).join('');
+
+        const maxOwn = Math.max(1e-6, Object.keys(ownSolar).reduce(function (m, k) {
+            return Math.max(m, ownSolar[k]);
+        }, 0));
+        const fmt = function (v) { return (hourMode ? v.toFixed(1) : Math.round(v).toLocaleString()) + ' kWh'; };
+        const dots = names.map(function (n) {
+            const p = pos[n];
+            if (!p) return '';
+            const kind = kindOf[n] || 'building';
+            const fill = kind === 'grid' ? SHARE_COLOURS.grid
+                : kind === 'battery' ? SHARE_COLOURS.battery
+                : kind === 'pv' ? SHARE_COLOURS.solar
+                : kind === 'charge_point' ? '#34d399' : SHARE_COLOURS.building;
+            const label = kind === 'grid' ? 'Grid' : n;
+            const tip = kind === 'building'
+                ? n + ' ' + when + ': own solar ' + fmt(ownSolar[n] || 0) +
+                  ', from members ' + fmt(received[n] || 0) +
+                  ', from the grid ' + fmt(bought[n] || 0) +
+                  ', gave to members ' + fmt(given[n] || 0)
+                : label;
+            // Own solar, used where it was made: a yellow ring round the member,
+            // wider the more it used. It never leaves the building, so it is
+            // not an arrow - but it is used first, before anything is shared.
+            const own = kind === 'building' ? (ownSolar[n] || 0) : 0;
+            const ring = own > 0
+                ? '<circle cx="' + p.x.toFixed(1) + '" cy="' + p.y.toFixed(1) + '" r="' +
+                  (R + 2 + 7 * own / maxOwn).toFixed(1) + '" fill="' + SHARE_COLOURS.solar +
+                  '" fill-opacity="0.28" stroke="' + SHARE_COLOURS.solar + '" stroke-opacity="0.7"' +
+                  ' stroke-width="1"><title>' + esc(n + ' used ' + fmt(own) + ' of its own solar ' + when) +
+                  '</title></circle>'
+                : '';
+            if (ring) return '<g>' + ring + dotShape(n, p, kind, fill, tip, label) + '</g>';
+            return '<g>' + dotShape(n, p, kind, fill, tip, label) + '</g>';
+        }).join('');
+        function dotShape(n, p, kind, fill, tip, label) {
+            // The grid, a battery and community solar are squares: sources, not members.
+            const shape = kind === 'building'
+                ? '<circle cx="' + p.x.toFixed(1) + '" cy="' + p.y.toFixed(1) + '" r="' + R + '"'
+                : '<rect x="' + (p.x - R).toFixed(1) + '" y="' + (p.y - R).toFixed(1) +
+                  '" width="' + (2 * R) + '" height="' + (2 * R) + '" rx="2"';
+            return shape + ' fill="' + fill + '" stroke="#1a1a1e" stroke-width="2">' +
+                '<title>' + esc(tip) + '</title></' + (kind === 'building' ? 'circle' : 'rect') + '>' +
+                '<text x="' + p.x.toFixed(1) + '" y="' + (p.y - R - 11).toFixed(1) +
+                '" text-anchor="middle" fill="#e4e4e7" font-size="12">' + esc(label) + '</text>';
+        }
+        const marker = function (id, colour) {
+            return '<marker id="share-arrow-' + id + '" viewBox="0 0 10 10" refX="8" refY="5" ' +
+                'markerWidth="5" markerHeight="5" orient="auto-start-reverse">' +
+                '<path d="M0 0 L10 5 L0 10 z" fill="' + colour + '"/></marker>';
+        };
+
+        const top = function (map, n) {
+            return Object.keys(map).filter(function (k) { return map[k] > 0.0005; })
+                .sort(function (a, b) { return map[b] - map[a]; }).slice(0, n)
+                .map(function (k) { return '<b>' + esc(k) + '</b> ' + fmt(map[k]); })
+                .join(' &middot; ');
+        };
+        const stale = state.dirty || state.busy;
+        const rank =
+            '<span>Own solar used first: ' + (top(ownSolar, 5) || 'none ' + esc(when)) + '</span>' +
+            (all.length
+                ? '<span>Receives most from members: ' + top(received, 3) + '</span>' +
+                  '<span>Gives most to members: ' + top(given, 3) + '</span>'
+                : '<span>No member gave energy to another ' + esc(when) + ' - that needs ' +
+                  'solar left over after a building has covered itself.</span>');
+        return '<div class="ecom-share-top">' +
+                '<span>' + all.length + ' sharing link' + (all.length === 1 ? '' : 's') +
+                    (all.length > SHARE_MAX_EDGES ? ' &middot; strongest ' + SHARE_MAX_EDGES + ' shown' : '') +
+                    ' &middot; ' + esc(when) +
+                    (stale ? ' &middot; <em>updating…</em>' : '') + '</span>' +
+                toggle +
+            '</div>' +
+            '<svg class="ecom-share-svg' + (stale ? ' is-stale' : '') + '" viewBox="0 0 ' + SHARE_W + ' ' + SHARE_H + '"' +
+                ' role="img" aria-label="Where the members\' energy comes from">' +
+                '<defs>' + marker('solar', SHARE_COLOURS.solar) + marker('battery', SHARE_COLOURS.battery) +
+                    marker('grid', SHARE_COLOURS.grid) + '</defs>' +
+                lines + dots +
+            '</svg>' +
+            '<div class="ecom-share-rank">' + rank +
+                '<span>Buys most from the grid: ' + (top(bought, 3) || '-') + '</span>' +
+            '</div>' +
+            '<span class="ecom-ctl-hint">The yellow ring is a member\'s own solar, used ' +
+                'first and never shared. Arrows show where the rest of its energy came from; ' +
+                'thicker is more. Teal from the grid (on a scale of its own, ' +
+                'it is much larger), yellow solar, red battery - between members or from the ' +
+                'community\'s own. Members are circles, sources squares, where they are on the campus.</span>' +
+            ruleLine;
+    }
     /** Move the clock line to the hour the table is on. */
     function paintProfileCursor() {
         const line = document.getElementById('ecom-prof-now');
@@ -3243,11 +4293,10 @@
                 const reading = await getJson('/api/live/battery');
                 const was = JSON.stringify(state.live);
                 state.live = reading;
-                // Only when something changed: this fires every five seconds,
-                // and re-rendering the panel under a finger moves the slider
-                // it is resting on.
-                if (JSON.stringify(reading) !== was &&
-                    state.openGroup === 'community') render();
+                // Only when something changed, and only the reading itself: this
+                // fires every five seconds, and re-rendering the members list
+                // under a finger moves the slider it is resting on.
+                if (JSON.stringify(reading) !== was) paintLive();
             } catch (error) {
                 state.live = { available: false, detail: String(error.message || error) };
             }
@@ -3256,7 +4305,22 @@
         liveTimer = setInterval(tick, LIVE_EVERY_MS);
     }
 
-    /** The live reading, as a line of the Storage group. */
+    // The building the gateway reports for. The readout sits on its row in
+    // Members, under its battery, because that is the battery it is reading.
+    const LIVE_BATTERY_HOST = 'AWL';
+
+    /** The readout with the wrapper paintLive finds it by. */
+    function liveBlock() {
+        return '<div id="ecom-live-battery" class="ecom-kit-live">' + liveBattery() + '</div>';
+    }
+
+    /** Swap in a new reading without redrawing the panel around it. */
+    function paintLive() {
+        const el = document.getElementById('ecom-live-battery');
+        if (el) el.innerHTML = liveBattery();
+    }
+
+    /** The live reading of the real battery. */
     function liveBattery() {
         const live = state.live;
         if (!live) return '';
@@ -3357,10 +4421,10 @@
         let battery_;
         if (store) {
             battery_ =
-                liveBattery() +
                 slider({
                     name: 'battery_kwh', label: 'Battery capacity',
                     value: store.capacity, min: 0, max: 5000, step: 50, unit: 'kWh',
+                    typed: true,
                     format: function (v) { return Number(v).toLocaleString(); }
                 }) +
                 slider({
@@ -3390,7 +4454,6 @@
                 '</button>';
         } else {
             battery_ =
-                liveBattery() +
                 '<p class="ecom-ctl-empty">' +
                     (inBuildings
                         ? 'No community store. ' + inBuildings + ' ' +
@@ -3406,13 +4469,48 @@
                 '</button>';
         }
 
+        const chargerCount = chargePoints().length;
+        // Who gets a member's spare solar first when there is not enough for
+        // everyone short at that hour. It decides the table's lines, not the
+        // optimizer's costs: the optimizer shares however is cheapest.
+        const rule = state.working.sharing_rule || 'order';
+        const sharing =
+            '<div class="ecom-community-assets">' +
+                '<div class="ecom-ctl-subhead">Sharing between members</div>' +
+                '<div class="ecom-ctl-span">' +
+                    [['order', 'In list order'],
+                     ['proportional', 'In proportion to need'],
+                     ['nearest', 'Nearest first']].map(function (r) {
+                        return '<button type="button" class="ecom-ctl-chip' +
+                            (r[0] === rule ? ' is-on' : '') + '" data-sharing-rule="' +
+                            r[0] + '">' + r[1] + '</button>';
+                    }).join('') +
+                '</div>' +
+                '<span class="ecom-ctl-hint">' +
+                    (rule === 'proportional'
+                        ? 'A member\'s spare solar is split between everyone short ' +
+                          'at that hour, in proportion to how short each one is.'
+                        : rule === 'nearest'
+                            ? 'A member\'s spare solar goes to the closest building ' +
+                              'first, then the next closest, until it runs out.'
+                            : 'A member\'s spare solar goes to the members in the ' +
+                              'order they are listed, until it runs out.') +
+                    ' The total shared is the same; only who gets it changes.' +
+                '</span>' +
+            '</div>';
         return group('community', 'Community',
             Math.round(arrayKw).toLocaleString() + ' kW · ' +
-                (store ? Math.round(store.capacity).toLocaleString() : '0') + ' kWh',
+                (store ? Math.round(store.capacity).toLocaleString() : '0') + ' kWh · ' +
+                chargerCount + (chargerCount === 1 ? ' charger' : ' chargers'),
+            sharing +
             solar +
             '<div class="ecom-community-assets">' +
                 '<div class="ecom-ctl-subhead">Battery</div>' +
                 battery_ +
+            '</div>' +
+            '<div class="ecom-community-assets">' +
+                '<div class="ecom-ctl-subhead">Charging</div>' +
+                chargingMarkup() +
             '</div>');
     }
 
@@ -3475,47 +4573,265 @@
             'against 112 kW.';
     }
 
+    /** The hourly spot prices for the year being shown (SEK/kWh, 8760). */
+    function spotPrices() {
+        if (state.spotByYear[state.year]) return state.spotByYear[state.year];
+        const base = state.base && state.base.grid && state.base.grid.buying_price;
+        return base && Array.isArray(base.hourly) && base.hourly.length ? base.hourly : null;
+    }
+
+    /** Mean, low and high of the spot price over the hours the table is showing. */
+    function spotWindow(hourly) {
+        const first = (dayOfYear(state.startMonth, state.startDay) - 1) * 24;
+        const span = Math.max(1, state.spanDays || 1) * 24;
+        const slice = hourly.slice(first, first + span);
+        const values = slice.length ? slice : hourly;
+        let sum = 0;
+        let low = Infinity;
+        let high = -Infinity;
+        values.forEach(function (v) {
+            sum += v;
+            if (v < low) low = v;
+            if (v > high) high = v;
+        });
+        return { mean: sum / values.length, low: low, high: high, whole: !slice.length };
+    }
+
     function gridGroup() {
         const grid = state.working.grid || {};
-        const buy = (grid.buying_price || {}).fixed;
+        const buying = grid.buying_price || {};
+        const spot = spotPrices();
+        // On spot while the working copy still carries an hourly series.
+        const onSpot = Array.isArray(buying.hourly);
         const sell = (grid.selling_price || {}).fixed;
-        const carbon = (grid.carbon_intensity || {}).fixed;
-        return group('grid', 'Grid',
-            (buy != null ? buy : 1.35) + ' SEK/kWh in',
-            slider({
+        const win = spot ? spotWindow(spot) : null;
+
+        // The import price: the real hourly SE3 day-ahead price, or one flat
+        // price for every hour. The slider used to be the only control, so it
+        // showed a 1.35 that was not in use and, once touched, silently swapped
+        // the hourly prices for a flat one.
+        let importMarkup = '';
+        if (spot) {
+            importMarkup =
+                '<div class="ecom-ctl-span">' +
+                    '<button type="button" class="ecom-ctl-chip' + (onSpot ? ' is-on' : '') +
+                        '" data-price-mode="spot">Spot price (SE3, hourly)</button>' +
+                    '<button type="button" class="ecom-ctl-chip' + (onSpot ? '' : ' is-on') +
+                        '" data-price-mode="fixed">Fixed price</button>' +
+                '</div>';
+        }
+        if (onSpot && win) {
+            importMarkup +=
+                '<span class="ecom-ctl-hint">Import is the day-ahead spot price, hour ' +
+                'by hour - used by the table and by the optimizer. ' +
+                (win.whole ? 'Over the year' : 'Over the days shown') + ': ' +
+                'average <b>' + win.mean.toFixed(2) + '</b> SEK/kWh, from ' +
+                win.low.toFixed(2) + ' to ' + win.high.toFixed(2) + '. ' +
+                'Spot only - grid fees, tax and VAT are not in it.</span>';
+        } else {
+            importMarkup += slider({
                 name: 'buy_price', label: 'Import price',
-                value: buy != null ? buy : 1.35,
+                value: buying.fixed != null ? buying.fixed : 1.35,
                 min: 0, max: 5, step: 0.05, unit: 'SEK/kWh'
-            }) +
+            });
+        }
+
+        return group('grid', 'Grid',
+            onSpot && win
+                ? 'spot · avg ' + win.mean.toFixed(2) + ' SEK/kWh'
+                : Number(buying.fixed != null ? buying.fixed : 1.35).toFixed(2) + ' SEK/kWh in',
+            importMarkup +
             slider({
                 name: 'sell_price', label: 'Export price',
                 value: sell != null ? sell : 0.55,
                 min: 0, max: 5, step: 0.05, unit: 'SEK/kWh'
             }) +
-            slider({
-                name: 'carbon', label: 'Carbon intensity',
-                value: carbon != null ? carbon : 41,
-                min: 0, max: 400, step: 1, unit: 'g/kWh'
-            })
+            (spot ? spotChart(spot, onSpot ? null : buying.fixed) : '')
         );
     }
 
-    function mobilityGroup() {
-        const points = chargePoints();
+    // ------------------------------------------------------- spot chart
+    //
+    // The import price over the days the table is showing: what a cheap or a
+    // dear hour actually is, so that a battery charging at midday or a car
+    // waiting until night has a reason anyone can see. With a fixed price
+    // chosen, that price is drawn over the spot line it replaces.
+    const SPOT_W = 600;
+    const SPOT_H = 210;
+    const SPOT_PAD = { left: 44, right: 12, top: 14, bottom: 30 };
+    const SPOT_COLOUR = '#00ffe5';
 
-        if (!points.length) {
-            return group('mobility', 'Mobility', 'none',
-                '<span class="ecom-ctl-hint">No charge points in this ' +
-                'community.</span>' +
-                '<div class="ecom-ctl-actions">' +
-                    '<button type="button" class="ecom-ctl-btn ecom-ctl-btn--primary"' +
-                        ' data-action="cp-add">Add a charge point</button>' +
-                '</div>');
+    /** The hours of the spot series the table is showing. */
+    function spotSlice(hourly) {
+        const first = (dayOfYear(state.startMonth, state.startDay) - 1) * 24;
+        const span = Math.max(1, state.spanDays || 1) * 24;
+        return { first: first, values: hourly.slice(first, first + span) };
+    }
+
+    function spotChart(hourly, fixed) {
+        const slice = spotSlice(hourly);
+        const v = slice.values;
+        if (!v.length) return '';
+        const lo = Math.min(0, Math.min.apply(null, v), fixed != null ? fixed : Infinity);
+        let hi = Math.max.apply(null, v.concat(fixed != null ? [fixed] : []));
+        if (hi - lo < 0.1) hi = lo + 0.1;
+        const plotW = SPOT_W - SPOT_PAD.left - SPOT_PAD.right;
+        const plotH = SPOT_H - SPOT_PAD.top - SPOT_PAD.bottom;
+        const x = function (i) { return SPOT_PAD.left + (v.length > 1 ? i / (v.length - 1) : 0) * plotW; };
+        const y = function (p) { return SPOT_PAD.top + (1 - (p - lo) / (hi - lo)) * plotH; };
+
+        const line = v.map(function (p, i) {
+            return (i ? 'L' : 'M') + x(i).toFixed(1) + ' ' + y(p).toFixed(1);
+        }).join(' ');
+        const area = line + ' L' + x(v.length - 1).toFixed(1) + ' ' + y(lo).toFixed(1) +
+                     ' L' + x(0).toFixed(1) + ' ' + y(lo).toFixed(1) + ' Z';
+        const mean = v.reduce(function (s, p) { return s + p; }, 0) / v.length;
+
+        // Price ticks: the bottom, the top and one between, in SEK/kWh.
+        let ticks = '';
+        [lo, (lo + hi) / 2, hi].forEach(function (p) {
+            ticks += '<line x1="' + SPOT_PAD.left + '" x2="' + (SPOT_W - SPOT_PAD.right) +
+                '" y1="' + y(p).toFixed(1) + '" y2="' + y(p).toFixed(1) +
+                '" stroke="#3f3f46" stroke-width="1"/>' +
+                '<text x="' + (SPOT_PAD.left - 6) + '" y="' + (y(p) + 4).toFixed(1) +
+                '" text-anchor="end" fill="#8b8b93" font-size="11">' + p.toFixed(2) + '</text>';
+        });
+        // Hour ticks every six hours, with the date at each midnight.
+        for (let i = 0; i < v.length; i += 6) {
+            const midnight = i % 24 === 0;
+            ticks += '<line x1="' + x(i).toFixed(1) + '" x2="' + x(i).toFixed(1) +
+                '" y1="' + SPOT_PAD.top + '" y2="' + (SPOT_H - SPOT_PAD.bottom) +
+                '" stroke="' + (midnight ? '#52525b' : '#2f2f35') + '" stroke-width="1"/>';
+            let label = String(i % 24).padStart(2, '0');
+            if (midnight) {
+                const day = fromDayOfYear(dayOfYear(state.startMonth, state.startDay) + i / 24);
+                label = day.day + ' ' + MONTH_NAMES[day.month - 1].slice(0, 3);
+            }
+            ticks += '<text x="' + x(i).toFixed(1) + '" y="' + (SPOT_H - SPOT_PAD.bottom + 16) +
+                '" text-anchor="middle" fill="' + (midnight ? '#c4c4cc' : '#8b8b93') +
+                '" font-size="11">' + label + '</text>';
         }
 
-        const total = points.reduce(function (sum, cp) {
-            return sum + (cp.capacity || 0);
-        }, 0);
+        const now = Math.min(Math.max(0, state.hour || 0), v.length - 1);
+        return '<div class="ecom-spot" data-spot-key="' + spotKey(fixed) + '">' +
+            '<div class="ecom-spot-head">' +
+                '<span>Spot price, SE3 &middot; ' + state.year + '</span>' +
+                '<b id="ecom-spot-now-text">' + v[now].toFixed(2) + ' SEK/kWh now</b>' +
+            '</div>' +
+            '<svg class="ecom-spot-svg" viewBox="0 0 ' + SPOT_W + ' ' + SPOT_H + '"' +
+                ' preserveAspectRatio="none" role="img" aria-label="Hourly spot price">' +
+                ticks +
+                '<path d="' + area + '" fill="' + SPOT_COLOUR + '" fill-opacity="0.08"/>' +
+                '<path d="' + line + '" fill="none" stroke="' + SPOT_COLOUR +
+                    '" stroke-width="2" stroke-linejoin="round" vector-effect="non-scaling-stroke"/>' +
+                '<line x1="' + SPOT_PAD.left + '" x2="' + (SPOT_W - SPOT_PAD.right) +
+                    '" y1="' + y(mean).toFixed(1) + '" y2="' + y(mean).toFixed(1) +
+                    '" stroke="' + SPOT_COLOUR + '" stroke-opacity="0.55" stroke-dasharray="5 4"/>' +
+                (fixed != null
+                    ? '<line x1="' + SPOT_PAD.left + '" x2="' + (SPOT_W - SPOT_PAD.right) +
+                      '" y1="' + y(fixed).toFixed(1) + '" y2="' + y(fixed).toFixed(1) +
+                      '" stroke="#ffc247" stroke-width="2"/>'
+                    : '') +
+                '<line id="ecom-spot-now" x1="' + x(now).toFixed(1) + '" x2="' + x(now).toFixed(1) +
+                    '" y1="' + SPOT_PAD.top + '" y2="' + (SPOT_H - SPOT_PAD.bottom) +
+                    '" stroke="#facc15" stroke-width="1.5"/>' +
+                '<circle id="ecom-spot-dot" cx="' + x(now).toFixed(1) + '" cy="' + y(v[now]).toFixed(1) +
+                    '" r="4" fill="#facc15"/>' +
+            '</svg>' +
+            '<div class="ecom-spot-key">' +
+                '<span><i style="background:' + SPOT_COLOUR + '"></i>spot, hourly</span>' +
+                '<span><i class="is-dash" style="border-color:' + SPOT_COLOUR + '"></i>average ' +
+                    mean.toFixed(2) + '</span>' +
+                (fixed != null
+                    ? '<span><i style="background:#ffc247"></i>fixed ' + fixed.toFixed(2) + '</span>'
+                    : '') +
+                '<span><i style="background:#facc15"></i>hour on the table</span>' +
+                '<span class="ecom-spot-unit">SEK/kWh</span>' +
+            '</div>' +
+        '</div>';
+    }
+
+    /** What the chart was drawn for: when this changes it is redrawn, not moved. */
+    function spotKey(fixed) {
+        return state.year + ':' + dayOfYear(state.startMonth, state.startDay) + ':' +
+            (state.spanDays || 1) + ':' + (fixed != null ? fixed : 'spot');
+    }
+
+    /**
+     * Keep the chart with the table: move the hour marker, or redraw the chart
+     * when the days, the year or the fixed price it was drawn for have changed.
+     */
+    function paintSpotNow() {
+        const chart = document.querySelector('.ecom-spot');
+        if (!chart) return;
+        const hourly = spotPrices();
+        if (!hourly) return;
+        const grid = state.working && state.working.grid;
+        const buying = (grid && grid.buying_price) || {};
+        const shownFixed = Array.isArray(buying.hourly) ? null : buying.fixed;
+        if (chart.getAttribute('data-spot-key') !== spotKey(shownFixed)) {
+            chart.outerHTML = spotChart(hourly, shownFixed);
+            return;
+        }
+        const marker = document.getElementById('ecom-spot-now');
+        if (!marker) return;
+        const v = spotSlice(hourly).values;
+        if (!v.length) return;
+        // Same scale as spotChart: read it back off the drawn ticks would be
+        // fragile, so it is recomputed - cheap for at most a year of hours.
+        const fixed = shownFixed;
+        const lo = Math.min(0, Math.min.apply(null, v), fixed != null ? fixed : Infinity);
+        let hi = Math.max.apply(null, v.concat(fixed != null ? [fixed] : []));
+        if (hi - lo < 0.1) hi = lo + 0.1;
+        const plotW = SPOT_W - SPOT_PAD.left - SPOT_PAD.right;
+        const plotH = SPOT_H - SPOT_PAD.top - SPOT_PAD.bottom;
+        const now = Math.min(Math.max(0, state.hour || 0), v.length - 1);
+        const px = SPOT_PAD.left + (v.length > 1 ? now / (v.length - 1) : 0) * plotW;
+        const py = SPOT_PAD.top + (1 - (v[now] - lo) / (hi - lo)) * plotH;
+        marker.setAttribute('x1', px.toFixed(1));
+        marker.setAttribute('x2', px.toFixed(1));
+        const dot = document.getElementById('ecom-spot-dot');
+        if (dot) { dot.setAttribute('cx', px.toFixed(1)); dot.setAttribute('cy', py.toFixed(1)); }
+        const text = document.getElementById('ecom-spot-now-text');
+        if (text) text.textContent = v[now].toFixed(2) + ' SEK/kWh now';
+    }
+
+    /** Switch the import price between the hourly spot series and a flat one. */
+    function setPriceMode(mode) {
+        const spot = spotPrices();
+        const grid = state.working.grid;
+        if (!spot || !grid) return;
+        if (mode === 'spot') {
+            grid.buying_price = { hourly: spot.slice() };
+        } else {
+            // Starts at the spot average of the days shown, so switching does
+            // not jump the bill before the slider has been touched.
+            const mean = spotWindow(spot).mean;
+            grid.buying_price = { fixed: Number((Math.round(mean / 0.05) * 0.05).toFixed(2)) };
+        }
+        render();
+        markDirty();
+    }
+
+    /**
+     * The chargers, as the Charging section of the Community tab. It was a tab
+     * of its own (Mobility); it lives with the other things the community runs
+     * on now - solar, storage and charging - and lists every charger, the ones
+     * added from a building's row too, each labelled with its building.
+     */
+    function chargingMarkup() {
+        const points = chargePoints();
+
+        const addButton =
+            '<button type="button" class="ecom-add-shared" data-action="cp-add"' +
+                ' title="A charger the community owns, in the P-hus car park. ' +
+                'Chargers at a building are added from its row in Members.">' +
+                '<span class="material-icons">add</span>Add a charger' +
+            '</button>';
+
+        if (!points.length) {
+            return '<p class="ecom-ctl-empty">No chargers in this community.</p>' + addButton;
+        }
 
         const rows = points.map(function (cp, index) {
             const placed = cp.lat != null;
@@ -3523,7 +4839,8 @@
             return '' +
                 '<div class="ecom-cp">' +
                     '<div class="ecom-cp-head">' +
-                        '<span class="ecom-cp-name">' + esc(cp.name) + '</span>' +
+                        '<span class="ecom-cp-name">' + esc(cp.name) +
+                            (cp.host ? ' &middot; ' + esc(hostLabel(cp.host)) : '') + '</span>' +
                         '<span class="ecom-cp-kw">' + Math.round(cp.capacity) + ' kW</span>' +
                         (points.length > 1
                             ? '<button type="button" class="ecom-mini"' +
@@ -3535,10 +4852,19 @@
                         name: 'cp_kw:' + index, label: 'Charger power',
                         value: cp.capacity, min: 4, max: 150, step: 1, unit: 'kW'
                     }) +
+                    // When the car is plugged in. Both models read this: the
+                    // table spreads the day's charging over these hours and the
+                    // optimizer makes one charging session of each stay.
                     slider({
-                        name: 'cp_km:' + index, label: 'Daily driving',
-                        value: (cp.ev && cp.ev.daily_distance) || 35,
-                        min: 0, max: 200, step: 5, unit: 'km'
+                        name: 'cp_arr:' + index, label: 'Arrives',
+                        value: plugWindow(cp).arrival, min: WORK_FROM, max: WORK_TO - 1,
+                        step: 1, unit: '', format: clockHour
+                    }) +
+                    slider({
+                        name: 'cp_dep:' + index, label: 'Leaves',
+                        value: plugWindow(cp).departure, min: WORK_FROM + 1, max: WORK_TO,
+                        step: 1, unit: '', format: clockHour,
+                        hint: plugHint(plugWindow(cp))
                     }) +
                     (bays
                         ? slider({
@@ -3559,17 +4885,60 @@
                 '</div>';
         }).join('');
 
-        return group('mobility', 'Mobility',
-            points.length + (points.length === 1 ? ' charger · ' : ' chargers · ') +
-                Math.round(total) + ' kW',
-            '<div class="ecom-cps">' + rows + '</div>' +
-            '<div class="ecom-ctl-actions">' +
-                '<button type="button" class="ecom-ctl-btn" data-action="cp-add">' +
-                    'Add a charge point</button>' +
-            '</div>' +
-            '<span class="ecom-ctl-hint">The charger and its car move together ' +
-            'on vehicle-to-grid: the backend rejects a car with it on behind a ' +
-            'charger without it.</span>');
+        return '<div class="ecom-cps">' + rows + '</div>' + addButton;
+    }
+
+    // ------------------------------------------------ plugged-in hours
+    //
+    // A car's availability is 24 hours of 0/1 - plugged in or not. The panel
+    // offers it as an arrival and a departure time: from arrival up to (not
+    // including) departure, wrapping past midnight when it leaves earlier in
+    // the day than it came. The same time for both means plugged in all day.
+
+    // Workplace charging: the car comes and goes within one day, between 06:00
+    // and midnight. The optimizer starts each run fresh and cannot carry a
+    // session over midnight into the next day, so - as the optimization team
+    // advised - arrival is from 06:00 and departure by 24:00, same day.
+    const WORK_FROM = 6;
+    const WORK_TO = 24;
+    const DEFAULT_PLUG = { arrival: 8, departure: 17 };
+
+    function clockHour(h) { return String(h).padStart(2, '0') + ':00'; }
+
+    /** The arrival and departure the car's schedule describes, inside 06-24. */
+    function plugWindow(cp) {
+        const a = (cp.ev && cp.ev.availability) || null;
+        if (!a || a.length !== 24) return DEFAULT_PLUG;
+        let first = null;
+        let last = null;
+        for (let h = WORK_FROM; h < WORK_TO; h += 1) {
+            if (a[h]) {
+                if (first === null) first = h;
+                last = h;
+            }
+        }
+        return first === null ? DEFAULT_PLUG : { arrival: first, departure: last + 1 };
+    }
+
+    /** 24 hours of 0/1: plugged in from arrival up to, not including, departure. */
+    function plugSchedule(arrival, departure) {
+        const out = [];
+        for (let h = 0; h < 24; h += 1) out.push(h >= arrival && h < departure ? 1 : 0);
+        return out;
+    }
+
+    function plugHint(window_) {
+        return 'Plugged in ' + (window_.departure - window_.arrival) + ' h, ' +
+            clockHour(window_.arrival) + '-' + clockHour(window_.departure) +
+            ' - workplace charging, within the day.';
+    }
+
+    /** A building's display name from a charger's host (a footprint id or a name). */
+    function hostLabel(host) {
+        const building = ((state.base && state.base.buildings) || []).find(function (b) {
+            return sameBuilding(b.name, host);
+        });
+        return building ? building.name : host;
     }
 
     /** The toggles and size sliders under one building's row.
@@ -3596,6 +4965,28 @@
         };
 
         const sizer = function (kind, icon, label, value, min, max, step, unit, readout) {
+            // Panels can be typed as well as dragged: the slider moves the share
+            // of the roof covered, the box beside it is the capacity that share
+            // comes to, and typing there sets the share to match.
+            const end = kind === 'pv'
+                ? '<span class="ecom-kw-field">' +
+                      '<input type="number" inputmode="decimal" min="0" step="1"' +
+                          ' data-size-kw="' + esc(name) + '"' +
+                          ' data-size-readout="pv:' + esc(name) + '"' +
+                          ' aria-label="Panel capacity in kW"' +
+                          ' value="' + Math.round(roofKw(name)) + '">' +
+                      '<i>kW</i></span>'
+                : kind === 'battery'
+                ? '<span class="ecom-kw-field">' +
+                      '<input type="number" inputmode="decimal" min="0" step="10"' +
+                          ' data-size-kwh="' + esc(name) + '"' +
+                          ' data-size-max="' + max + '"' +
+                          ' data-size-readout="battery:' + esc(name) + '"' +
+                          ' aria-label="Battery capacity in kWh"' +
+                          ' value="' + Math.round(value) + '">' +
+                      '<i>kWh</i></span>'
+                : '<b data-size-readout="' + kind + ':' + esc(name) + '">' +
+                      esc(readout) + '</b>';
             return '<div class="ecom-kit-size is-' + kind + '">' +
                 '<label><span class="material-icons">' + icon + '</span>' +
                     esc(label) + '</label>' +
@@ -3603,8 +4994,7 @@
                     ' data-size-building="' + esc(name) + '"' +
                     ' min="' + min + '" max="' + max + '" step="' + step + '"' +
                     ' value="' + value + '">' +
-                '<b data-size-readout="' + kind + ':' + esc(name) + '">' +
-                    esc(readout) + '</b>' +
+                end +
                 '</div>';
         };
 
@@ -3649,33 +5039,32 @@
                  'A battery in this building. It takes this building\'s ' +
                  'surplus before the neighbours see it and covers its own ' +
                  'demand first. Community storage is separate.' +
-                 (isMember ? '' : ' Waits until the building joins.')) +
+                 (isMember ? '' : ' The building is not a member: while its ' +
+                  'equipment is RENTED the community uses it; by default it serves the building itself.')) +
             chip('charger', chargers.length > 0, 'ev_station',
                  chargers.length ? chargers.length + ' charger' +
                      (chargers.length > 1 ? 's' : '') : 'Charger',
                  'A charge point outside this building, placed clear of its ' +
                  'neighbours. Tap again to take them all away; the + and - below ' +
                  'add or remove one at a time.' +
-                 (isMember ? '' : ' Waits until the building joins.')) +
-            // Whose panels they are, once there are some on a building outside
-            // the community: its own, feeding nobody here, or rented by the
-            // community. It was a tag on the Solar group's row; that group is
-            // gone and the row it described is this one.
-            (!isMember && coverage > 0
-                ? '<button type="button" class="ecom-roof-owner' +
-                      (state.roofOwner[name] === 'community' ? ' is-rented' : '') +
-                      '" data-roofowner="' + esc(name) + '" title="' +
-                      (state.roofOwner[name] === 'community'
-                          ? 'The community rents this roof: the panels feed the ' +
-                            'members even though this building is not one. Tap to ' +
-                            'hand them back.'
-                          : 'The panels are this building\'s own and it is not a ' +
-                            'member, so they feed nobody in the community. Tap to ' +
-                            'rent the roof.') + '">' +
-                      (state.roofOwner[name] === 'community' ? 'rented' : 'dormant') +
-                  '</button>'
-                : '') +
+                 (isMember ? '' : ' The building is not a member: while its ' +
+                  'equipment is RENTED the community uses it; by default it serves the building itself.')) +
             '</div>';
+
+        // Who uses the equipment of a building outside the community, once it
+        // has any - a switch per kind, on a line of its own so it reads as a
+        // choice to make rather than a status. OWN USE (the default): the
+        // building itself, which is not a member, so none of it is in the
+        // community. RENTED: the community uses it, it counts in the KPIs and
+        // the optimization, and the table draws its lines.
+        if (!isMember && (coverage > 0 || battery || chargers.length)) {
+            rows += '<div class="ecom-owner-row">' +
+                '<span class="ecom-owner-lead">Not a member - who uses it?</span>' +
+                (coverage > 0 ? ownerBadge(name, 'pv', 'Solar', 'panels') : '') +
+                (battery ? ownerBadge(name, 'battery', 'Battery', 'battery') : '') +
+                (chargers.length ? ownerBadge(name, 'charger', 'Chargers', 'chargers') : '') +
+            '</div>';
+        }
 
         if (coverage > 0 && roofArea(b) > 0) {
             rows += sizer('pv', 'wb_sunny', 'Roof', Math.min(coverage, MAX_ROOF_COVERAGE),
@@ -3686,6 +5075,8 @@
             rows += sizer('battery', 'battery_charging_full', 'Storage',
                           Math.round(battery.capacity), 0, 1000, 10, 'kWh',
                           Math.round(battery.capacity) + ' kWh');
+            // What the real one is doing right now, under the modelled one.
+            if (sameBuilding(name, LIVE_BATTERY_HOST)) rows += liveBlock();
         }
         if (chargers.length) {
             // How many, and how powerful each one is. The power slider sets all
@@ -3711,7 +5102,20 @@
                     ' min="3" max="150" step="1" value="' + power + '">' +
                 '<b data-size-readout="charger:' + esc(name) + '">' + power +
                     ' kW' + (chargers.length > 1 ? ' each' : '') + '</b>' +
-                '</div>';
+                '</div>' +
+                // Vehicle-to-grid for this building's chargers, all of them at
+                // once like the power slider: the cars may give energy back to
+                // the community, not only take it. The optimizer runs with V2G
+                // on whenever any charger has it.
+                '<label class="ecom-ctl-check ecom-kit-v2g" title="Vehicle-to-grid: ' +
+                    'the cars on these chargers can also discharge into the ' +
+                    'community when that is worth more than holding the charge. ' +
+                    'They still leave with the charge their trip needs.">' +
+                    '<input type="checkbox" data-kit-v2g="' + esc(name) + '"' +
+                        (chargers.every(function (cp) { return cp.is_v2g; })
+                            ? ' checked' : '') + '>' +
+                    '<span>V2G - the cars can give energy back</span>' +
+                '</label>';
         }
         return rows;
     }
@@ -3733,16 +5137,11 @@
             return '' +
                 '<div class="ecom-ctl-member-row' + (on ? '' : ' is-off') + '">' +
                     '<label class="ecom-ctl-member' + (on ? '' : ' is-off') + '"' +
-                    // The owner is in the tooltip as well as beside the name:
-                    // on a narrow column it is hidden to keep a building to one
-                    // line, and it should not vanish from the panel with it.
-                    ' title="' + esc(b.name + (b.owner ? ' - ' + b.owner : '')) + '"' +
+                    ' title="' + esc(b.name) + '"' +
                     ' data-member="' + esc(b.name) + '">' +
                         '<input type="checkbox" data-member="' + esc(b.name) + '"' +
                             (on ? ' checked' : '') + '>' +
                         '<span class="ecom-ctl-member-name">' + esc(b.name) + '</span>' +
-                        '<span class="ecom-ctl-member-owner">' +
-                            esc(b.owner || '') + '</span>' +
                     '</label>' +
                     kit +
                 '</div>';
@@ -3765,24 +5164,7 @@
                     '<button type="button" class="ecom-mini" data-roofs="0">Clear</button>' +
                 '</span>' +
             '</div>' +
-            '<div class="ecom-ctl-members">' + rows + '</div>' +
-            // Folded away: it is explanation, not a control, and it was taking
-            // ninety pixels off the list on a laptop screen where the list is
-            // the one thing that wants every pixel it can get.
-            '<details class="ecom-ctl-about"><summary>How these work</summary>' +
-                '<span class="ecom-ctl-hint">Panels, a battery and a charger can be ' +
-                'given to any building. Outside the community they wait, and count ' +
-                'from the moment it is ticked in. Panels on a building outside can ' +
-                'be rented to the community instead - tap the dormant tag on its ' +
-                'row.</span>' +
-            '</details>' +
-            // Said rather than silently missing: a list of 33 against the 37 in
-            // the data reads as a bug unless it says where the four went.
-            (state.noGeometry.length
-                ? '<span class="ecom-ctl-hint">Not offered, because the table has no ' +
-                  'outline to draw for ' + (state.noGeometry.length > 1 ? 'them' : 'it') +
-                  ': ' + esc(state.noGeometry.join(', ')) + '.</span>'
-                : '')
+            '<div class="ecom-ctl-members">' + rows + '</div>'
         );
     }
 
@@ -3962,12 +5344,6 @@
 
         return group('optimizer', 'Optimizer',
             changed ? changed + ' changed' : offered.length + ' constants',
-            '<span class="ecom-ctl-hint">These drive the MILP optimizer, not the ' +
-            'dispatch the table animates - it returns costs rather than a new ' +
-            'set of flows, and changing one leaves the table as it is. A run ' +
-            'starts on the date chosen above, in Day, and covers the span ' +
-            'picked here; a year is the calendar year, because a period cannot ' +
-            'wrap the new year.</span>' +
             '<div class="ecom-ctl-span">' +
                 [['community', 'As an energy community'],
                  ['separate', 'As today'],
@@ -3995,6 +5371,12 @@
                     esc(periodLabel(optimizerPeriod(currentSpan().days))) +
                     ' &middot; ' + optimizerEstimate(currentSpan().days) + '</span>' +
             '</div>' +
+            '<label class="ecom-ctl-check ecom-ctl-check--inline">' +
+                '<input type="checkbox" data-toggle="autoopt"' +
+                    (state.autoOptimize ? ' checked' : '') + '>' +
+                '<span>Run automatically when something changes, and compare ' +
+                    'with the previous run</span>' +
+            '</label>' +
             '<div class="ecom-ctl-actions">' +
                 '<button type="button" class="ecom-ctl-btn ecom-ctl-btn--primary"' +
                     ' data-action="optimize"' + (state.optimizerRunning ? ' disabled' : '') + '>' +
@@ -4088,6 +5470,7 @@
                 '</div>' +
                 '<div id="ecom-ctl-status" class="ecom-ctl-status ecom-ctl-status--' +
                     state.statusKind + '">' + esc(state.status) + '</div>' +
+                storyMarkup() +
             '</div>';
 
         if (groupHost) {
@@ -4133,7 +5516,27 @@
             setKitSize(size, name, value);
             const readout = document.querySelector(
                 '[data-size-readout="' + size + ':' + String(name).replace(/"/g, '') + '"]');
-            if (readout) {
+            if (size === 'pv' || size === 'battery') {
+                // The chip above the slider carries the same figure. Patched
+                // with it, or it keeps the old number until something redraws.
+                const chip = document.querySelector('[data-kit="' + size +
+                    '"][data-kit-building="' + String(name).replace(/"/g, '') + '"]');
+                if (chip && chip.lastChild) {
+                    const figure = size === 'pv' ? Math.round(roofKw(name))
+                                                 : Math.round(value);
+                    chip.lastChild.textContent = figure > 0
+                        ? figure + (size === 'pv' ? ' kW' : ' kWh')
+                        : (size === 'pv' ? 'PV' : 'Battery');
+                }
+            }
+            if (readout && readout.tagName === 'INPUT') {
+                // The typed capacity follows the slider. Not while it has focus,
+                // so a number half-typed is not overwritten.
+                if (document.activeElement !== readout) {
+                    readout.value = size === 'pv' ? Math.round(roofKw(name))
+                                                  : Math.round(value);
+                }
+            } else if (readout) {
                 readout.textContent =
                     size === 'pv' ? Math.round(roofKw(name)) + ' kW'
                     : size === 'battery' ? Math.round(value) + ' kWh'
@@ -4191,6 +5594,8 @@
             if (raw === '') delete state.paramValues[param];
             else state.paramValues[param] = Number(raw);
             target.parentElement.classList.toggle('is-changed', raw !== '');
+            // An optimizer constant changes the answer, so it counts as a change.
+            scheduleOptimize();
             // The optimizer constants are inputs to a separate run, not to the
             // dispatch the table draws, so nothing is re-sent here.
             return;
@@ -4267,7 +5672,16 @@
     }
 
     function applySlider(name, value, readout) {
-        const set = function (text) { if (readout) readout.textContent = text; };
+        const set = function (text) {
+            if (!readout) return;
+            if (readout.tagName === 'INPUT') {
+                // A typed figure follows the slider, but not out from under a
+                // number being typed.
+                if (document.activeElement !== readout) readout.value = String(Math.round(value));
+            } else {
+                readout.textContent = text;
+            }
+        };
         const w = state.working;
 
         // Per-charger sliders carry their index: `cp_kw:2`. One handler for
@@ -4279,9 +5693,32 @@
             if (parts[0] === 'cp_kw') {
                 cp.capacity = value;
                 set(value + ' kW');
-            } else if (parts[0] === 'cp_km') {
-                if (cp.ev) cp.ev.daily_distance = Math.max(1, value);
-                set(value + ' km');
+            } else if (parts[0] === 'cp_arr' || parts[0] === 'cp_dep') {
+                if (cp.ev) {
+                    const now = plugWindow(cp);
+                    let arrival = parts[0] === 'cp_arr' ? value : now.arrival;
+                    let departure = parts[0] === 'cp_dep' ? value : now.departure;
+                    // Always at least an hour plugged in, and leaving after it
+                    // arrives: the slider not being moved gives way.
+                    if (departure <= arrival) {
+                        if (parts[0] === 'cp_arr') departure = Math.min(WORK_TO, arrival + 1);
+                        else arrival = Math.max(WORK_FROM, departure - 1);
+                    }
+                    cp.ev.availability = plugSchedule(arrival, departure);
+                    const other = parts[0] === 'cp_arr' ? 'cp_dep' : 'cp_arr';
+                    const otherValue = other === 'cp_dep' ? departure : arrival;
+                    const otherSlider = document.querySelector('[data-slider="' + other + ':' + parts[1] + '"]');
+                    if (otherSlider && Number(otherSlider.value) !== otherValue) {
+                        otherSlider.value = otherValue;
+                        const otherReadout = document.querySelector('[data-readout="' + other + ':' + parts[1] + '"]');
+                        if (otherReadout) otherReadout.textContent = clockHour(otherValue) + ' ';
+                    }
+                    // The "Plugged in N h" line under Leaves follows both sliders.
+                    const hint = document.querySelector(
+                        '[data-slider="cp_dep:' + parts[1] + '"] + .ecom-ctl-hint');
+                    if (hint) hint.textContent = plugHint({ arrival: arrival, departure: departure });
+                }
+                set(clockHour(value));
             } else if (parts[0] === 'cp_pos') {
                 const spot = alongHouse(value / 100);
                 if (spot) { cp.lon = spot[0]; cp.lat = spot[1]; }
@@ -4320,6 +5757,7 @@
             case 'buy_price':
                 w.grid.buying_price = { fixed: value };
                 set(value.toFixed(2) + ' SEK/kWh');
+                paintSpotNow();     // the fixed line moves with the slider
                 markDirty();
                 break;
             case 'sell_price':
@@ -4344,9 +5782,11 @@
     // closest() had nothing to match.
     const CLICK_ATTRIBUTES = [
         'data-group', 'data-action', 'data-kind',
-        'data-members', 'data-roofs', 'data-cp-remove',
+        'data-members', 'data-roofs', 'data-cp-remove', 'data-story-step', 'data-price-mode',
+        'data-sharing-rule',
         'data-optimizer-span', 'data-optimizer-mode', 'data-peak', 'data-kit', 'data-roofowner',
-        'data-shared', 'data-profile-mode', 'data-profile-focus',
+        'data-shared', 'data-profile-mode', 'data-profile-focus', 'data-profile-view',
+        'data-share-mode',
         'data-param-info', 'data-charger-step'
     ];
     const CLICK_SELECTOR = CLICK_ATTRIBUTES.map(function (name) {
@@ -4369,12 +5809,42 @@
             return;
         }
 
+        const jump = el.getAttribute('data-story-step');
+        if (jump !== null) { storyGo(Number(jump)); return; }
+
+        const priceMode = el.getAttribute('data-price-mode');
+        if (priceMode) { setPriceMode(priceMode); return; }
+
+        // How members share a surplus. Re-dispatches: the lines change.
+        const sharingRule = el.getAttribute('data-sharing-rule');
+        if (sharingRule) {
+            if ((state.working.sharing_rule || 'order') === sharingRule) return;
+            state.working.sharing_rule = sharingRule;
+            render();
+            markDirty();
+            return;
+        }
+
         const action = el.getAttribute('data-action');
         if (action === 'kpi-more') {
             state.kpiDetails = !state.kpiDetails;
             renderKpis();
             return;
         }
+        if (action === 'story-next') {
+            // Started again after a Skip while the example is still on its way:
+            // let that load carry on rather than ignoring the press.
+            if (state.story < 0 && storyLoading && storySkipRequested) {
+                storySkipRequested = false;
+                render();
+                return;
+            }
+            storyGo(state.story + 1 >= STORY.length ? -1 : state.story + 1);
+            return;
+        }
+        if (action === 'story-back') { storyGo(Math.max(0, state.story - 1)); return; }
+        if (action === 'story-exit') { storyGo(-1); return; }
+        if (action === 'story-skip') { storySkipRequested = true; render(); return; }
         if (action === 'apply') { applyNow(); return; }
 
         // Jump to the busiest hour or the busiest day of a measured year.
@@ -4501,8 +5971,14 @@
         // Who owns the panels on a roof outside the community.
         const roofOwner = el.getAttribute('data-roofowner');
         if (roofOwner) {
-            state.roofOwner[roofOwner] =
-                state.roofOwner[roofOwner] === 'community' ? 'own' : 'community';
+            const ownerKind = el.getAttribute('data-owner-kind') || 'pv';
+            const key = ownerKind + ':' + roofOwner;
+            // A side of the switch sets that side; anything else flips it.
+            const want = el.getAttribute('data-owner-set');
+            const rent = want ? want === 'rented' : !state.rented[key];
+            if (!!state.rented[key] === rent) return;     // already that way
+            if (rent) state.rented[key] = true;
+            else delete state.rented[key];
             render();
             markDirty();
             return;
@@ -4524,6 +6000,22 @@
         if (infoFor) {
             event.preventDefault();       // it sits inside the constant's label
             state.paramInfo[infoFor] = !state.paramInfo[infoFor];
+            render();
+            return;
+        }
+
+        // The sharing graph: the whole period, or the hour on the table.
+        const shareMode = el.getAttribute('data-share-mode');
+        if (shareMode) {
+            state.shareMode = shareMode === 'hour' ? 'hour' : 'period';
+            paintProfiles();
+            return;
+        }
+
+        // Load profiles or the sharing graph, in the same card.
+        const profileView = el.getAttribute('data-profile-view');
+        if (profileView) {
+            state.profileView = profileView === 'sharing' ? 'sharing' : 'profiles';
             render();
             return;
         }
@@ -4596,6 +6088,75 @@
             return;
         }
 
+        // A panel capacity typed in kW. Applied on commit (Enter or leaving the
+        // box), not per keystroke: "1" on the way to "150" is not a request for
+        // 1 kW. The roof's share of panels is set to give that capacity, within
+        // the same ceiling as the slider, and the panel is redrawn so the
+        // slider and the box both show what was actually applied.
+        const kwBuilding = target.getAttribute && target.getAttribute('data-size-kw');
+        if (kwBuilding) {
+            const typed = Number(target.value);
+            const percent = roofCoverage(kwBuilding);
+            const kw = roofKw(kwBuilding);
+            if (target.value === '' || !isFinite(typed) || typed < 0 || percent <= 0 || kw <= 0) {
+                render();                       // nothing usable: put the old value back
+                return;
+            }
+            const perPercent = kw / percent;    // kW for each point of roof covered
+            const next = typed === 0
+                ? 0
+                : Math.min(Math.max(Math.round(typed / perPercent * 10) / 10, 0.1),
+                           MAX_ROOF_COVERAGE);
+            setRoofCoverage(kwBuilding, next);
+            render();
+            markDirty();
+            return;
+        }
+
+        // A building's battery capacity typed in kWh. Same rules as the panels:
+        // on commit, capped at the slider's maximum, 0 takes the battery out.
+        const kwhBuilding = target.getAttribute && target.getAttribute('data-size-kwh');
+        if (kwhBuilding) {
+            const typed = Number(target.value);
+            const cap = Number(target.getAttribute('data-size-max')) || 1000;
+            if (target.value === '' || !isFinite(typed) || typed < 0) {
+                render();
+                return;
+            }
+            setKitSize('battery', kwhBuilding, Math.min(typed, cap));
+            render();
+            markDirty();
+            return;
+        }
+
+        // The community battery's capacity typed in the Community tab.
+        const typedSlider = target.getAttribute && target.getAttribute('data-slider-typed');
+        if (typedSlider) {
+            const typed = Number(target.value);
+            const cap = Number(target.getAttribute('data-typed-max')) || 5000;
+            if (target.value === '' || !isFinite(typed) || typed < 0) {
+                render();
+                return;
+            }
+            applySlider(typedSlider, Math.min(Math.max(typed, 1), cap), null);
+            render();
+            return;
+        }
+
+        // V2G for every charger at one building, from its row in Members. Both
+        // flags together, as the switch in Community's Charging list does: the backend refuses a
+        // car with V2G on behind a charger without it.
+        const v2gBuilding = target.getAttribute && target.getAttribute('data-kit-v2g');
+        if (v2gBuilding) {
+            ownChargers(v2gBuilding).forEach(function (cp) {
+                cp.is_v2g = target.checked;
+                if (cp.ev) cp.ev.v2g_enabled = target.checked;
+            });
+            render();
+            markDirty();
+            return;
+        }
+
         const toggle = target.getAttribute && target.getAttribute('data-toggle');
         const v2gIndex = target.getAttribute && target.getAttribute('data-cp-v2g');
         if (v2gIndex !== null && v2gIndex !== undefined) {
@@ -4612,6 +6173,15 @@
         if (toggle === 'auto') {
             state.autoApply = target.checked;
             if (state.autoApply && state.dirty) scheduleApply();
+            return;
+        }
+        if (toggle === 'autoopt') {
+            state.autoOptimize = target.checked;
+            // Switching it off must not leave a queued run to fire anyway.
+            if (!state.autoOptimize && optimizeTimer !== null) {
+                clearTimeout(optimizeTimer);
+                optimizeTimer = null;
+            }
             return;
         }
     }
@@ -4677,7 +6247,7 @@
         // awaited: the panel opens on Members and the group is closed until
         // someone asks for it.
         loadBays().then(function () {
-            if (state.openGroup === 'mobility') render();
+            if (state.openGroup === 'community') render();
         });
 
         // Started here, not awaited: the panel is useful without them, but
@@ -4734,6 +6304,18 @@
             if (select) select.innerHTML = yearOptions();
         } catch (error) { /* the picker keeps the scenario year only */ }
 
+        // The spot prices of every year there is demand for, fetched now so
+        // that changing year can swap them in at once, before the dispatch it
+        // triggers goes out. A year without a price file keeps the scenario's.
+        await Promise.all((state.years.length ? state.years : [state.year]).map(
+            async function (year) {
+                try {
+                    const prices = await getJson('/api/prices/se3/' + year);
+                    if (Array.isArray(prices.hourly)) state.spotByYear[year] = prices.hourly;
+                } catch (error) { /* stays on the scenario's own prices */ }
+            }));
+        if (state.openGroup === 'grid') render();
+
         // The two days of each year worth aiming at. Same reasoning as the
         // year list: late enough not to hold up the panel, early enough to be
         // there before anyone looks for a hard day to test against.
@@ -4765,6 +6347,15 @@
 
         // On the document, not on the panel: the keys have to work wherever the
         // focus happens to be in this window.
+        document.addEventListener('keydown', onStoryKey);
+
+        // A controller that has just opened is not solving anything. If the last
+        // one was closed or reloaded mid-run, the display is still lightened and
+        // still waiting to be told the run is over; say so.
+        channel.postMessage({
+            type: 'ecom_optimization',
+            optimization: { running: '', error: '', results: {}, previous: null }
+        });
 
         // The chart is drawn at the size of its card, so a resized window
         // needs it drawn again. Waited out, because a window being dragged
@@ -4801,7 +6392,7 @@
         if (data.type === 'animation_state' &&
             data.animationId === 'ecom-energy-btn' && data.isActive &&
             state.base) {
-            resetPresentation();
+            offerStory();
         }
 
         if (data.type === 'ecom_summary' && data.summary && !state.layer) {
@@ -4888,9 +6479,10 @@
             state.link.at = Date.now();
             if (typeof data.hours === 'number') state.hours = data.hours;
             paintLink();
-            // The table may already be running, possibly still holding the
-            // old introduction's last step; put it back to the running view.
-            resetPresentation();
+            // The usual order of events: the table is already running and the
+            // panel is opened onto it. The introduction should start here too,
+            // not only when the layer is switched on with the panel watching.
+            if (state.link.active && state.base) offerStory();
         }
 
         // The display confirming it redrew. Reported instead of the dispatch

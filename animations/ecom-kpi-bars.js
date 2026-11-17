@@ -4,12 +4,13 @@
     'use strict';
     const palette = (window.ECOM_PALETTE && window.ECOM_PALETTE.semantic) || {};
     // What the lines on the map mean, for everyone who walks up to the table
-    // after the introduction.
+    // after the introduction. A line is coloured by what it carries - a
+    // member's solar going next door is yellow, a battery's discharge red - so
+    // there is no separate pink "between members" colour.
     const LINE_KEY = '<span class="ecom-flow-lines">' + [
         ['From the grid', palette.grid || '#00ffe5'],
-        ['Between members', palette.building || '#ff00a6'],
-        ['From the battery', palette.battery || '#fa3600'],
-        ['Solar on the roof', palette.pv || '#eaff00']
+        ['Solar', palette.pv || '#eaff00'],
+        ['From the battery', palette.battery || '#fa3600']
     ].map(function (item) {
         return '<span class="ecom-flow-lines-item"><span class="ecom-flow-lines-swatch" style="background:' +
             item[1] + '"></span>' + item[0] + '</span>';
