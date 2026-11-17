@@ -80,22 +80,15 @@
         panel.style.transform = 'scaleY(' + Math.max(0, height) / panel.offsetHeight + ')';
     }
     window.addEventListener('mr-ribbon-size', fitRibbon);
-    window.addEventListener('ecom-optimization-visibility', ({ detail }) => {
-        optimizationOn = !!(detail && detail.on);
-        syncVisibility();
-    });
     new ResizeObserver(fitRibbon).observe(panel);
     fitRibbon();
     const channel = new BroadcastChannel('map_controller_channel');
     let layerOn = false, inIntroduction = false, settled = false, reading = null, settleTimer = null;
-    // Hidden while the optimisation results bar (ecom-optimization.js) is on, so
-    // the two never stack on the same strip of the table edge.
-    let optimizationOn = false;
     const number = v => v > 0 && v < .1 ? '<0.1' : v.toLocaleString('en-GB', { maximumFractionDigits: v < 100 ? 1 : 0 });
     const power = v => number(v) + ' kW';
     const put = (key, text) => { panel.querySelector('[data-value="' + key + '"]').textContent = text; };
     function syncVisibility() {
-        const on = layerOn && !!reading && settled && !inIntroduction && !optimizationOn;
+        const on = layerOn && !!reading && settled && !inIntroduction;
         panel.classList.toggle('is-on', on);
         panel.setAttribute('aria-hidden', String(!on));
         window.dispatchEvent(new CustomEvent('mr-bottom-ribbon-availability', { detail: { id: 'ecom', available: on } }));

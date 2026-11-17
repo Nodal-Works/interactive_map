@@ -18,7 +18,10 @@
     'use strict';
 
     const EDGE_PX = 60;
-    const BOTTOM_PX = 86;     // KPI bar (52) + timeline strip (34)
+    // Right on top of the timeline strip (34 px), which itself sits on the
+    // table's calibrated bottom ribbon - the hourly energy flow panel with its
+    // legend and indicators. 52 px when no ribbon height has been published.
+    const BOTTOM_CSS = 'calc(var(--mr-bottom-ribbon-height, 52px) + 34px)';
     const INK = '#e8eef6';
     const GOOD = '#5fd48a';
     const BAD = '#ff8a7a';
@@ -35,7 +38,7 @@
     const style = document.createElement('style');
     style.textContent = [
         '.ecom-opt{position:fixed;left:' + EDGE_PX + 'px;right:' + EDGE_PX + 'px;',
-        'bottom:' + BOTTOM_PX + 'px;z-index:848;box-sizing:border-box;',
+        'bottom:' + BOTTOM_CSS + ';z-index:848;box-sizing:border-box;',
         'display:flex;align-items:stretch;gap:22px;padding:10px 18px;',
         'background:rgba(6,9,12,0.8);color:' + INK + ';pointer-events:none;',
         'font-family:system-ui,-apple-system,Segoe UI,sans-serif;',
@@ -132,11 +135,7 @@
         const failed = o && o.error;
         const has = done.length || running || failed;
 
-        const showing = !!(layerOn && !inIntroduction && has);
-        bar.classList.toggle('is-on', showing);
-        // The hourly flow panel (ecom-kpi-bars.js) uses the same strip of the
-        // table edge. Only one of them shows at a time: the results win.
-        window.dispatchEvent(new CustomEvent('ecom-optimization-visibility', { detail: { on: showing } }));
+        bar.classList.toggle('is-on', !!(layerOn && !inIntroduction && has));
         if (!has) { bar.innerHTML = ''; return; }
 
         let html = '<div class="ecom-opt-head"><span class="ecom-opt-title">Optimization</span>' +
