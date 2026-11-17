@@ -363,7 +363,15 @@
             feature.properties.solarNow = 0;
             // The solar halo and the owner filter both read these off the
             // polygon, and neither can reach inside the nested `ecom` block.
-            feature.properties.has_pv = (ecom && ecom.pv_kw > 0) ? 1 : 0;
+            // A roof outside the community whose panels it rents glows too,
+            // from what those panels make (rented_pv, from the backend).
+            const rented = feature.properties.rented_pv;
+            feature.properties.has_pv = ((ecom && ecom.pv_kw > 0) ||
+                                         (rented && rented.pv_kw > 0)) ? 1 : 0;
+            (rented && rented.solar_hourly ? rented.solar_hourly : []).forEach(
+                function (value) {
+                    if (value > solarCeiling) solarCeiling = value;
+                });
             feature.properties.owner = (ecom && ecom.owner) || '';
             // Which side of the outline is the roof, so the solar halo can be
             // pushed onto it rather than straddling the wall.
@@ -2748,7 +2756,9 @@
                 ? MEMBER_FLOOR + (1 - MEMBER_FLOOR) * shade
                 : 0;
 
-            const sun = ((ecom && ecom.solar_hourly) || [])[hour] || 0;
+            const rentedPv = feature.properties.rented_pv;
+            const sun = ((ecom && ecom.solar_hourly) ||
+                         (rentedPv && rentedPv.solar_hourly) || [])[hour] || 0;
             const glow = solarCeiling > 0
                 ? Math.sqrt(sun / solarCeiling) : 0;
             // The wave: a roof lights once the sweep has passed its place on
@@ -3217,10 +3227,14 @@
         const flows = (flowData && flowData.features) || [];
         let members = 0;
         let chargers = 0;
+        // Storage the community can use: every battery in the dispatch, a
+        // building's own and the community's alike, by its capacity in kWh.
+        let batteryKwh = 0;
         nodes.forEach(function (f) {
             const kind = f.properties && f.properties.kind;
             if (kind === 'building') members += 1;
             else if (kind === 'charge_point') chargers += 1;
+            else if (kind === 'battery') batteryKwh += Number(f.properties.capacity) || 0;
         });
         let ev = 0;
         flows.forEach(function (f) {
@@ -3228,7 +3242,8 @@
             if (String(p.target || '').indexOf('CP_') !== 0) return;
             (p.flow_hourly || []).forEach(function (v) { ev += Math.max(0, v || 0); });
         });
-        return { members: members, chargers: chargers, total_ev_charging: ev };
+        return { members: members, chargers: chargers, total_ev_charging: ev,
+                 battery_kwh: batteryKwh };
     }
 
     /** Clear the table down to a campus nobody has joined yet.
@@ -3257,6 +3272,7 @@
                     const copy = JSON.parse(JSON.stringify(feature));
                     copy.properties = copy.properties || {};
                     delete copy.properties.ecom;
+                    delete copy.properties.rented_pv;
                     copy.properties.has_pv = 0;
                     copy.properties.pv_kw = 0;
                     copy.properties.demandNow = 0;
@@ -3303,7 +3319,7 @@
                 self_sufficiency: 0, self_consumption: 0,
                 total_demand: 0, total_grid_import: 0, total_grid_export: 0,
                 total_pv_gen: 0, total_pv_used: 0,
-                members: 0, chargers: 0, total_ev_charging: 0
+                members: 0, chargers: 0, total_ev_charging: 0, battery_kwh: 0
             }
         });
         ecomChannel.postMessage({ type: 'ecom_summary', summary: buildSummary() });
@@ -3466,7 +3482,11 @@
             // from and somewhere to go: with only the source tested, unticking
             // Charging left the grid's line to the charger drawn, running to a
             // marker that was no longer on the table.
-            flowTests.push(['in', ['get', 'kind'], ['literal', kinds]]);
+            // The node a line leaves, not what it carries: a member's solar
+            // surplus going next door is drawn yellow but still runs between
+            // two buildings. Older layers have no `origin` and fall back.
+            flowTests.push(['in', ['coalesce', ['get', 'origin'], ['get', 'kind']],
+                            ['literal', kinds]]);
             flowTests.push(['in', ['get', 'target_kind'], ['literal', kinds]]);
         }
         // An allow-list of source>target pairs, used to introduce the community
@@ -3482,11 +3502,19 @@
                 flowTests.push(['any'].concat(pairs.map(function (pair) {
                     const ends = String(pair).split('>');
                     return ['all',
-                        ['==', ['get', 'kind'], ends[0]],
+                        ['==', ['coalesce', ['get', 'origin'], ['get', 'kind']], ends[0]],
                         ['==', ['get', 'target_kind'], ends[1]]
                     ];
                 })));
             }
+        }
+
+        // What the lines may carry, by colour: the introduction's yellow step
+        // shows only solar and its red step only the battery, even on a line
+        // from a building that carries both at that hour.
+        const carries = filters.carries || null;
+        if (carries && carries.length) {
+            flowTests.push(['in', ['get', 'kind'], ['literal', carries]]);
         }
 
         map.setFilter(NODE_LAYER_ID, ['all'].concat(nodeTests));
