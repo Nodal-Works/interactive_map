@@ -22,6 +22,32 @@ from .common import Coordinates, Owner
 
 HOURS_PER_YEAR = 8760
 
+# How full a car is when it plugs in, unless the charger says otherwise. LEC-Opt
+# works between 0.2 and 1 and refuses an arrival below 0.2.
+DEFAULT_ARRIVAL_SOC = 0.3
+MIN_ARRIVAL_SOC = 0.2
+# Charging efficiency the optimization team set for a session.
+CHARGING_EFFICIENCY = 0.93
+
+
+def session_target_soc(arrival_soc: float, capacity_kwh: float,
+                       power_kw: float, plugged_hours: float) -> float:
+    """How full a car leaves: what its stay can put in, up to a full battery.
+
+    As the optimization team set it: the charger's power at 0.93 efficiency
+    over the hours it can charge. LEC-Opt charges only in the hours strictly
+    between arrival and departure, one fewer than the stay, and holds the
+    departure SOC to exactly the target - so the target is counted over the
+    hours it can charge, less a hair for rounding, or a short stay has no
+    solution at all. Never below the arrival: a car is not drained to meet it.
+    """
+    if not capacity_kwh:
+        return 1.0
+    charging_hours = max(0.0, plugged_hours - 1.0)
+    reachable = (arrival_soc + power_kw * charging_hours * CHARGING_EFFICIENCY
+                 / capacity_kwh - 0.001)
+    return max(arrival_soc, min(1.0, reachable))
+
 
 class ElectricVehicleSpec(BaseModel):
     model_config = ConfigDict(extra="forbid")
@@ -41,6 +67,18 @@ class ElectricVehicleSpec(BaseModel):
         "energy budget to 120% of the driving requirement.",
     )
     embodied_co2_per_kwh: Annotated[float, Field(gt=0)] = Field(75.0, description="kgCO2e/kWh")
+
+    # How full the battery is when the car plugs in, as a fraction. Set, it
+    # drives both models: the optimizer starts each session here, and the
+    # dispatch charges what the stay adds from here instead of the driving
+    # distance, so the two put the same energy into the car. Left empty, the
+    # optimizer assumes DEFAULT_ARRIVAL_SOC and the dispatch charges the
+    # distance, as before.
+    arrival_soc: Optional[Annotated[float, Field(ge=MIN_ARRIVAL_SOC, le=1)]] = Field(
+        default=None,
+        description="State of charge on arrival, 0.2-1. Sets the optimizer's "
+        "arrival SOC and the energy the dispatch charges per stay.",
+    )
 
     availability: Optional[Sequence[int]] = Field(
         default=None,

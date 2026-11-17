@@ -32,6 +32,7 @@ import pandas as pd
 from app import settings
 from app import toolkit  # noqa: F401  - puts ECOMToolkit on sys.path
 from app.builders.community import build_community
+from app.schemas.charging import DEFAULT_ARRIVAL_SOC, session_target_soc
 from app.schemas.community import CommunitySpec
 from app.services import quiet
 from app.services.nordpool import NordPoolClient
@@ -414,29 +415,21 @@ def build_optimizer_inputs(
                 if departure <= arrival:
                     continue
                 hours = (departure - arrival).total_seconds() / 3600.0
-                # As the optimization team set it: the car leaves with what the
-                # time it was plugged in can put in, at the charger's power and
-                # 0.93 charging efficiency, up to a full battery. So arrival and
-                # departure decide how much it charges, not only when. Arrival
-                # SOC stays 0.3: LEC-Opt works between 0.2 and 1, and refuses an
-                # arrival below 0.2.
-                # LEC-Opt charges only in the hours strictly between arrival and
-                # departure (arrival < t < departure), one fewer than the stay,
-                # and holds departure SOC to exactly the target - so a target
-                # counted over every hour of the stay was out of reach for a
-                # short one and the solve had no solution at all. Counted over
-                # the hours it can charge, less a hair for rounding.
-                charging_hours = max(0.0, hours - 1.0)
-                reachable = cp.ev.capacity and (
-                    0.3 + (min(cp.capacity, cp.ev.max_charging_power) * charging_hours * 0.93)
-                    / cp.ev.capacity - 0.001)
+                # The car arrives as full as the panel says, and leaves with
+                # what the stay can put in - so arrival, departure and the
+                # charge it came with decide how much it takes. The same target
+                # sizes the dispatch's charging (builders/charging.py).
+                arrival_soc = (cp.ev.arrival_soc if cp.ev.arrival_soc is not None
+                               else DEFAULT_ARRIVAL_SOC)
+                power = min(cp.capacity, cp.ev.max_charging_power)
+                target = session_target_soc(arrival_soc, cp.ev.capacity, power, hours)
                 rows.append({
                     "Arrival": arrival,
                     "Departure": departure,
                     "Capacity": float(cp.ev.capacity),
                     "Max_Power": float(min(cp.capacity, cp.ev.max_charging_power)),
-                    "Arrival SOC": 0.3,
-                    "Desired SOC": round(min(1.0, reachable or 1.0), 3),
+                    "Arrival SOC": round(arrival_soc, 3),
+                    "Desired SOC": round(target, 3),
                     "ev_id": cp.ev.name,
                     "session_id": session_id,
                 })

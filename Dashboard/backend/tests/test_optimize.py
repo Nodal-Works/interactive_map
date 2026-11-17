@@ -153,6 +153,33 @@ def test_ev_sessions_are_built_from_availability():
     assert (sessions["Desired SOC"] <= 1.0).all()
 
 
+def test_ev_arrival_soc_sets_the_session():
+    """The charge a car arrives with is the session's arrival SOC, and the
+    target is what the stay can add to it."""
+    spec = tiny_spec()
+    spec.charge_points[0].ev.arrival_soc = 0.6
+    sessions = build_optimizer_inputs(spec)["charging_point_data"]["CP"]
+    assert (sessions["Arrival SOC"] == 0.6).all()
+    assert (sessions["Desired SOC"] >= 0.6).all()
+
+
+def test_dispatch_charges_what_the_optimizer_would():
+    """With an arrival charge set, the table's daily energy is the optimizer's
+    target minus the arrival, over the same stay."""
+    from app.builders.charging import daily_charge_kwh
+    from app.schemas.charging import ChargePointSpec, session_target_soc
+    cp = ChargePointSpec(
+        name="CP", capacity=11.0, owner="Akademiska Hus",
+        ev={"name": "EV", "capacity": 60.0, "max_charging_power": 11.0,
+            "availability": [1 if 8 <= h < 17 else 0 for h in range(24)],
+            "arrival_soc": 0.5})
+    expected = (session_target_soc(0.5, 60.0, 11.0, 9) - 0.5) * 60.0
+    assert daily_charge_kwh(cp) == pytest.approx(expected)
+    assert expected == pytest.approx(0.499 * 60.0, abs=0.1)  # fills up
+    cp.ev.arrival_soc = None
+    assert daily_charge_kwh(cp) is None
+
+
 def test_availability_blocks_wrap_and_filter():
     day = [0] * 24
     day[8] = day[9] = 1          # 08:00-10:00

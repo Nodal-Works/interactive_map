@@ -823,6 +823,14 @@
     function buildSpec() {
         const spec = clone(state.working);
 
+        // Every car says how full it arrives, so the table and the optimizer
+        // charge it from the same place - the slider's default included.
+        (spec.charge_points || []).forEach(function (cp) {
+            if (cp.ev && cp.ev.arrival_soc == null) {
+                cp.ev.arrival_soc = ARRIVAL_SOC_DEFAULT / 100;
+            }
+        });
+
         if (state.excluded.size) {
             // Which non-members' roofs the community uses, and which keep
             // their panels to themselves. A shared array stays in the spec
@@ -1180,18 +1188,6 @@
             const spot = alongHouse(n === 1 ? 0.5 : index / (n - 1));
             if (spot) { cp.lon = spot[0]; cp.lat = spot[1]; }
         });
-    }
-
-    /** How far along the building a charge point currently stands. */
-    function housePosition(cp) {
-        if (!bays || cp.lat == null) return 0.5;
-        let best = 0;
-        let bestGap = Infinity;
-        bays.forEach(function (point, index) {
-            const gap = Math.abs(point[1] - cp.lat) + Math.abs(point[0] - cp.lon);
-            if (gap < bestGap) { bestGap = gap; best = index; }
-        });
-        return bays.length > 1 ? best / (bays.length - 1) : 0.5;
     }
 
     function chargePoints() {
@@ -5003,8 +4999,6 @@
         }
 
         const rows = points.map(function (cp, index) {
-            const placed = cp.lat != null;
-            const position = Math.round(housePosition(cp) * 100);
             return '' +
                 '<div class="ecom-cp">' +
                     '<div class="ecom-cp-head">' +
@@ -5035,17 +5029,17 @@
                         step: 1, unit: '', format: clockHour,
                         hint: plugHint(plugWindow(cp))
                     }) +
-                    (bays
+                    // How full the car is when it plugs in. Both models read
+                    // it: the optimizer starts each stay here, and the table
+                    // charges what the stay adds from here - the same energy.
+                    (cp.ev
                         ? slider({
-                              name: 'cp_pos:' + index,
-                              label: 'Along ' + CP_PLACE,
-                              value: position, min: 0, max: 100, step: 2,
-                              unit: '%',
-                              hint: placed ? '' : 'Not placed yet - move this to put it in the car park.'
+                              name: 'cp_soc:' + index, label: 'Arrives at',
+                              value: arrivalSocPercent(cp), min: ARRIVAL_SOC_MIN,
+                              max: 100, step: 5, unit: '%',
+                              hint: socHint(cp)
                           })
-                        : '<span class="ecom-ctl-hint">The footprints have not ' +
-                          'loaded, so this one stays at the middle of the ' +
-                          'campus with the other shared assets.</span>') +
+                        : '') +
                     '<label class="ecom-ctl-check">' +
                         '<input type="checkbox" data-cp-v2g="' + index + '"' +
                             (cp.is_v2g ? ' checked' : '') + '>' +
@@ -5087,6 +5081,36 @@
             }
         }
         return first === null ? DEFAULT_PLUG : { arrival: first, departure: last + 1 };
+    }
+
+    // The car's charge when it plugs in, in percent. The optimizer cannot take
+    // an arrival below 20%, and assumes 30% when nothing is said.
+    const ARRIVAL_SOC_MIN = 20;
+    const ARRIVAL_SOC_DEFAULT = 30;
+    const CHARGING_EFFICIENCY = 0.93;
+
+    function arrivalSocPercent(cp) {
+        const soc = cp.ev && cp.ev.arrival_soc;
+        return soc == null ? ARRIVAL_SOC_DEFAULT : Math.round(soc * 100);
+    }
+
+    /** How much the car takes on a stay, as the backend works it out
+     *  (session_target_soc): from its arrival charge up to what the stay can
+     *  put in, counting one hour fewer than the stay, to a full battery. */
+    function socHint(cp) {
+        if (!cp.ev) return '';
+        const w = plugWindow(cp);
+        const arrival = arrivalSocPercent(cp) / 100;
+        const capacity = Number(cp.ev.capacity) || 0;
+        const power = Math.min(Number(cp.capacity) || 0, Number(cp.ev.max_charging_power) || 0);
+        const hours = Math.max(0, w.departure - w.arrival - 1);
+        const target = capacity
+            ? Math.max(arrival, Math.min(1, arrival + power * hours * CHARGING_EFFICIENCY / capacity))
+            : 1;
+        const kwh = Math.round((target - arrival) * capacity);
+        return 'Charge when the car plugs in. It leaves at ' + Math.round(target * 100) +
+            '%, taking ' + kwh + ' kWh of its ' + Math.round(capacity) + ' kWh - on the ' +
+            'table and in the optimizer alike.';
     }
 
     /** 24 hours of 0/1: plugged in from arrival up to, not including, departure. */
@@ -5888,11 +5912,14 @@
                     if (hint) hint.textContent = plugHint({ arrival: arrival, departure: departure });
                 }
                 set(clockHour(value));
-            } else if (parts[0] === 'cp_pos') {
-                const spot = alongHouse(value / 100);
-                if (spot) { cp.lon = spot[0]; cp.lat = spot[1]; }
+            } else if (parts[0] === 'cp_soc') {
+                if (cp.ev) cp.ev.arrival_soc = Math.max(ARRIVAL_SOC_MIN, value) / 100;
                 set(value + ' %');
             }
+            // What the car takes follows its arrival charge and its hours.
+            const socHintEl = document.querySelector(
+                '[data-slider="cp_soc:' + parts[1] + '"] + .ecom-ctl-hint');
+            if (socHintEl) socHintEl.textContent = socHint(cp);
             markDirty();
             return;
         }
