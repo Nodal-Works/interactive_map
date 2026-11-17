@@ -201,7 +201,6 @@
 .ecom-ctl-member input { width: 18px; height: 18px; accent-color: #ff00a6; }
 .ecom-ctl-member.is-off { color: #6d6d6d; }
 .ecom-ctl-member-name { flex: 1; }
-.ecom-ctl-member-owner { font-size: 0.72rem; color: #7d7d7d; }
 
 /* ---------------------------------------------------------------- chips */
 
@@ -861,12 +860,116 @@
 .ecom-kit-size.is-battery input[type=range] { accent-color: #fb7185; }
 .ecom-kit-size.is-charger input[type=range] { accent-color: #34d399; }
 
+/* The chargers row has four parts - name, stepper, power slider, figure - but
+   the member-row rule above gives every sizer three columns, so the slider was
+   squeezed to a stub at the end and the figure fell onto a line of its own. */
+.ecom-ctl-member-row .ecom-kit-size.ecom-kit-chargers {
+    grid-template-columns: 5.4rem auto minmax(60px, 1fr) 5.4rem;
+}
+
+/* The spot price chart in the Grid tab. */
+.ecom-spot {
+    margin-top: 0.8rem;
+    padding: 0.6rem 0.7rem 0.5rem;
+    border: 1px solid #3f3f46;
+    border-radius: 8px;
+    background: rgba(255, 255, 255, 0.02);
+}
+.ecom-spot-head {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    gap: 0.6rem;
+    margin-bottom: 0.3rem;
+    font-size: 0.82rem;
+    color: #c4c4cc;
+}
+.ecom-spot-head b { color: #facc15; font-variant-numeric: tabular-nums; }
+.ecom-spot-svg { display: block; width: 100%; height: 210px; }
+.ecom-spot-key {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.3rem 1rem;
+    margin-top: 0.25rem;
+    font-size: 0.74rem;
+    color: #a1a1aa;
+}
+.ecom-spot-key span { display: inline-flex; align-items: center; gap: 0.35rem; }
+.ecom-spot-key i { display: inline-block; width: 14px; height: 3px; border-radius: 2px; }
+.ecom-spot-key i.is-dash { height: 0; border-top: 2px dashed; background: none; }
+.ecom-spot-key .ecom-spot-unit { margin-left: auto; color: #71717a; }
+
+/* V2G for a building's chargers: its own line under the chargers row, indented
+   with it. */
+.ecom-ctl-member-row .ecom-kit-v2g {
+    flex: 1 1 100%;
+    width: 100%;
+    box-sizing: border-box;
+    margin: 0;
+    padding: 0 0.3rem 0.3rem 1.8rem;
+    font-size: 0.82rem;
+    color: #a1a1aa;
+}
+.ecom-ctl-member-row .ecom-kit-v2g input { accent-color: #34d399; }
+
+/* The real battery's live reading, on its building's row under the modelled
+   battery. A line of its own, the full width of the row, indented with the
+   sliders above it. */
+.ecom-kit-live {
+    flex: 1 1 100%;
+    width: 100%;
+    box-sizing: border-box;
+    padding: 0.2rem 0.3rem 0.35rem 0.6rem;
+}
+.ecom-kit-live:empty { display: none; }
+.ecom-kit-live .ecom-ctl-live { margin: 0; }
+
+/* The panel capacity, typed. Sits where the other sizes show a read-only figure. */
+.ecom-kw-field {
+    display: inline-flex;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 0.25rem;
+    min-width: 0;
+}
+.ecom-kw-field input {
+    width: 3.4rem;
+    min-width: 0;
+    padding: 0.15rem 0.3rem;
+    border: 1px solid #3f3f46;
+    border-radius: 6px;
+    background: #27272a;
+    color: #e4e4e7;
+    font: inherit;
+    font-weight: 600;
+    text-align: right;
+    font-variant-numeric: tabular-nums;
+    -moz-appearance: textfield;
+}
+.ecom-kw-field input::-webkit-outer-spin-button,
+.ecom-kw-field input::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
+.ecom-kw-field input:focus { outline: none; border-color: #eaff00; }
+.ecom-kw-field i { font-style: normal; color: #9b9b9b; }
+
 .ecom-kit-size b {
     text-align: right;
     font-variant-numeric: tabular-nums;
     color: #e4e4e7;
     font-weight: 600;
 }
+
+/* The PV / Battery / Charger buttons on each building's row, in the colour of
+   what they add - the same colours as on the table - so they read as the way
+   to build rather than as grey settings. Filled once the building has one. */
+.ecom-kit[data-kit="pv"] { border-color: rgba(234, 255, 0, 0.45); color: #e9f27a; }
+.ecom-kit[data-kit="battery"] { border-color: rgba(250, 54, 0, 0.5); color: #ffa585; }
+.ecom-kit[data-kit="charger"] { border-color: rgba(52, 211, 153, 0.5); color: #8ff0c8; }
+.ecom-kit[data-kit="pv"]:hover { background: rgba(234, 255, 0, 0.1); }
+.ecom-kit[data-kit="battery"]:hover { background: rgba(250, 54, 0, 0.12); }
+.ecom-kit[data-kit="charger"]:hover { background: rgba(52, 211, 153, 0.12); }
+.ecom-kit.is-on[data-kit="pv"] { background: rgba(234, 255, 0, 0.18); border-color: #eaff00; color: #fbffc2; }
+.ecom-kit.is-on[data-kit="battery"] { background: rgba(250, 54, 0, 0.2); border-color: #fa3600; color: #ffd2c2; }
+.ecom-kit.is-on[data-kit="charger"] { background: rgba(52, 211, 153, 0.2); border-color: #34d399; color: #d1fae5; }
 
 /* Add a shared asset: one that belongs to the community rather than to any
    building. Sits at the foot of its own group, where the per-building rows
@@ -914,6 +1017,57 @@
     border-color: #eab308;
     color: #eab308;
 }
+
+/* Own use / Rented for each kind of equipment on a building outside the
+   community: a two-sided switch on a line of its own under the row, both
+   choices always showing and the one in force lit, so it reads as something
+   to choose rather than a label. */
+.ecom-owner-row {
+    flex: 1 1 100%;
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.4rem 0.7rem;
+    width: 100%;
+    box-sizing: border-box;
+    padding: 0.15rem 0.3rem 0.4rem 1.8rem;
+}
+.ecom-owner-lead {
+    font-size: 0.78rem;
+    color: #a1a1aa;
+}
+.ecom-owner-switch {
+    display: inline-flex;
+    align-items: stretch;
+    border: 1px solid #52525b;
+    border-radius: 8px;
+    overflow: hidden;
+    background: #232327;
+    font-size: 0.8rem;
+}
+.ecom-owner-kind {
+    display: inline-flex;
+    align-items: center;
+    padding: 0 0.55rem;
+    border-right: 1px solid #3f3f46;
+    font-weight: 600;
+}
+.ecom-owner-switch.is-pv .ecom-owner-kind { color: #e9f27a; }
+.ecom-owner-switch.is-battery .ecom-owner-kind { color: #ffa585; }
+.ecom-owner-switch.is-charger .ecom-owner-kind { color: #8ff0c8; }
+.ecom-owner-side {
+    padding: 0.32rem 0.7rem;
+    border: none;
+    background: transparent;
+    color: #8b8b93;
+    font: inherit;
+    cursor: pointer;
+    transition: background 0.12s ease, color 0.12s ease;
+}
+.ecom-owner-side + .ecom-owner-side { border-left: 1px solid #3f3f46; }
+.ecom-owner-side:hover:not(.is-on) { background: #2f2f35; color: #e4e4e7; }
+.ecom-owner-side.is-on.is-own { background: #3f3f46; color: #fafafa; font-weight: 600; }
+.ecom-owner-side.is-on.is-rented { background: rgba(234, 179, 8, 0.22); color: #fde047; font-weight: 600; }
 
 @media (prefers-reduced-motion: reduce) {
     .ecom-kit { transition: none; }
@@ -1563,6 +1717,48 @@
     to { transform: rotate(360deg); }
 }
 
+/* "Calculating costs" while the optimizer runs: bottom centre of the panel,
+   above everything, in the optimizer's violet so it is not mistaken for the
+   dispatch's own spinner. */
+.ecom-opt-busy {
+    position: fixed;
+    left: 50%;
+    bottom: 22px;
+    z-index: 10050;
+    display: flex;
+    align-items: center;
+    gap: 0.6rem;
+    padding: 0.6rem 1rem;
+    border: 1px solid rgba(167, 139, 250, 0.6);
+    border-radius: 999px;
+    background: rgba(30, 27, 46, 0.96);
+    box-shadow: 0 8px 28px rgba(0, 0, 0, 0.45), 0 0 18px rgba(167, 139, 250, 0.25);
+    color: #ede9fe;
+    font-size: 0.9rem;
+    pointer-events: none;
+    opacity: 0;
+    transform: translate(-50%, 12px);
+    transition: opacity 0.25s ease, transform 0.25s ease;
+}
+.ecom-opt-busy.is-on { opacity: 1; transform: translate(-50%, 0); }
+.ecom-opt-busy .ecom-busy-spinner { border-top-color: #a78bfa; }
+.ecom-opt-busy b { color: #c4b5fd; }
+.ecom-opt-busy-time { color: #a1a1aa; font-variant-numeric: tabular-nums; }
+.ecom-opt-busy-mark {
+    display: inline-grid;
+    place-items: center;
+    width: 18px;
+    height: 18px;
+    border-radius: 50%;
+    background: #4ade80;
+    color: #052e16;
+    font-size: 0.75rem;
+    font-weight: 800;
+}
+.ecom-opt-busy-mark.is-error { background: #f87171; color: #450a0a; }
+.ecom-opt-busy.is-done { border-color: rgba(74, 222, 128, 0.6); }
+.ecom-opt-busy.is-error { border-color: rgba(248, 113, 113, 0.7); }
+
 /* The projector runs unattended; a reader who cannot see motion still gets
    the text, and the spinner simply stops. */
 @media (prefers-reduced-motion: reduce) {
@@ -1906,15 +2102,6 @@ body:has(#main-panel.ecom-mode) > header h1 { font-size: 1.35rem; }
 
 .ecom-tabpanel .ecom-ctl-member input { width: 20px; height: 20px; }
 .ecom-tabpanel .ecom-ctl-member-name { font-weight: 500; }
-.ecom-tabpanel .ecom-ctl-member-owner {
-    font-size: 0.8rem;
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    min-width: 0;
-    flex: 0 1 auto;
-}
-
 .ecom-tabpanel .ecom-ctl-member-row > .ecom-ctl-member-kit {
     flex: 0 0 auto;
     align-items: center;
@@ -1954,12 +2141,7 @@ body:has(#main-panel.ecom-mode) > header h1 { font-size: 1.35rem; }
     color: #34d399;
 }
 
-/* On a narrower screen the column is too tight for the owner as well, and a
-   building wraps to a second line to make room for it. Dropped from the line
-   there; it is still in the tooltip on the name. */
 @media (max-width: 1700px) {
-    .ecom-tabpanel .ecom-ctl-member-owner { display: none; }
-
     /* Name, roof and three buttons have about 560px between them. The name only
        needs room for its longest word, not the 215px it is given at full width,
        and the buttons can be a little snugger. */
@@ -2056,11 +2238,19 @@ body:has(#main-panel.ecom-mode) > header h1 { font-size: 1.35rem; }
     grid-template-columns: 220px minmax(0, 1fr) minmax(310px, 380px);
     grid-template-areas:
         "sky when bar"
-        "sky when status";
-    grid-template-rows: auto 1fr;
+        "sky when status"
+        "sky when story";
+    grid-template-rows: auto auto 1fr;
     gap: 0.45rem 0.9rem;
     align-items: stretch;
 }
+
+#main-panel.ecom-mode .ecom-ctl-story {
+    grid-area: story;
+    margin-top: 0;
+    padding: 0.45rem 0.65rem;
+}
+#main-panel.ecom-mode .ecom-ctl-story-head { margin-bottom: 0.3rem; }
 
 /* The sky shrinks to a clock: the hour, the date, daylight and the sun. */
 #main-panel.ecom-mode .ecom-sky-card {
@@ -2269,6 +2459,51 @@ body:has(#main-panel.ecom-mode) > header h1 { font-size: 1.35rem; }
 
 .ecom-kpi-tiles--compare { margin-bottom: 0; }
 
+/* Load profiles | Sharing, in the card's head. */
+.ecom-view-tabs { margin-left: 0.2rem; }
+.ecom-view-tabs button { font-size: 0.85rem; }
+
+/* The sharing graph. */
+.ecom-share-top {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.3rem 0.8rem;
+    font-size: 0.78rem;
+    color: #a1a1aa;
+    margin-bottom: 0.3rem;
+}
+.ecom-share-svg {
+    display: block;
+    width: 100%;
+    height: auto;
+    max-height: 330px;
+    background: rgba(255, 255, 255, 0.015);
+    border: 1px solid #2f2f35;
+    border-radius: 8px;
+    transition: opacity 0.2s ease;
+}
+.ecom-share-svg.is-stale { opacity: 0.5; }
+.ecom-share-rank {
+    display: flex;
+    flex-direction: column;
+    gap: 0.15rem;
+    margin: 0.45rem 0 0.2rem;
+    font-size: 0.8rem;
+    color: #c4c4cc;
+}
+.ecom-share-rank b { color: #fdf4ff; }
+
+/* An optimizer column with no figures yet: "calculating…" or "run the
+   optimizer", said quietly so it does not read as a value. */
+.ecom-kpi-cell.is-pending {
+    color: #8b8b93 !important;
+    font-style: italic;
+    font-size: 0.85rem;
+    font-weight: 400;
+}
+
 .ecom-kpi-cmp {
     padding: 0.5rem 0.7rem 0.55rem;
     gap: 0.05rem;
@@ -2334,4 +2569,58 @@ body:has(#main-panel.ecom-mode) > header h1 { font-size: 1.35rem; }
 
 @media (prefers-reduced-motion: reduce) {
     .ecom-tab { transition: none; }
+}
+
+/* The introduction: one button the presenter can find without looking down. */
+.ecom-ctl-story {
+    margin-top: 10px;
+    padding: 10px 12px;
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    border-radius: 8px;
+    background: rgba(255, 255, 255, 0.02);
+}
+.ecom-ctl-story.is-running {
+    border-color: rgba(232, 238, 246, 0.28);
+    background: rgba(232, 238, 246, 0.05);
+}
+.ecom-ctl-story-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    margin-bottom: 8px;
+}
+.ecom-ctl-story-label {
+    font-size: 12px;
+    letter-spacing: 0.02em;
+    opacity: 0.78;
+}
+.ecom-ctl-dots {
+    display: flex;
+    gap: 5px;
+}
+/* Each dot is a jump, for the question asked out of order. */
+.ecom-ctl-dot {
+    width: 8px;
+    height: 8px;
+    padding: 0;
+    border: 0;
+    border-radius: 4px;
+    cursor: pointer;
+    background: rgba(255, 255, 255, 0.22);
+    transition: width 160ms ease, background 160ms ease;
+}
+.ecom-ctl-dot.is-done { background: rgba(232, 238, 246, 0.55); }
+.ecom-ctl-dot.is-on {
+    width: 20px;
+    background: var(--ecom-action, #e8eef6);
+}
+.ecom-ctl-story-bar {
+    display: flex;
+    gap: 8px;
+}
+.ecom-ctl-story-bar .ecom-ctl-btn { flex: 1; }
+.ecom-ctl-story-bar .ecom-ctl-btn[disabled] {
+    opacity: 0.35;
+    cursor: default;
 }

@@ -34,7 +34,7 @@ def allowed_service(service, path, method):
     if '..' in unquote(pathname) or not pathname.startswith('/') or pathname.startswith('//'):
         return False
     patterns = {
-        'ecom': r'/api/(health|mr/layer|optimize(?:/parameters|/[a-zA-Z0-9_-]+)?|scenarios/campus_community(?:/years|/geometry|/peaks)?)',
+        'ecom': r'/api/(health|mr/layer|optimize(?:/parameters|/[a-zA-Z0-9_-]+)?|scenarios/campus_community(?:/years|/geometry|/peaks)?|prices/se3/\d{4}|live/battery)',
         'coolpaths': r'/api/coolpaths/(status|layers|buildings|snap|route|inspect|demo-route/\d+|streets/\d+|raster/\d+\.png|layers/[a-z_-]+/\d+\.png)',
         'sam': r'/(?:segment)?'
     }
