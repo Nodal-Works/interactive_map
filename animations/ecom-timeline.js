@@ -44,7 +44,7 @@
     const style = document.createElement('style');
     style.textContent = [
         '.ecom-timeline{position:fixed;left:' + EDGE_PX + 'px;right:' + EDGE_PX + 'px;',
-        'bottom:var(--mr-bottom-ribbon-height, 52px);height:34px;z-index:849;',
+        'bottom:0;height:34px;z-index:849;',
         'display:flex;align-items:center;gap:14px;padding:0 16px 0 14px;',
         'box-sizing:border-box;pointer-events:none;',
         'background:rgba(6,9,12,0.72);color:' + INK + ';',
