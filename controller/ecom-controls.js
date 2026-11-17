@@ -317,7 +317,6 @@
         noGeometry: [],       // scenario buildings with no outline on the table: not offered
         kpiDetails: false,    // the three detail columns under the KPI tiles, folded away
         paramInfo: {},        // optimizer constants whose explanation is open, by name
-        profileMode: 'kw',    // load profiles in kW, or each as a share of its own peak
         profileView: 'profiles', // the card beside the parameters: 'profiles' or 'sharing'
         shareMode: 'period',     // the sharing graph: totals over the period, or this 'hour'
         profileFocus: null,   // the one building being followed on that chart
@@ -2603,6 +2602,13 @@
                 state.optimizer = job;
                 const done = await waitForJob(job.id, token);
                 if (token !== optimizerRun) return;
+                // Which hours it solved, so the load profiles can lay its
+                // series over the table's own: its timestamps are in the
+                // optimizer's own calendar, not the measured year.
+                if (done.result) {
+                    done.result.period = Object.assign({ year: state.year },
+                                                       spec.analysis_period);
+                }
                 state.optimizerResults[mode] = done.result;
                 broadcastOptimization();
             }
@@ -3635,32 +3641,144 @@
         return { w: Math.round(w), h: Math.round(h) };
     }
 
+    // The community as one line each: what its buildings need, and what it
+    // draws from the grid once its measures are in. Colours follow the table's
+    // legend where there is one - teal is the grid.
+    const COMMUNITY_LINES = {
+        demand: { name: 'Demand', colour: '#e4e4e7',
+                  hint: 'What the member buildings need, before any PV, battery or charger.' },
+        grid: { name: 'From grid', colour: '#2dd4bf',
+                hint: 'What the community draws from the grid on the table: PV and ' +
+                      'batteries take some off, chargers add the cars.' },
+        optimised: { name: 'Optimised', colour: '#a78bfa',
+                     hint: 'The optimizer\'s grid import as an energy community, with the ' +
+                           'batteries and car charging scheduled to keep the peak down.' }
+    };
+
+    /** The community before and after its measures, hour by hour.
+     *
+     * Before is the sum of the members' demand: the buildings alone, with no
+     * PV, battery or charger. After is what the dispatch on the table draws
+     * from the grid - every flow leaving the grid, into buildings, batteries
+     * and cars alike, so a charger shows up as more and a roof as less. The
+     * optimizer's last community run is laid over the hours it covers; it
+     * plans the batteries and the cars against a peak charge, which the
+     * dispatch does not, so it is where a battery's shaving shows.
+     */
+    function communityLines(profiles, n) {
+        const out = [];
+        const demand = new Array(n).fill(0);
+        profiles.forEach(function (p) {
+            p.series.forEach(function (v, i) { if (i < n) demand[i] += Number(v) || 0; });
+        });
+        out.push(Object.assign({ key: 'demand', values: demand }, COMMUNITY_LINES.demand));
+
+        const flows = state.layer && state.layer.flows && state.layer.flows.features;
+        if (Array.isArray(flows)) {
+            const grid = new Array(n).fill(0);
+            flows.forEach(function (f) {
+                const p = f.properties || {};
+                if (p.origin !== 'grid' || !Array.isArray(p.flow_hourly)) return;
+                p.flow_hourly.forEach(function (v, i) {
+                    if (i < n && v > 0) grid[i] += Number(v);
+                });
+            });
+            out.push(Object.assign({ key: 'grid', values: grid }, COMMUNITY_LINES.grid));
+        }
+
+        const run = state.optimizerResults && state.optimizerResults.community;
+        const series = run && run.series;
+        const period = run && run.period;
+        if (series && Array.isArray(series.P_import_all) && period &&
+            period.year === state.year) {
+            // Hour 0 of the run is midnight on its first day; the chart starts
+            // at midnight on the table's.
+            const offset = 24 * (dayOfYear(state.startMonth, state.startDay) -
+                                 dayOfYear(period.start_month, period.start_day));
+            const hours = Math.min(series.P_import_all.length, run.hours || Infinity);
+            const values = new Array(n).fill(null);
+            let covered = 0;
+            for (let i = 0; i < n; i += 1) {
+                const k = i + offset;
+                const v = k >= 0 && k < hours ? series.P_import_all[k] : null;
+                if (v === undefined || v === null) continue;
+                values[i] = Math.max(0, Number(v) || 0);
+                covered += 1;
+            }
+            if (covered) {
+                out.push(Object.assign({ key: 'optimised', values: values, covered: covered },
+                                       COMMUNITY_LINES.optimised));
+            }
+        }
+        return out;
+    }
+
+    /** The highest value of a line, and the highest the demand reached over
+     *  the same hours - the optimizer may cover only part of the chart, and its
+     *  peak is set against the demand it actually saw. */
+    function linePeak(line, demand) {
+        let peak = 0, before = 0, at = -1;
+        line.values.forEach(function (v, i) {
+            if (v === null || v === undefined) return;
+            if (v > peak) { peak = v; at = i; }
+            if ((demand[i] || 0) > before) before = demand[i] || 0;
+        });
+        return { peak: peak, before: before, at: at };
+    }
+
+    /** Peak before and after, for the row above the chart. */
+    function peakSummary(community) {
+        const demand = community && community[0];
+        if (!demand) return '';
+        const kw = function (v) { return Math.round(v).toLocaleString() + ' kW'; };
+        const n = demand.values.length;
+        const before = linePeak(demand, demand.values);
+        let html = '<span class="ecom-prof-peak" title="' + esc(demand.hint) + '">' +
+            '<i class="is-dashed" style="border-color:' + demand.colour + '"></i>' +
+            'Peak demand <b>' + kw(before.peak) + '</b></span>';
+        community.slice(1).forEach(function (line) {
+            const p = linePeak(line, demand.values);
+            const change = p.peak - p.before;
+            const pct = p.before > 0 ? Math.round(Math.abs(change) / p.before * 100) : 0;
+            const tone = change < -0.5 ? 'is-down' : change > 0.5 ? 'is-up' : '';
+            const part = line.covered && line.covered < n
+                ? ' <small>(against ' + kw(p.before) + ' demand over the ' +
+                  line.covered + ' h it solved)</small>' : '';
+            html += '<span class="ecom-prof-peak" title="' + esc(line.hint) + '">' +
+                '<i style="border-color:' + line.colour + '"></i>' +
+                esc(line.name) + ' <b>' + kw(p.peak) + '</b>' +
+                '<em class="' + tone + '">' +
+                    (Math.abs(change) < 0.5 ? 'no change'
+                        : (change < 0 ? '&minus;' : '+') + kw(Math.abs(change)) +
+                          ' (' + pct + '%)') +
+                '</em>' + part + '</span>';
+        });
+        return '<div class="ecom-prof-peaks">' + html + '</div>';
+    }
+
     function profileChart(profiles) {
         const size = profileSize();
         const W = size.w, H = size.h, L = 50, R = 12, T = 12, B = 42;
         const plotW = W - L - R;
         const plotH = H - T - B;
-        const share = state.profileMode === 'share';
 
         const lines = profiles.map(function (p) {
             const peak = Math.max.apply(null, p.series.concat([0]));
-            return {
-                name: p.name,
-                peak: peak,
-                values: share
-                    ? p.series.map(function (v) { return peak > 0 ? v / peak * 100 : 0; })
-                    : p.series
-            };
+            return { name: p.name, peak: peak, values: p.series };
         });
 
         const n = Math.max.apply(null, lines.map(function (l) { return l.values.length; }));
-        const top = share ? 100 : niceCeiling(Math.max.apply(null,
-            lines.map(function (l) { return Math.max.apply(null, l.values); })));
+        const community = communityLines(profiles, n);
+        const highest = function (l) {
+            return Math.max.apply(null, l.values.map(function (v) { return v || 0; }).concat([0]));
+        };
+        const top = niceCeiling(Math.max.apply(null,
+            lines.concat(community).map(highest)));
         const xAt = function (i) { return L + (n > 1 ? i / (n - 1) : 0.5) * plotW; };
         const yAt = function (v) { return T + plotH - Math.min(v, top) / top * plotH; };
 
         profileGeom = { width: W, height: H, left: L, plotW: plotW, top: T,
-                        bottom: T + plotH, n: n, lines: lines, share: share,
+                        bottom: T + plotH, n: n, lines: lines, community: community,
                         yAt: yAt };
 
         // Horizontal gridlines: five equal steps up to a round number.
@@ -3671,7 +3789,7 @@
                     '" y1="' + yAt(v).toFixed(1) + '" y2="' + yAt(v).toFixed(1) + '"/>' +
                     '<text class="ecom-prof-tick" x="' + (L - 8) + '" y="' +
                     (yAt(v) + 4).toFixed(1) + '" text-anchor="end">' +
-                    esc(share ? Math.round(v) + '%' : compactNumber(v)) + '</text>';
+                    esc(compactNumber(v)) + '</text>';
         }
 
         // Vertical: every six hours on a short period, every midnight on a long
@@ -3707,7 +3825,8 @@
                 return xAt(i).toFixed(1) + ',' + yAt(v).toFixed(1);
             }).join(' ');
             const dim = focus && line.name !== focus;
-            return '<polyline class="ecom-prof-line' + (line.name === focus ? ' is-focus' : '') +
+            return '<polyline class="ecom-prof-line ecom-prof-building' +
+                   (line.name === focus ? ' is-focus' : '') +
                    '" data-name="' + esc(line.name) +
                    '" points="' + points + '" stroke="' + profileColour(line.name) +
                    '" style="opacity:' + (dim ? 0.12 : 1) + '"><title>' +
@@ -3715,9 +3834,83 @@
                    ' kW</title></polyline>';
         }).join('');
 
+        // The shaving: for each line after the measures, the band between the
+        // demand's peak and its own, over the hours it covers - so how much
+        // came off reads as a height. A peak that went up - chargers with
+        // nothing to carry them - is drawn red.
+        let shave = '';
+        const demand = community[0];
+        if (demand && community.length > 1) {
+            community.slice(1).forEach(function (line) {
+                const p = linePeak(line, demand.values);
+                const before = p.before, after = p.peak;
+                if (!(before > 0) || Math.abs(before - after) < 0.5) return;
+                let first = -1, last = -1;
+                line.values.forEach(function (v, i) {
+                    if (v === null || v === undefined) return;
+                    if (first < 0) first = i;
+                    last = i;
+                });
+                if (first < 0) return;
+                const x1 = xAt(first), x2 = xAt(last);
+                const y1 = yAt(Math.max(before, after)), y2 = yAt(Math.min(before, after));
+                const up = after > before;
+                shave += '<rect class="ecom-prof-shave' + (up ? ' is-up' : '') + '" x="' +
+                    x1.toFixed(1) + '" width="' + Math.max(1, x2 - x1).toFixed(1) +
+                    '" y="' + y1.toFixed(1) + '" height="' +
+                    Math.max(1, y2 - y1).toFixed(1) + '" style="fill:' +
+                    (up ? '#f87171' : line.colour) + '"/>';
+                const label = line.name + (up ? ': peak up ' : ': peak shaved ') +
+                    Math.round(Math.abs(before - after)).toLocaleString() + ' kW';
+                shave += '<text class="ecom-prof-shave-label' + (up ? ' is-up' : '') +
+                    '" x="' + (x1 + 8).toFixed(1) + '" y="' + (y2 + 15).toFixed(1) +
+                    '" text-anchor="start" style="fill:' + (up ? '#fca5a5' : line.colour) +
+                    '">' + esc(label) + '</text>';
+            });
+            // Each community line's own peak, as a level across the chart and
+            // a dot where it happens.
+            community.forEach(function (line) {
+                const p = linePeak(line, demand.values);
+                if (!(p.peak > 0) || p.at < 0) return;
+                const y = yAt(p.peak).toFixed(1);
+                shave += '<line class="ecom-prof-level" x1="' + L + '" x2="' + (L + plotW) +
+                    '" y1="' + y + '" y2="' + y + '" stroke="' + line.colour + '"/>';
+            });
+        }
+
+        const dots = demand ? community.map(function (line) {
+            const p = linePeak(line, demand.values);
+            if (!(p.peak > 0) || p.at < 0) return '';
+            return '<circle class="ecom-prof-peakdot" cx="' + xAt(p.at).toFixed(1) +
+                '" cy="' + yAt(p.peak).toFixed(1) + '" r="5" fill="' + line.colour + '"/>';
+        }).join('') : '';
+
+        const communityPaths = community.map(function (line) {
+            // The optimizer may cover only part of the period: one run of
+            // points for each stretch it has.
+            const runs = [];
+            let run = [];
+            line.values.forEach(function (v, i) {
+                if (v === null || v === undefined) {
+                    if (run.length) runs.push(run);
+                    run = [];
+                    return;
+                }
+                run.push(xAt(i).toFixed(1) + ',' + yAt(v).toFixed(1));
+            });
+            if (run.length) runs.push(run);
+            return runs.map(function (points) {
+                return '<polyline class="ecom-prof-line ecom-prof-community is-' + line.key +
+                       '" data-name="' + esc(line.name) + '" points="' + points.join(' ') +
+                       '" stroke="' + line.colour + '"><title>' + esc(line.name) + ' - ' +
+                       esc(line.hint) + '</title></polyline>';
+            }).join('');
+        }).join('');
+
         return '<svg class="ecom-prof-svg" viewBox="0 0 ' + W + ' ' + H + '"' +
-                   ' role="img" aria-label="Hourly demand of each member building">' +
-                   grid + axis + paths +
+                   ' role="img" aria-label="Hourly demand of each member building, and the ' +
+                   'community before and after its measures">' +
+                   grid + axis + shave + paths + communityPaths + dots +
                    '<line id="ecom-prof-now" class="ecom-prof-now" y1="' + T + '" y2="' +
                        (T + plotH) + '" x1="' + xAt(state.hour % n).toFixed(1) + '" x2="' +
                        xAt(state.hour % n).toFixed(1) + '"/>' +
@@ -3745,7 +3938,6 @@
 
         const stale = state.dirty || state.busy;
         const layer = state.layer || {};
-        const mode = state.profileMode === 'share' ? 'share' : 'kw';
 
         const chips = profiles.map(function (p) {
             const on = state.profileFocus === p.name;
@@ -3756,6 +3948,9 @@
                 esc(p.name) + '</button>';
         }).join('');
 
+        // Drawn first: the peak row above it reads the lines it worked out.
+        const chart = profileChart(profiles);
+
         return '' +
             '<div class="ecom-prof-top">' +
                 '<span class="ecom-prof-count">' + profiles.length + ' building' +
@@ -3763,42 +3958,16 @@
                     (layer.meta && layer.meta.period
                         ? ' &middot; ' + esc(layer.meta.period) : '') +
                     (stale ? ' &middot; <em>updating…</em>' : '') + '</span>' +
-                '<span class="ecom-seg">' +
-                    '<button type="button" data-profile-mode="kw"' +
-                        (mode === 'kw' ? ' class="is-on"' : '') +
-                        ' title="Each building in kW, on one shared scale.">kW</button>' +
-                    '<button type="button" data-profile-mode="share"' +
-                        (mode === 'share' ? ' class="is-on"' : '') +
-                        ' title="Each building as a share of its own peak, so the ' +
-                        'shapes can be compared whatever the size.">% of own peak</button>' +
-                '</span>' +
             '</div>' +
+            peakSummary(profileGeom && profileGeom.community) +
             '<div id="ecom-prof-readout" class="ecom-prof-readout">&nbsp;</div>' +
             '<div class="ecom-prof-plot' + (stale ? ' is-stale' : '') + '">' +
-                profileChart(profiles) + '</div>' +
+                chart + '</div>' +
             '<div class="ecom-prof-legend">' + chips + '</div>' +
-            profileScaleHint(profiles, mode) +
-            '<span class="ecom-ctl-hint">Tap a name to follow one building. ' +
-                'The vertical line is the hour on the table.</span>';
-    }
-
-    /** Say why most of the lines are flat, when they are.
-     *
-     * One large building sets the scale for all of them: MC2 draws about a
-     * megawatt against tens of kilowatts for most of the campus, so on a shared
-     * kW axis everyone else is a line along the bottom - which looks like a bug
-     * rather than a scale. The other view exists for exactly this.
-     */
-    function profileScaleHint(profiles, mode) {
-        if (mode !== 'kw' || profiles.length < 2) return '';
-        const peaks = profiles.map(function (p) {
-            return { name: p.name, peak: Math.max.apply(null, p.series) };
-        }).sort(function (a, b) { return b.peak - a.peak; });
-        const median = peaks[Math.floor(peaks.length / 2)].peak;
-        if (!(median > 0) || peaks[0].peak < median * 8) return '';
-        return '<span class="ecom-ctl-hint ecom-prof-scale">' + esc(peaks[0].name) +
-            ' is far larger than the rest, so they sit near zero on this scale. ' +
-            'Switch to <b>% of own peak</b> to compare their shapes.</span>';
+            '<span class="ecom-ctl-hint">White dashed is what the buildings need, teal ' +
+                'what the community draws from the grid with its PV, batteries and ' +
+                'chargers, violet the optimizer\'s plan. The shaded band is the peak ' +
+                'they take off. Tap a name to follow one building.</span>';
     }
 
     function profilesCard() {
@@ -4180,8 +4349,10 @@
         // The line nearest the pointer, at the hour the pointer is over.
         let near = null;
         let gap = Infinity;
-        g.lines.forEach(function (line) {
-            const y = g.yAt(line.values[i] || 0);
+        g.lines.concat(g.community || []).forEach(function (line) {
+            const v = line.values[i];
+            if (v === null || v === undefined) return;
+            const y = g.yAt(v);
             const d = Math.abs(y - vy);
             if (d < gap) { gap = d; near = { line: line, y: y }; }
         });
@@ -4189,8 +4360,7 @@
 
         const tip = document.getElementById('ecom-prof-tip');
         if (near) {
-            const unit = g.share ? '%' : ' kW';
-            const value = Math.round(near.line.values[i] || 0).toLocaleString() + unit;
+            const value = Math.round(near.line.values[i] || 0).toLocaleString() + ' kW';
 
             if (profileHovered !== near.line.name) {
                 profileHovered = near.line.name;
@@ -4203,7 +4373,7 @@
                 });
             }
             if (tip) {
-                const colour = profileColour(near.line.name);
+                const colour = near.line.colour || profileColour(near.line.name);
                 const circle = tip.querySelector('circle');
                 const label = tip.querySelector('text');
                 circle.setAttribute('cx', x.toFixed(1));
@@ -4227,21 +4397,20 @@
 
         if (!readout) return;
         let text = profileWhen(i);
-        if (!g.share) {
-            const total = g.lines.reduce(function (sum, line) {
-                return sum + (line.values[i] || 0);
-            }, 0);
-            text += ' &middot; community ' + Math.round(total).toLocaleString() + ' kW';
-        }
+        (g.community || []).forEach(function (line) {
+            const v = line.values[i];
+            if (v === null || v === undefined) return;
+            text += ' &middot; <span style="color:' + line.colour + '">' + esc(line.name) +
+                    '</span> ' + Math.round(v).toLocaleString() + ' kW';
+        });
         // The building under the pointer wins over the one being followed.
         const focus = state.profileFocus;
         const one = near ? near.line
             : (focus && g.lines.find(function (line) { return line.name === focus; }));
-        if (one) {
+        if (one && !one.key) {
             text += ' &middot; <b style="color:' + profileColour(one.name) + '">' +
                     esc(one.name) + '</b> ' +
-                    Math.round(one.values[i] || 0).toLocaleString() +
-                    (g.share ? '%' : ' kW');
+                    Math.round(one.values[i] || 0).toLocaleString() + ' kW';
         }
         readout.innerHTML = text;
     }
@@ -5785,7 +5954,7 @@
         'data-members', 'data-roofs', 'data-cp-remove', 'data-story-step', 'data-price-mode',
         'data-sharing-rule',
         'data-optimizer-span', 'data-optimizer-mode', 'data-peak', 'data-kit', 'data-roofowner',
-        'data-shared', 'data-profile-mode', 'data-profile-focus', 'data-profile-view',
+        'data-shared', 'data-profile-focus', 'data-profile-view',
         'data-share-mode',
         'data-param-info', 'data-charger-step'
     ];
@@ -6020,13 +6189,7 @@
             return;
         }
 
-        // Load profiles: the scale, and which building to follow.
-        const profileMode = el.getAttribute('data-profile-mode');
-        if (profileMode) {
-            state.profileMode = profileMode === 'share' ? 'share' : 'kw';
-            paintProfiles();
-            return;
-        }
+        // Load profiles: which building to follow.
         const profileFocus = el.getAttribute('data-profile-focus');
         if (profileFocus) {
             // Tapping the one already followed lets it go.
