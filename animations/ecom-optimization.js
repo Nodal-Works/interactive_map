@@ -132,7 +132,11 @@
         const failed = o && o.error;
         const has = done.length || running || failed;
 
-        bar.classList.toggle('is-on', !!(layerOn && !inIntroduction && has));
+        const showing = !!(layerOn && !inIntroduction && has);
+        bar.classList.toggle('is-on', showing);
+        // The hourly flow panel (ecom-kpi-bars.js) uses the same strip of the
+        // table edge. Only one of them shows at a time: the results win.
+        window.dispatchEvent(new CustomEvent('ecom-optimization-visibility', { detail: { on: showing } }));
         if (!has) { bar.innerHTML = ''; return; }
 
         let html = '<div class="ecom-opt-head"><span class="ecom-opt-title">Optimization</span>' +
